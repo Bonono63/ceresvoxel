@@ -1,3 +1,4 @@
+//Proceeds to zig all over the place...
 const std = @import("std");
 
 const c = @import("clibs.zig");
@@ -10,16 +11,22 @@ const VkAbstractionError = error{
     WindowReturnednull,
     TooManyExtensions,
     VkInstanceCreation,
+    UnableToCreateSurface,
+    VulkanUnavailable,
     OutOfMemory,
 };
 
-const instance_extensions_size = 1;
-const instance_extensions = [1][*c]const u8{
-    "VK_KHR_DISPLAY",
+const instance_extensions = [_][*:0]const u8{
+    "VK_KHR_display",
 };
-//"VK_LAYER_KHRONOS_validation"
 
-const device_extensions = [1][]const u8{c.VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+const validation_layers = [_][*:0]const u8{
+    "VK_LAYER_KHRONOS_validation",
+};
+
+const device_extensions = [_][*:0]const u8{
+    c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
 
 // Is it a compiler quirk that tuples with default values have to be at the end of the struct?
 const Instance = struct {
@@ -42,26 +49,63 @@ const Instance = struct {
 
 pub fn main() !void {
     var instance: Instance = .{};
+
+    const glfw_success = glfw_initialization();
+
+    if (glfw_success != VkAbstractionError.Success) {
+        std.debug.print("Unable to initialize GLFW\n", .{});
+        return;
+    }
+
     const window_success = window_setup(&instance);
 
     if (window_success != VkAbstractionError.Success) {
         std.debug.print("Unable to complete window setup\n", .{});
+        std.debug.print("Error code: {}\n", .{window_success});
     } else {
         std.debug.print("Window Setup completed\n", .{});
     }
+
+    const surface_success = create_surface(&instance);
+
+    if (surface_success != VkAbstractionError.Success) {
+        std.debug.print("Unable to create window surface.\n", .{});
+    }
 }
 
-/// Initializes our vulkan instance and window instance through glfw
-/// Returns nothing if there is no error?
-pub fn window_setup(instance: *Instance) VkAbstractionError {
+pub fn glfw_initialization() VkAbstractionError {
     if (c.glfwInit() != c.GLFW_TRUE) {
         return VkAbstractionError.GLFWInitialization;
     }
 
+    const vulkan_supported = c.glfwVulkanSupported();
+    if (vulkan_supported == c.GLFW_TRUE) {
+        std.debug.print("Vulkan support is enabled\n", .{});
+    } else {
+        std.debug.print("Vulkan is not supported\n", .{});
+        return VkAbstractionError.VulkanUnavailable;
+    }
+
+    const glfw_set_callback_error_success = c.glfwSetErrorCallback(glfw_error_callback);
+    _ = &glfw_set_callback_error_success;
+    //    if (glfw_set_callback_error_success != c.GLFW_TRUE) {
+    //        std.debug.print("Unable to set GLFW error callback\n", .{});
+    //    }
+
+    return VkAbstractionError.Success;
+}
+
+pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) void {
+    std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });
+}
+
+/// Initializes our vulkan instance and window instance through glfw
+pub fn window_setup(instance: *Instance) VkAbstractionError {
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
     c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
 
-    const window: ?*c.GLFWwindow = c.glfwCreateWindow(600, 800, "Zig Vulkan Test", null, null);
+    const window: ?*c.GLFWwindow = c.glfwCreateWindow(600, 800, ENGINE_NAME, null, null);
+    defer c.glfwDestroyWindow(window);
 
     if (window == null) {
         c.glfwTerminate();
@@ -83,59 +127,59 @@ pub fn window_setup(instance: *Instance) VkAbstractionError {
     std.debug.print("\tVulkan Engine name: {s}\n", .{application_info.pEngineName});
 
     var required_extension_count: u32 = 0;
-    _ = c.glfwGetRequiredInstanceExtensions(&required_extension_count);
     const required_extensions = c.glfwGetRequiredInstanceExtensions(&required_extension_count);
-
-    std.debug.print("required extensions size: {}\n", .{required_extension_count});
-    std.debug.print("required extensions type: {}\n", .{@TypeOf(required_extensions)});
 
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     const Allocator = arena.allocator();
-    var extensions_arraylist = std.ArrayList([*c]const u8).init(Allocator);
+    var extensions_arraylist = std.ArrayList([*:0]const u8).init(Allocator);
     defer extensions_arraylist.deinit();
 
-    //std.debug.print("test_arraylist size: {}\n", .{test_arraylist.size});
-    //test_arraylist.appendSlice(test_arraylist, required_extensions);
     for (0..required_extension_count) |i| {
         try extensions_arraylist.append(required_extensions[i]);
     }
 
-    for (0..instance_extensions_size) |i| {
+    for (0..instance_extensions.len) |i| {
         try extensions_arraylist.append(instance_extensions[i]);
     }
 
-    std.debug.print("Required Extensions: \n", .{});
-    for (0..required_extension_count) |i| {
-        std.debug.print("\t{s}\n", .{required_extensions[i]});
-    }
-
-    std.debug.print("ArrayList contents\n", .{});
+    std.debug.print("Vulkan Instance Extensions:\n", .{});
     for (extensions_arraylist.items) |item| {
         std.debug.print("\t{s}\n", .{item});
     }
 
-    // We want to make sure our conversion from u32 to usize is safe
+    // We want to make sure our conversion from u32 to usize is safe, this is a cast from u64 to u32
     if (extensions_arraylist.items.len > std.math.maxInt(u32)) {
         return VkAbstractionError.TooManyExtensions;
     }
 
-    std.debug.print("extensions arraylist cast type: {}\n", .{@TypeOf(@as([*c][*c]const u8, extensions_arraylist.items))});
-
     const create_info = c.VkInstanceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &application_info,
-        .enabledLayerCount = 0,
-        .ppEnabledLayerNames = undefined,
+        .enabledLayerCount = @intCast(validation_layers.len),
+        .ppEnabledLayerNames = &validation_layers,
         .enabledExtensionCount = @intCast(extensions_arraylist.items.len),
-        .ppEnabledExtensionNames = @ptrCast(extensions_arraylist.items),
+        .ppEnabledExtensionNames = extensions_arraylist.items.ptr,
     };
 
     const instance_result = c.vkCreateInstance(&create_info, null, &instance.vk_instance);
 
     if (instance_result != c.VK_SUCCESS) {
-        std.debug.print("Unable to make Vk Instance\n", .{});
+        std.debug.print("Unable to make Vk Instance: {}\n", .{instance_result});
         return VkAbstractionError.VkInstanceCreation;
     }
 
     return VkAbstractionError.Success;
+}
+
+pub fn create_surface(instance: *Instance) VkAbstractionError {
+    const success = c.glfwCreateWindowSurface(instance.vk_instance, instance.window, null, &instance.surface);
+
+    if (success != c.VK_SUCCESS) {
+        std.debug.print("surface pointer: {p}\n", .{&instance.surface});
+        std.debug.print("VK_NULL_HANDLE: {any}\n", .{c.VK_NULL_HANDLE});
+        std.debug.print("Error code: {}\n", .{success});
+        return VkAbstractionError.UnableToCreateSurface;
+    } else {
+        return VkAbstractionError.Success;
+    }
 }
