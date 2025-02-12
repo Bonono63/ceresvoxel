@@ -71,6 +71,9 @@ pub fn main() !void {
     if (surface_success != VkAbstractionError.Success) {
         std.debug.print("Unable to create window surface.\n", .{});
     }
+
+    const clean_up_success = instance_clean_up(&instance);
+    _ = &clean_up_success;
 }
 
 pub fn glfw_initialization() VkAbstractionError {
@@ -104,8 +107,8 @@ pub fn window_setup(instance: *Instance) VkAbstractionError {
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
     c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
 
+    // Window must be accessable outside of the function scope so no defer...
     const window: ?*c.GLFWwindow = c.glfwCreateWindow(600, 800, ENGINE_NAME, null, null);
-    defer c.glfwDestroyWindow(window);
 
     if (window == null) {
         c.glfwTerminate();
@@ -172,14 +175,18 @@ pub fn window_setup(instance: *Instance) VkAbstractionError {
 }
 
 pub fn create_surface(instance: *Instance) VkAbstractionError {
-    const success = c.glfwCreateWindowSurface(instance.vk_instance, instance.window, null, &instance.surface);
+    var surface: c.VkSurfaceKHR = undefined;
+
+    const success = c.glfwCreateWindowSurface(instance.vk_instance, instance.window, null, &surface);
 
     if (success != c.VK_SUCCESS) {
-        std.debug.print("surface pointer: {p}\n", .{&instance.surface});
-        std.debug.print("VK_NULL_HANDLE: {any}\n", .{c.VK_NULL_HANDLE});
         std.debug.print("Error code: {}\n", .{success});
         return VkAbstractionError.UnableToCreateSurface;
     } else {
         return VkAbstractionError.Success;
     }
+}
+
+pub fn instance_clean_up(instance: *Instance) !void {
+    c.glfwDestroyWindow(instance.window);
 }
