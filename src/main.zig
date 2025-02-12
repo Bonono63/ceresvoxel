@@ -13,6 +13,8 @@ const VkAbstractionError = error{
     VkInstanceCreation,
     UnableToCreateSurface,
     VulkanUnavailable,
+    InvalidDeviceCount,
+    UnableToEnumeratePhysicalDevices,
     OutOfMemory,
 };
 
@@ -50,6 +52,9 @@ const Instance = struct {
 pub fn main() !void {
     var instance: Instance = .{};
 
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    const allocator = arena.allocator();
+
     const glfw_success = glfw_initialization();
 
     if (glfw_success != VkAbstractionError.Success) {
@@ -57,26 +62,32 @@ pub fn main() !void {
         return;
     }
 
-    const window_success = window_setup(&instance);
+    var success = window_setup(&instance, &allocator);
 
-    if (window_success != VkAbstractionError.Success) {
+    if (success != VkAbstractionError.Success) {
         std.debug.print("Unable to complete window setup\n", .{});
-        std.debug.print("Error code: {}\n", .{window_success});
+        std.debug.print("Error code: {}\n", .{success});
     } else {
         std.debug.print("Window Setup completed\n", .{});
     }
 
-    const surface_success = create_surface(&instance);
+    success = create_surface(&instance);
 
-    if (surface_success != VkAbstractionError.Success) {
+    if (success != VkAbstractionError.Success) {
         std.debug.print("Unable to create window surface.\n", .{});
+    }
+
+    success = pick_physical_device(&instance, &allocator);
+
+    if (success != VkAbstractionError.Success) {
+        std.debug.print("Failed to pick a physical device\n", .{});
     }
 
     const clean_up_success = instance_clean_up(&instance);
     _ = &clean_up_success;
 }
 
-pub fn glfw_initialization() VkAbstractionError {
+fn glfw_initialization() VkAbstractionError {
     if (c.glfwInit() != c.GLFW_TRUE) {
         return VkAbstractionError.GLFWInitialization;
     }
@@ -102,8 +113,9 @@ pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) 
     std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });
 }
 
-/// Initializes our vulkan instance and window instance through glfw
-pub fn window_setup(instance: *Instance) VkAbstractionError {
+/// Creates our vulkan instance and glfw window
+fn window_setup(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError {
+    _ = &allocator;
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
     c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
 
@@ -132,9 +144,7 @@ pub fn window_setup(instance: *Instance) VkAbstractionError {
     var required_extension_count: u32 = 0;
     const required_extensions = c.glfwGetRequiredInstanceExtensions(&required_extension_count);
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
-    const Allocator = arena.allocator();
-    var extensions_arraylist = std.ArrayList([*:0]const u8).init(Allocator);
+    var extensions_arraylist = std.ArrayList([*:0]const u8).init(allocator.*);
     defer extensions_arraylist.deinit();
 
     for (0..required_extension_count) |i| {
@@ -174,7 +184,7 @@ pub fn window_setup(instance: *Instance) VkAbstractionError {
     return VkAbstractionError.Success;
 }
 
-pub fn create_surface(instance: *Instance) VkAbstractionError {
+fn create_surface(instance: *Instance) VkAbstractionError {
     var surface: c.VkSurfaceKHR = undefined;
 
     const success = c.glfwCreateWindowSurface(instance.vk_instance, instance.window, null, &surface);
@@ -187,6 +197,35 @@ pub fn create_surface(instance: *Instance) VkAbstractionError {
     }
 }
 
-pub fn instance_clean_up(instance: *Instance) !void {
+fn pick_physical_device(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError {
+    _ = &allocator;
+    var device_count: u32 = 0;
+    const enumerate_physical_device_success = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, null);
+
+    if (device_count <= 0) {
+        return VkAbstractionError.InvalidDeviceCount;
+    }
+
+    if (enumerate_physical_device_success != c.VK_SUCCESS) {
+        return VkAbstractionError.UnableToEnumeratePhysicalDevices;
+    }
+
+    const devices: [*c]c.VkPhysicalDevice = try allocator.*.alloc(c.VkPhysicalDevice, device_count);
+    defer allocator.*.free(devices);
+    enumerate_physical_device_success = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, devices);
+
+    instance.physical_device = devices[0];
+
+    var device_properties: c.VkPhysicalDeviceProperties = undefined;
+    _ = c.vkGetPhysicalDeviceProperties(instance.physical_device, &device_properties);
+
+    std.debug.print("API version: {}\nDriver version: {}\nDevice name: {}", .{ device_properties.apiVersion, device_properties.driverVersion, device_properties.deviceName });
+
+    // Check for device extension compatibility
+
+    return VkAbstractionError.Success;
+}
+
+fn instance_clean_up(instance: *Instance) !void {
     c.glfwDestroyWindow(instance.window);
 }
