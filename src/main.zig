@@ -8,6 +8,7 @@ const ENGINE_NAME = "CeresVoxel";
 const VkAbstractionError = error{
     Success,
     GLFWInitialization,
+    GLFWErrorCallbackFailure,
     WindowReturnednull,
     TooManyExtensions,
     VkInstanceCreation,
@@ -15,6 +16,9 @@ const VkAbstractionError = error{
     VulkanUnavailable,
     InvalidDeviceCount,
     UnableToEnumeratePhysicalDevices,
+    DeviceCreationFailure,
+    UnableToRetrievePhysicalDeviceSurfaceCapabilities,
+    UnableToRetrieveSurfaceFormat,
     OutOfMemory,
 };
 
@@ -34,19 +38,26 @@ const device_extensions = [_][*:0]const u8{
 const Instance = struct {
     // I hate to initialize these all to NULL, but it is what it is with c compat...
     vk_instance: c.VkInstance = null,
-    window: ?*c.GLFWwindow = null,
+    window: *c.GLFWwindow = undefined,
     surface: c.VkSurfaceKHR = null,
     physical_device: c.VkPhysicalDevice = null,
     device: c.VkDevice = null,
-    graphics_queue: ?*c.VkQueue = null,
+    graphics_queue: c.VkQueue = undefined,
     swapchain: c.VkSwapchainKHR = undefined,
     swapchain_format: c.VkSurfaceFormatKHR = undefined,
     swapchain_image_count: u32 = 0,
-    swapchain_images: ?*c.VkImage = null,
+    swapchain_images: *c.VkImage = undefined,
     swapchain_image_views: ?*c.VkImageView = null,
     swapchain_extent: c.VkExtent2D = undefined,
+    REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
+};
 
-    const REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT;
+const swapchain_support = struct {
+    capabilities: c.VkSurfaceCapabilitiesKHR = null,
+    formats: *c.VkSurfaceFormatKHR = undefined,
+    formats_size: u32 = 0,
+    present_modes: *c.VkPresentModeKHR = undefined,
+    present_size: u32 = 0,
 };
 
 pub fn main() !void {
@@ -55,39 +66,20 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     const allocator = arena.allocator();
 
-    const glfw_success = glfw_initialization();
+    try glfw_initialization();
 
-    if (glfw_success != VkAbstractionError.Success) {
-        std.debug.print("Unable to initialize GLFW\n", .{});
-        return;
-    }
+    try window_setup("Engine Test", &instance, &allocator);
 
-    var success = window_setup(&instance, &allocator);
+    try create_surface(&instance);
 
-    if (success != VkAbstractionError.Success) {
-        std.debug.print("Unable to complete window setup\n", .{});
-        std.debug.print("Error code: {}\n", .{success});
-    } else {
-        std.debug.print("Window Setup completed\n", .{});
-    }
+    try pick_physical_device(&instance, &allocator);
 
-    success = create_surface(&instance);
+    try create_graphics_queue(&instance, &allocator);
 
-    if (success != VkAbstractionError.Success) {
-        std.debug.print("Unable to create window surface.\n", .{});
-    }
-
-    success = pick_physical_device(&instance, &allocator);
-
-    if (success != VkAbstractionError.Success) {
-        std.debug.print("Failed to pick a physical device\n", .{});
-    }
-
-    const clean_up_success = instance_clean_up(&instance);
-    _ = &clean_up_success;
+    instance_clean_up(&instance);
 }
 
-fn glfw_initialization() VkAbstractionError {
+fn glfw_initialization() VkAbstractionError!void {
     if (c.glfwInit() != c.GLFW_TRUE) {
         return VkAbstractionError.GLFWInitialization;
     }
@@ -100,13 +92,7 @@ fn glfw_initialization() VkAbstractionError {
         return VkAbstractionError.VulkanUnavailable;
     }
 
-    const glfw_set_callback_error_success = c.glfwSetErrorCallback(glfw_error_callback);
-    _ = &glfw_set_callback_error_success;
-    //    if (glfw_set_callback_error_success != c.GLFW_TRUE) {
-    //        std.debug.print("Unable to set GLFW error callback\n", .{});
-    //    }
-
-    return VkAbstractionError.Success;
+    _ = c.glfwSetErrorCallback(glfw_error_callback);
 }
 
 pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) void {
@@ -114,24 +100,16 @@ pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) 
 }
 
 /// Creates our vulkan instance and glfw window
-fn window_setup(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError {
-    _ = &allocator;
+fn window_setup(application_name: []const u8, instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
     c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
     c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
 
-    // Window must be accessable outside of the function scope so no defer...
-    const window: ?*c.GLFWwindow = c.glfwCreateWindow(600, 800, ENGINE_NAME, null, null);
-
-    if (window == null) {
-        c.glfwTerminate();
-        return VkAbstractionError.WindowReturnednull;
-    }
-
-    instance.window = window;
+    // zig is truly the goat
+    instance.window = c.glfwCreateWindow(600, 800, ENGINE_NAME, null, null) orelse return VkAbstractionError.WindowReturnednull;
 
     const application_info = c.VkApplicationInfo{
         .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = ENGINE_NAME,
+        .pApplicationName = application_name.ptr,
         .pEngineName = ENGINE_NAME,
         .engineVersion = c.VK_MAKE_VERSION(1, 0, 0),
         .apiVersion = c.VK_API_VERSION_1_3,
@@ -180,11 +158,9 @@ fn window_setup(instance: *Instance, allocator: *const std.mem.Allocator) VkAbst
         std.debug.print("Unable to make Vk Instance: {}\n", .{instance_result});
         return VkAbstractionError.VkInstanceCreation;
     }
-
-    return VkAbstractionError.Success;
 }
 
-fn create_surface(instance: *Instance) VkAbstractionError {
+fn create_surface(instance: *Instance) VkAbstractionError!void {
     var surface: c.VkSurfaceKHR = undefined;
 
     const success = c.glfwCreateWindowSurface(instance.vk_instance, instance.window, null, &surface);
@@ -192,13 +168,10 @@ fn create_surface(instance: *Instance) VkAbstractionError {
     if (success != c.VK_SUCCESS) {
         std.debug.print("Error code: {}\n", .{success});
         return VkAbstractionError.UnableToCreateSurface;
-    } else {
-        return VkAbstractionError.Success;
     }
 }
 
-fn pick_physical_device(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError {
-    _ = &allocator;
+fn pick_physical_device(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
     var device_count: u32 = 0;
     _ = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, null);
 
@@ -219,13 +192,94 @@ fn pick_physical_device(instance: *Instance, allocator: *const std.mem.Allocator
     var device_properties: c.VkPhysicalDeviceProperties = undefined;
     _ = c.vkGetPhysicalDeviceProperties(instance.physical_device, &device_properties);
 
-    std.debug.print("API version: {any}\nDriver version: {any}\nDevice name: {s}", .{ device_properties.apiVersion, device_properties.driverVersion, device_properties.deviceName });
+    std.debug.print("API version: {any}\nDriver version: {any}\nDevice name: {s}\n", .{ device_properties.apiVersion, device_properties.driverVersion, device_properties.deviceName });
 
-    // Check for device extension compatibility
-
-    return VkAbstractionError.Success;
+    // TODO Check for device extension compatibility
 }
 
-fn instance_clean_up(instance: *Instance) !void {
+fn create_graphics_queue(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
+    const flags = instance.REQUIRE_FAMILIES;
+    const priority: f32 = 1.0;
+
+    var queue_count: u32 = 0;
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(instance.*.physical_device, &queue_count, null);
+    std.debug.print("[Info] Queue count: {}\n", .{queue_count});
+
+    const properties = try allocator.*.alloc(c.VkQueueFamilyProperties, queue_count);
+    defer allocator.*.free(properties);
+    _ = c.vkGetPhysicalDeviceQueueFamilyProperties(instance.*.physical_device, &queue_count, properties.ptr);
+
+    var first_compatible: u32 = 0;
+    // Top 10 moments where I love zig
+    for (properties, 0..queue_count) |property, i| {
+        if ((property.queueFlags & flags) == flags and first_compatible == 0) {
+            first_compatible = @intCast(i);
+        }
+    }
+
+    std.debug.print("[Info] First compatible: {}\n", .{first_compatible});
+
+    const queue_create_info = c.VkDeviceQueueCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueFamilyIndex = first_compatible,
+        .queueCount = 1,
+        .pQueuePriorities = &priority,
+    };
+
+    // TODO add a way to specify device features
+    const device_features: c.VkPhysicalDeviceFeatures = undefined;
+
+    const create_info = c.VkDeviceCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pQueueCreateInfos = &queue_create_info,
+        .queueCreateInfoCount = 1,
+        .pEnabledFeatures = &device_features,
+        .enabledExtensionCount = device_extensions.len,
+        .ppEnabledExtensionNames = &device_extensions,
+        .enabledLayerCount = validation_layers.len,
+        .ppEnabledLayerNames = &validation_layers,
+    };
+
+    const device_creation_success = c.vkCreateDevice(instance.physical_device, &create_info, null, &instance.device);
+    if (device_creation_success != c.VK_SUCCESS) {
+        return VkAbstractionError.DeviceCreationFailure;
+    }
+
+    // This returns void?
+    c.vkGetDeviceQueue(instance.device, first_compatible, 0, &instance.graphics_queue);
+}
+
+/// The formats returned in swapchain_support must be freed later
+fn query_swapchain_candidate(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!swapchain_support {
+    var result = swapchain_support{};
+
+    const surface_capabilities_success = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(instance.physical_device, &instance.surface, &result.capabilities);
+    if (surface_capabilities_success != c.VK_SUCCESS) {
+        return VkAbstractionError.unabletoretrievephysicaldevicesurfacecapabilities;
+    }
+
+    var format_count = 0;
+    c.vkGetPhysicalDeviceSurfaceFormatsKHR(instance.physical_device, instance.surface, &format_count, null);
+    std.debug.print("Surface format count: {}", .{format_count});
+
+    if (format_count > 0) {
+        result.formats = allocator.*.alloc(format_count, c.VkSurfaceFormatKHR);
+
+        const retrieve_formats_success = c.vkGetPhysicalDeviceSurfaceFormatsKHR(instance.physical_device, instance.surface, &format_count, result.formats);
+        if (retrieve_formats_success != c.VK_SUCCESS) {
+            return VkAbstractionError.UnableToRetrieveSurfaceFormat;
+        }
+        result.formats_size = format_count;
+    }
+
+    return result;
+}
+
+fn create_swapchain(instance : *Instance) VkAbstractionError!void {
+    
+}
+
+fn instance_clean_up(instance: *Instance) void {
     c.glfwDestroyWindow(instance.window);
+    c.glfwTerminate();
 }
