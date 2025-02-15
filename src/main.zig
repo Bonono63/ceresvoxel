@@ -200,26 +200,26 @@ fn create_surface(instance: *Instance) VkAbstractionError {
 fn pick_physical_device(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError {
     _ = &allocator;
     var device_count: u32 = 0;
-    const enumerate_physical_device_success = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, null);
+    _ = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, null);
 
     if (device_count <= 0) {
         return VkAbstractionError.InvalidDeviceCount;
     }
 
+    const devices = try allocator.*.alloc(c.VkPhysicalDevice, device_count);
+    defer allocator.*.free(devices);
+    const enumerate_physical_device_success = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, devices.ptr);
+
     if (enumerate_physical_device_success != c.VK_SUCCESS) {
         return VkAbstractionError.UnableToEnumeratePhysicalDevices;
     }
-
-    const devices: [*c]c.VkPhysicalDevice = try allocator.*.alloc(c.VkPhysicalDevice, device_count);
-    defer allocator.*.free(devices);
-    enumerate_physical_device_success = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, devices);
 
     instance.physical_device = devices[0];
 
     var device_properties: c.VkPhysicalDeviceProperties = undefined;
     _ = c.vkGetPhysicalDeviceProperties(instance.physical_device, &device_properties);
 
-    std.debug.print("API version: {}\nDriver version: {}\nDevice name: {}", .{ device_properties.apiVersion, device_properties.driverVersion, device_properties.deviceName });
+    std.debug.print("API version: {any}\nDriver version: {any}\nDevice name: {s}", .{ device_properties.apiVersion, device_properties.driverVersion, device_properties.deviceName });
 
     // Check for device extension compatibility
 
