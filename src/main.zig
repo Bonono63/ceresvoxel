@@ -76,6 +76,8 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     const allocator = arena.allocator();
 
+    // TODO add some error handling where possible, although for most of this initialization stuff chances are we won't
+    // be able to load into any kind of application if this all doesn't work out...
     try glfw_initialization();
 
     try window_setup("Engine Test", &instance, &allocator);
