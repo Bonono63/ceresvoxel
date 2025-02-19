@@ -447,8 +447,8 @@ fn create_swapchain_image_views(instance: *Instance, allocator: *const std.mem.A
 fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
     _ = &instance;
 
-    const vertex_source = try create_shader_module(instance, simple_vert.ptr, simple_vert.len);
-    const fragment_source = try create_shader_module(instance, simple_frag.ptr, simple_frag.len);
+    const vertex_source = try create_shader_module(instance, simple_vert);
+    const fragment_source = try create_shader_module(instance, simple_frag);
 
     const vertex_shader_stage = c.VkPipelineShaderStageCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -471,11 +471,13 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
     try shader_stages.append(fragment_shader_stage);
 }
 
-fn create_shader_module(instance: *Instance, source: [*c]const u8, source_len: usize) VkAbstractionError!c.VkShaderModule {
+fn create_shader_module(instance: *Instance, sus_source: []const u8) VkAbstractionError!c.VkShaderModule {
     var shader_module: c.VkShaderModule = undefined;
+    var source : []const u32 = undefined;
+    source = `
     const create_info = c.VkShaderModuleCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = source_len,
+        .codeSize = source.len,
         // the data is supposed to be u32?
         .pCode = source,
     };
