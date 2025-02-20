@@ -319,7 +319,7 @@ fn create_swapchain(instance: *Instance, allocator: *const std.mem.Allocator) Vk
 
     if (support.present_size > 0 and support.formats_size > 0) {
         var surface_format: c.VkSurfaceFormatKHR = undefined;
-        var image_count: u32 = 1;
+        const image_count: u32 = support.capabilities.minImageCount + 1;
         var format_index: u32 = 0;
 
         for (0..support.formats_size) |i| {
@@ -329,8 +329,6 @@ fn create_swapchain(instance: *Instance, allocator: *const std.mem.Allocator) Vk
                 break;
             }
         }
-
-        image_count += 1;
 
         var present_mode: u32 = c.VK_PRESENT_MODE_FIFO_KHR;
         for (0..support.present_size) |i| {
@@ -473,13 +471,13 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
 
 fn create_shader_module(instance: *Instance, sus_source: []const u8) VkAbstractionError!c.VkShaderModule {
     var shader_module: c.VkShaderModule = undefined;
-    var source : []const u32 = undefined;
-    source = `
+    const source: [*]const u32 = @ptrCast(sus_source.ptr);
+    std.debug.print("sus_source ptr: {p}\nsus_source size: {}\nsource ptr: {p}", .{ sus_source.ptr, sus_source.len, source });
     const create_info = c.VkShaderModuleCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = source.len,
+        .codeSize = sus_source.len,
         // the data is supposed to be u32?
-        .pCode = source,
+        .pCode = @as([*]const u32, @ptrCast(sus_source.ptr)),
     };
 
     const create_shader_module_success = c.vkCreateShaderModule(instance.device, &create_info, null, &shader_module);
