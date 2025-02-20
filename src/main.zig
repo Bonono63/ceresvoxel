@@ -29,6 +29,7 @@ const VkAbstractionError = error{
     UnableToCreateSwapchainImageViews,
     InappropriateGLFWFrameBufferSizeReturn,
     UnableToCreateShaderModule,
+    SourceSizeIsNotDivisibleBy4,
     OutOfMemory,
 };
 
@@ -469,15 +470,22 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
     try shader_stages.append(fragment_shader_stage);
 }
 
-fn create_shader_module(instance: *Instance, sus_source: []const u8) VkAbstractionError!c.VkShaderModule {
+fn create_shader_module(instance: *Instance, unaligned_source: []const u8) VkAbstractionError!c.VkShaderModule {
+    if (unaligned_source.len % 4 != 0) {
+        return VkAbstractionError.SourceSizeIsNotDivisibleBy4;
+    }
+
+    const source: [unaligned_source]const u32 = undefined;
+    for (0..(unaligned_source.len / 4)) |i| {
+        source[i] = (unaligned_source[i * 4] << 24) & (unaligned_source[i * 4 + 1] << 16) & (unaligned_source[i * 4 + 2] << 8) & unaligned_source[i * 4 + 3];
+    }
+
     var shader_module: c.VkShaderModule = undefined;
-    const source: [*]const u32 = @ptrCast(sus_source.ptr);
-    std.debug.print("sus_source ptr: {p}\nsus_source size: {}\nsource ptr: {p}", .{ sus_source.ptr, sus_source.len, source });
     const create_info = c.VkShaderModuleCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = sus_source.len,
+        .codeSize = source.len,
         // the data is supposed to be u32?
-        .pCode = @as([*]const u32, @ptrCast(sus_source.ptr)),
+        .pCode = source.ptr,
     };
 
     const create_shader_module_success = c.vkCreateShaderModule(instance.device, &create_info, null, &shader_module);
