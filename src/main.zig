@@ -29,6 +29,7 @@ const VkAbstractionError = error{
     UnableToCreateSwapchainImageViews,
     InappropriateGLFWFrameBufferSizeReturn,
     UnableToCreateShaderModule,
+    ShaderFileInvalidFileSize,
     OutOfMemory,
 };
 
@@ -474,10 +475,11 @@ fn create_shader_module(instance: *Instance, allocator: *const std.mem.Allocator
 
     const source = try read_sprv_file_aligned(allocator, file_name);
 
+    std.debug.print("chicken {} chicken 2 {}\n", .{ source.items.len, source.items.len / 4 });
+
     const create_info = c.VkShaderModuleCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = source.items.len,
-        // the data is supposed to be u32?
         .pCode = source.items.ptr,
     };
 
@@ -489,13 +491,18 @@ fn create_shader_module(instance: *Instance, allocator: *const std.mem.Allocator
     return shader_module;
 }
 
+/// Creates a 4 byte aligned buffer of any given file, intended for SPIR-V binary files
 fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []const u8) !*std.ArrayListAligned(u32, @sizeOf(u32)) {
     _ = &file_name;
 
     var array = std.ArrayListAligned(u32, @sizeOf(u32)).init(allocator.*);
 
+    if (simple_vert.len % 4 != 0) {
+        return VkAbstractionError.ShaderFileInvalidFileSize;
+    }
+
     for (0..simple_vert.len / 4) |i| {
-        const item: u32 = @as(u32, simple_vert[i * 4]) << 24 | @as(u32, simple_vert[i * 4 + 1]) << 16 | @as(u32, simple_vert[i * 4 + 2]) << 8 | @as(u32, simple_vert[i * 4 + 3]);
+        const item: u32 = @as(u32, simple_vert[i * 4 + 3]) << 24 | @as(u32, simple_vert[i * 4 + 2]) << 16 | @as(u32, simple_vert[i * 4 + 1]) << 8 | @as(u32, simple_vert[i * 4]);
         try array.append(item);
     }
 
