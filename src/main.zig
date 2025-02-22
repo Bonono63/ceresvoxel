@@ -30,6 +30,7 @@ const VkAbstractionError = error{
     InappropriateGLFWFrameBufferSizeReturn,
     UnableToCreateShaderModule,
     ShaderFileInvalidFileSize,
+    UnableToReadShaderFile,
     OutOfMemory,
 };
 
@@ -475,12 +476,12 @@ fn create_shader_module(instance: *Instance, allocator: *const std.mem.Allocator
 
     const source = try read_sprv_file_aligned(allocator, file_name);
 
-    std.debug.print("chicken {} chicken 2 {}\n", .{ source.items.len, source.items.len / 4 });
-
     const create_info = c.VkShaderModuleCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = source.items.len,
-        .pCode = source.items.ptr,
+        // Size of the source in bytes not u32
+        .codeSize = source.len * 4,
+        // This must be aligned to 4 bytes
+        .pCode = source.ptr,
     };
 
     const create_shader_module_success = c.vkCreateShaderModule(instance.device, &create_info, null, &shader_module);
@@ -491,18 +492,31 @@ fn create_shader_module(instance: *Instance, allocator: *const std.mem.Allocator
     return shader_module;
 }
 
-/// Creates a 4 byte aligned buffer of any given file, intended for SPIR-V binary files
-fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []const u8) !*std.ArrayListAligned(u32, @sizeOf(u32)) {
+/// Creates a 4 byte aligned buffer of any given file, intended for reading SPIR-V binary files
+fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError![]u32 {
     _ = &file_name;
+
+    const file = std.fs.cwd().openFile(file_name, .{}) catch |err| {
+        std.debug.print("[Error] [IO] {}", .{err});
+        return VkAbstractionError.UnableToReadShaderFile;
+    };
+    defer file.close();
+    const file_array = file.readToEndAllocOptions(allocator.*, std.math.maxInt(u32), null, @sizeOf(u32), null) catch |err|
+        {
+        std.debug.print("[Error] [IO] {}", .{err});
+        return VkAbstractionError.UnableToReadShaderFile;
+    };
 
     var array = std.ArrayListAligned(u32, @sizeOf(u32)).init(allocator.*);
 
-    if (simple_vert.len % 4 != 0) {
+    std.debug.print("simple vert length: {} divided by 4: {}\n", .{ file_array.len, file_array.len / 4 });
+
+    if (file_array.len % 4 != 0) {
         return VkAbstractionError.ShaderFileInvalidFileSize;
     }
 
-    for (0..simple_vert.len / 4) |i| {
-        const item: u32 = @as(u32, simple_vert[i * 4 + 3]) << 24 | @as(u32, simple_vert[i * 4 + 2]) << 16 | @as(u32, simple_vert[i * 4 + 1]) << 8 | @as(u32, simple_vert[i * 4]);
+    for (0..file_array.len / 4) |i| {
+        const item: u32 = @as(u32, file_array[i * 4 + 3]) << 24 | @as(u32, file_array[i * 4 + 2]) << 16 | @as(u32, file_array[i * 4 + 1]) << 8 | @as(u32, file_array[i * 4]);
         try array.append(item);
     }
 
@@ -516,7 +530,7 @@ fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []cons
     //    std.debug.print("{X} ", .{item});
     //}
 
-    return &array;
+    return array.items;
 }
 
 // TODO make sure to free like 70% of the objects I haven't bothered to, likely memoryy leaks in the swapchain code
