@@ -445,8 +445,8 @@ fn create_swapchain_image_views(instance: *Instance, allocator: *const std.mem.A
 fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
     _ = &instance;
 
-    const vertex_source = try create_shader_module(instance, simple_vert);
-    const fragment_source = try create_shader_module(instance, simple_frag);
+    const vertex_source = try create_shader_module(instance, allocator, simple_vert);
+    const fragment_source = try create_shader_module(instance, allocator, simple_frag);
 
     const vertex_shader_stage = c.VkPipelineShaderStageCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -469,15 +469,16 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
     try shader_stages.append(fragment_shader_stage);
 }
 
-fn create_shader_module(instance: *Instance, sus_source: []const u8) VkAbstractionError!c.VkShaderModule {
+fn create_shader_module(instance: *Instance, allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!c.VkShaderModule {
     var shader_module: c.VkShaderModule = undefined;
-    const source: [*]const u32 = @ptrCast(sus_source.ptr);
-    std.debug.print("sus_source ptr: {p}\nsus_source size: {}\nsource ptr: {p}", .{ sus_source.ptr, sus_source.len, source });
+
+    const source = try read_sprv_file_aligned(allocator, file_name);
+
     const create_info = c.VkShaderModuleCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = sus_source.len,
+        .codeSize = source.items.len,
         // the data is supposed to be u32?
-        .pCode = @as([*]const u32, @ptrCast(sus_source.ptr)),
+        .pCode = source.items.ptr,
     };
 
     const create_shader_module_success = c.vkCreateShaderModule(instance.device, &create_info, null, &shader_module);
@@ -486,6 +487,29 @@ fn create_shader_module(instance: *Instance, sus_source: []const u8) VkAbstracti
     }
 
     return shader_module;
+}
+
+fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []const u8) !*std.ArrayListAligned(u32, @sizeOf(u32)) {
+    _ = &file_name;
+
+    var array = std.ArrayListAligned(u32, @sizeOf(u32)).init(allocator.*);
+
+    for (0..simple_vert.len / 4) |i| {
+        const item: u32 = @as(u32, simple_vert[i * 4]) << 24 | @as(u32, simple_vert[i * 4 + 1]) << 16 | @as(u32, simple_vert[i * 4 + 2]) << 8 | @as(u32, simple_vert[i * 4 + 3]);
+        try array.append(item);
+    }
+
+    //std.debug.print("\nsimple vert contents:\n", .{});
+    //for (0..simple_vert.len) |i| {
+    //    std.debug.print("{X} ", .{simple_vert[i]});
+    //}
+
+    //std.debug.print("\narray contents:\n", .{});
+    //for (array.items) |item| {
+    //    std.debug.print("{X} ", .{item});
+    //}
+
+    return &array;
 }
 
 // TODO make sure to free like 70% of the objects I haven't bothered to, likely memoryy leaks in the swapchain code
