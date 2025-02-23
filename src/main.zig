@@ -447,8 +447,8 @@ fn create_swapchain_image_views(instance: *Instance, allocator: *const std.mem.A
 fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
     _ = &instance;
 
-    const vertex_source = try create_shader_module(instance, allocator, simple_vert);
-    const fragment_source = try create_shader_module(instance, allocator, simple_frag);
+    const vertex_source = try create_shader_module(instance, allocator, "shaders/simple.vert.spv");
+    const fragment_source = try create_shader_module(instance, allocator, "shaders/simple.frag.spv");
 
     const vertex_shader_stage = c.VkPipelineShaderStageCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -469,12 +469,63 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
 
     try shader_stages.append(vertex_shader_stage);
     try shader_stages.append(fragment_shader_stage);
+
+
+    const dynamic_state = [_]c.VkDynamicState{ 
+        c.VK_DYNAMIC_STATE_VIEWPORT,
+        c.VK_DYNAMIC_STATE_SCISSOR,
+    };
+
+    const dynamic_state_create_info = c.VkPipelineDynamicStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = dynamic_state.len,
+        .pDynamicStates = dynamic_state.ptr,
+    };
+
+    const vertex_input_info = c.VkPipelineVertexInputStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INF0,
+        .vertexBindingDescriptionCount = 0,
+        .pVertexBindingDescriptions = null,
+        .vertexAttributeDescriptionCount = 0,
+        .pVertexAttributeDescriptions = null,
+    };
+
+    const assembly_create_info = c.VkPipelineInputAssemblyStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INF0,
+        .topology = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .primitiveRestartEnable = c.VK_FALSE,
+    };
+
+    const viewport = c.VkViewport{
+        .x = 0.0,
+        .y = 0.0,
+        .width = instance.swapchain_extent.width,
+        .height = instance.swapchain_extent.height,
+        .minDepth = 0.0,
+        .maxDepth = 1.0,
+    };
+
+    const scissor = c.VkRect2D{
+        .offset = .{0, 0},
+        .extent = instance.swapchain_extent,
+    };
+
+    const viewport_create_info = c.VkPipelineViewportStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .scissorCount = 1,
+    };
+
+    const rasterization_create_info = c.VkPipelineRasterizationStateCreateInfo{
+            
+    };
 }
 
 fn create_shader_module(instance: *Instance, allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!c.VkShaderModule {
     var shader_module: c.VkShaderModule = undefined;
 
     const source = try read_sprv_file_aligned(allocator, file_name);
+    defer allocator.*.free(source);
 
     const create_info = c.VkShaderModuleCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -494,22 +545,14 @@ fn create_shader_module(instance: *Instance, allocator: *const std.mem.Allocator
 
 /// Creates a 4 byte aligned buffer of any given file, intended for reading SPIR-V binary files
 fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError![]u32 {
-    _ = &file_name;
-
-    const file = std.fs.cwd().openFile(file_name, .{}) catch |err| {
-        std.debug.print("[Error] [IO] {}", .{err});
-        return VkAbstractionError.UnableToReadShaderFile;
-    };
-    defer file.close();
-    const file_array = file.readToEndAllocOptions(allocator.*, std.math.maxInt(u32), null, @sizeOf(u32), null) catch |err|
-        {
+    const file_array = std.fs.cwd().readFileAlloc(allocator.*, file_name, 3000) catch |err| {
         std.debug.print("[Error] [IO] {}", .{err});
         return VkAbstractionError.UnableToReadShaderFile;
     };
 
     var array = std.ArrayListAligned(u32, @sizeOf(u32)).init(allocator.*);
 
-    std.debug.print("simple vert length: {} divided by 4: {}\n", .{ file_array.len, file_array.len / 4 });
+    std.debug.print("[Info] {s} length: {} divided by 4: {}\n", .{ file_name, file_array.len, file_array.len / 4 });
 
     if (file_array.len % 4 != 0) {
         return VkAbstractionError.ShaderFileInvalidFileSize;
@@ -519,16 +562,6 @@ fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []cons
         const item: u32 = @as(u32, file_array[i * 4 + 3]) << 24 | @as(u32, file_array[i * 4 + 2]) << 16 | @as(u32, file_array[i * 4 + 1]) << 8 | @as(u32, file_array[i * 4]);
         try array.append(item);
     }
-
-    //std.debug.print("\nsimple vert contents:\n", .{});
-    //for (0..simple_vert.len) |i| {
-    //    std.debug.print("{X} ", .{simple_vert[i]});
-    //}
-
-    //std.debug.print("\narray contents:\n", .{});
-    //for (array.items) |item| {
-    //    std.debug.print("{X} ", .{item});
-    //}
 
     return array.items;
 }
