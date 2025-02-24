@@ -31,6 +31,9 @@ const VkAbstractionError = error{
     UnableToCreateShaderModule,
     ShaderFileInvalidFileSize,
     UnableToReadShaderFile,
+    UnableToCreatePipelineLayout,
+    FailedCreatingRenderPass,
+    FailedCreatingGraphicsPipeline,
     OutOfMemory,
 };
 
@@ -61,6 +64,8 @@ const Instance = struct {
     swapchain_images: []c.VkImage = undefined,
     swapchain_image_views: []c.VkImageView = undefined,
     swapchain_extent: c.VkExtent2D = undefined,
+    renderpass: c.VkRenderPass = undefined,
+    graphics_pipeline: c.VkPipeline = undefined,
     REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
 };
 
@@ -470,8 +475,7 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
     try shader_stages.append(vertex_shader_stage);
     try shader_stages.append(fragment_shader_stage);
 
-
-    const dynamic_state = [_]c.VkDynamicState{ 
+    const dynamic_state = [_]c.VkDynamicState{
         c.VK_DYNAMIC_STATE_VIEWPORT,
         c.VK_DYNAMIC_STATE_SCISSOR,
     };
@@ -479,11 +483,11 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
     const dynamic_state_create_info = c.VkPipelineDynamicStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
         .dynamicStateCount = dynamic_state.len,
-        .pDynamicStates = dynamic_state.ptr,
+        .pDynamicStates = &dynamic_state,
     };
 
     const vertex_input_info = c.VkPipelineVertexInputStateCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INF0,
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount = 0,
         .pVertexBindingDescriptions = null,
         .vertexAttributeDescriptionCount = 0,
@@ -491,7 +495,7 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
     };
 
     const assembly_create_info = c.VkPipelineInputAssemblyStateCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INF0,
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
         .topology = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
         .primitiveRestartEnable = c.VK_FALSE,
     };
@@ -499,26 +503,133 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
     const viewport = c.VkViewport{
         .x = 0.0,
         .y = 0.0,
-        .width = instance.swapchain_extent.width,
-        .height = instance.swapchain_extent.height,
+        .width = @floatFromInt(instance.swapchain_extent.width),
+        .height = @floatFromInt(instance.swapchain_extent.height),
         .minDepth = 0.0,
         .maxDepth = 1.0,
     };
 
     const scissor = c.VkRect2D{
-        .offset = .{0, 0},
+        .offset = .{ .x = 0, .y = 0 },
         .extent = instance.swapchain_extent,
     };
 
     const viewport_create_info = c.VkPipelineViewportStateCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
         .viewportCount = 1,
+        .pViewports = &viewport,
         .scissorCount = 1,
+        .pScissors = &scissor,
     };
 
     const rasterization_create_info = c.VkPipelineRasterizationStateCreateInfo{
-            
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .depthClampEnable = c.VK_FALSE,
+        .rasterizerDiscardEnable = c.VK_FALSE,
+        .polygonMode = c.VK_POLYGON_MODE_FILL,
+        .lineWidth = 1.0,
+        .cullMode = c.VK_CULL_MODE_BACK_BIT,
+        .frontFace = c.VK_FRONT_FACE_CLOCKWISE,
+        .depthBiasEnable = c.VK_FALSE,
+        .depthBiasConstantFactor = 0.0,
+        .depthBiasClamp = 0.0,
+        .depthBiasSlopeFactor = 0.0,
     };
+
+    const multisampling_create_info = c.VkPipelineMultisampleStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .sampleShadingEnable = c.VK_FALSE,
+        .rasterizationSamples = c.VK_SAMPLE_COUNT_1_BIT,
+        .minSampleShading = 1.0,
+        .pSampleMask = null,
+        .alphaToCoverageEnable = c.VK_FALSE,
+        .alphaToOneEnable = c.VK_FALSE,
+    };
+
+    const color_blending_attachment_create_info = c.VkPipelineColorBlendAttachmentState{
+        .colorWriteMask = c.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
+        .blendEnable = c.VK_FALSE,
+    };
+
+    const color_blending_create_info = c.VkPipelineColorBlendStateCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .logicOpEnable = c.VK_FALSE,
+        .logicOp = c.VK_LOGIC_OP_COPY,
+        .attachmentCount = 1,
+        .pAttachments = &color_blending_attachment_create_info,
+    };
+
+    // This is for shader uniforms
+    const pipeline_layout = c.VkPipelineLayout{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 0,
+        .pSetLayouts = null,
+        .pushConstantRangeCount = 0,
+        .pPushConstantRanges = null,
+    };
+
+    const pipeline_layout_success = c.vkCreatePipelineLayout(instance.device, &pipeline_layout, null, &pipeline_layout);
+
+    if (pipeline_layout_success != c.VK_SUCCESS) {
+        return VkAbstractionError.UnableToCreatePipelineLayout;
+    }
+
+    const color_attachment = c.VkAttachmentDescription{
+        .format = instance.swapchain_format,
+        .samples = c.VK_SAMPLE_COUNT_1_BIT,
+        .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout = c.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+    };
+
+    const color_attachment_ref = c.VkAttachmentReference{
+        .attachment = 0,
+        .layout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    };
+
+    const subpass = c.VkSubpassDescription{
+        .pipelineBindPoint = c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .colorAttachmentCount = 1,
+        .pColorAttachmens = &color_attachment_ref,
+    };
+
+    const renderpass_create_info = c.VkRenderPassCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+        .attachmentCount = 1,
+        .pAttachments = &color_attachment,
+        .subpassCount = 1,
+        .pSubpasses = &subpass,
+    };
+
+    const render_pass_creation = c.vkCreateRenderPass(instance.device, &renderpass_create_info, null, &instance.renderpass);
+    if (render_pass_creation != c.VK_SUCCESS) {
+        return VkAbstractionError.FailedCreatingRenderPass;
+    }
+
+    const pipeline_create_info = c.VkGraphicsPipelineCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .stageCount = shader_stages.items.len,
+        .pStages = shader_stages.items.ptr,
+        .pVertexInputState = &vertex_input_info,
+        .pInputAssemblyState = &assembly_create_info,
+        .pViewportState = &viewport_create_info,
+        .pRasterizationState = &rasterization_create_info,
+        .pMultisampleState = &multisampling_create_info,
+        .pDepthStencilState = null,
+        .pColorBlendState = &color_blending_create_info,
+        .pDynamicState = &dynamic_state_create_info,
+        .layout = pipeline_layout,
+        .renderPass = &instance.renderpass,
+        .subpass = 0,
+    };
+
+    const pipeline_success = c.vkCreateGraphicsPipelines(instance.device, c.VK_NULL_HANDLE, 1, &pipeline_create_info, null, &instance.graphics_pipeline);
+    if (pipeline_success != c.VK_SUCCESS) {
+        return VkAbstractionError.FailedCreatingGraphicsPipeline;
+    }
 }
 
 fn create_shader_module(instance: *Instance, allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!c.VkShaderModule {
@@ -568,8 +679,13 @@ fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []cons
 
 // TODO make sure to free like 70% of the objects I haven't bothered to, likely memoryy leaks in the swapchain code
 fn instance_clean_up(instance: *Instance, allocator: *const std.mem.Allocator) void {
+    //c.vkDestroyPipeline();
+    //c.vkDestroyPipelineLayout();
+    //c.vkDestroyRenderPass();
+    //c.vkDestroyPipelineLayout();
     _ = allocator;
     //allocator.*.free(instance.swapchain_image_views);
+
     c.glfwDestroyWindow(instance.window);
     c.glfwTerminate();
 }
