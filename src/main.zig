@@ -34,6 +34,7 @@ const VkAbstractionError = error{
     UnableToCreatePipelineLayout,
     FailedCreatingRenderPass,
     FailedCreatingGraphicsPipeline,
+    FailedFramebufferCreation,
     OutOfMemory,
 };
 
@@ -57,6 +58,7 @@ const Instance = struct {
     surface: c.VkSurfaceKHR = null,
     physical_device: c.VkPhysicalDevice = null,
     device: c.VkDevice = null,
+    queue_family_index = null,
     graphics_queue: c.VkQueue = undefined,
     swapchain: c.VkSwapchainKHR = undefined,
     swapchain_format: c.VkSurfaceFormatKHR = undefined,
@@ -66,6 +68,9 @@ const Instance = struct {
     swapchain_extent: c.VkExtent2D = undefined,
     renderpass: c.VkRenderPass = undefined,
     graphics_pipeline: c.VkPipeline = undefined,
+    frame_buffers: []c.VkFramebuffer = undefined,
+    command_pool : c.VkCommandPool = undefined,
+    command_buffer: []c.VkCommandBuffer = undefined,
     REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
 };
 
@@ -100,6 +105,18 @@ pub fn main() !void {
     try create_swapchain_image_views(&instance, &allocator);
 
     try create_graphics_pipeline(&instance, &allocator);
+
+    try create_framebuffers(&instance, &allocator);
+
+    try create_command_pool(&instance);
+
+    try create_command_buffer(*instance);
+
+    while (c.glfwWindowShouldClose(instance.window) == 0) {
+        // glfwSwapBuffers only works for opengl
+        //c.glfwSwapBuffers(instance.window);
+        c.glfwPollEvents();
+    }
 
     instance_clean_up(&instance, &allocator);
 }
@@ -241,6 +258,8 @@ fn create_graphics_queue(instance: *Instance, allocator: *const std.mem.Allocato
     }
 
     std.debug.print("[Info] First compatible: {}\n", .{first_compatible});
+
+    instance.queue_family_queue = first_compatible;
 
     const queue_create_info = c.VkDeviceQueueCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -560,7 +579,7 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
     };
 
     // This is for shader uniforms
-    const pipeline_layout = c.VkPipelineLayout{
+    const pipeline_layout_create_info = c.VkPipelineLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 0,
         .pSetLayouts = null,
@@ -568,14 +587,15 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
         .pPushConstantRanges = null,
     };
 
-    const pipeline_layout_success = c.vkCreatePipelineLayout(instance.device, &pipeline_layout, null, &pipeline_layout);
+    var pipeline_layout: c.VkPipelineLayout = undefined;
+    const pipeline_layout_success = c.vkCreatePipelineLayout(instance.device, &pipeline_layout_create_info, null, &pipeline_layout);
 
     if (pipeline_layout_success != c.VK_SUCCESS) {
         return VkAbstractionError.UnableToCreatePipelineLayout;
     }
 
     const color_attachment = c.VkAttachmentDescription{
-        .format = instance.swapchain_format,
+        .format = instance.swapchain_format.format,
         .samples = c.VK_SAMPLE_COUNT_1_BIT,
         .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = c.VK_ATTACHMENT_STORE_OP_STORE,
@@ -593,7 +613,7 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
     const subpass = c.VkSubpassDescription{
         .pipelineBindPoint = c.VK_PIPELINE_BIND_POINT_GRAPHICS,
         .colorAttachmentCount = 1,
-        .pColorAttachmens = &color_attachment_ref,
+        .pColorAttachments = &color_attachment_ref,
     };
 
     const renderpass_create_info = c.VkRenderPassCreateInfo{
@@ -611,7 +631,7 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
 
     const pipeline_create_info = c.VkGraphicsPipelineCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-        .stageCount = shader_stages.items.len,
+        .stageCount = @intCast(shader_stages.items.len),
         .pStages = shader_stages.items.ptr,
         .pVertexInputState = &vertex_input_info,
         .pInputAssemblyState = &assembly_create_info,
@@ -622,11 +642,11 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
         .pColorBlendState = &color_blending_create_info,
         .pDynamicState = &dynamic_state_create_info,
         .layout = pipeline_layout,
-        .renderPass = &instance.renderpass,
+        .renderPass = instance.renderpass,
         .subpass = 0,
     };
 
-    const pipeline_success = c.vkCreateGraphicsPipelines(instance.device, c.VK_NULL_HANDLE, 1, &pipeline_create_info, null, &instance.graphics_pipeline);
+    const pipeline_success = c.vkCreateGraphicsPipelines(instance.device, null, 1, &pipeline_create_info, null, &instance.graphics_pipeline);
     if (pipeline_success != c.VK_SUCCESS) {
         return VkAbstractionError.FailedCreatingGraphicsPipeline;
     }
@@ -677,8 +697,50 @@ fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []cons
     return array.items;
 }
 
-// TODO make sure to free like 70% of the objects I haven't bothered to, likely memoryy leaks in the swapchain code
+pub fn create_framebuffers(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
+    instance.frame_buffers = try allocator.*.alloc(c.VkFramebuffer, instance.swapchain_image_views.len);
+
+    for (instance.swapchain_image_views, 0..instance.swapchain_image_views.len) |image_view, i| {
+        const framebuffer_create_info = c.VkFramebufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+            .renderPass = instance.renderpass,
+            .attachmentCount = 1,
+            .pAttachments = &image_view,
+            .width = instance.swapchain_extent.width,
+            .height = instance.swapchain_extent.height,
+            .layers = 1,
+        };
+
+        const framebuffer_success = c.vkCreateFramebuffer(instance.device, &framebuffer_create_info, null, &instance.frame_buffers[i]);
+        if (framebuffer_success != c.VK_SUCCESS) {
+            return VkAbstractionError.FailedFramebufferCreation;
+        }
+    }
+}
+
+fn create_command_pool(instance : *Instance)
+{
+    const command_pool_info = c.VkCommandPoolCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = instance.queue_family_queue,
+    };
+
+    const command_pool_success = c.vkCreateCommandPool(instance.device, &command_pool_info, null, &instance.command_pool);
+    if (command_pool_success != c.VK_SUCCESS) {
+        return VkAbstractionError.FailedCommandPoolCreation;
+    }
+}
+
+fn create_command_buffer(instance : *Instance)
+{
+    
+}
+
+// TODO make sure to free like 70% of the objects I haven't bothered to, likely memory leaks in the swapchain code
 fn instance_clean_up(instance: *Instance, allocator: *const std.mem.Allocator) void {
+    vkDestroyCommandPool(instance.device, instance.command_pool, null);
+    //for framebuffer destroy
     //c.vkDestroyPipeline();
     //c.vkDestroyPipelineLayout();
     //c.vkDestroyRenderPass();
