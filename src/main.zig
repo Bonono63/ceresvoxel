@@ -5,9 +5,6 @@ const c = @import("clibs.zig");
 
 const ENGINE_NAME = "CeresVoxel";
 
-const simple_vert = @embedFile("shaders/simple.vert.spv");
-const simple_frag = @embedFile("shaders/simple.frag.spv");
-
 const VkAbstractionError = error{
     Success,
     GLFWInitialization,
@@ -37,6 +34,9 @@ const VkAbstractionError = error{
     FailedFramebufferCreation,
     FailedCommandPoolCreation,
     CommandBufferAllocationFailed,
+    UnableToBeginRenderPass,
+    UnableToCompleteRenderPass,
+    InstanceLayerEnumerationFailed,
     OutOfMemory,
 };
 
@@ -113,8 +113,6 @@ pub fn main() !void {
     try create_command_buffer(&instance);
 
     while (c.glfwWindowShouldClose(instance.window) == 0) {
-        // glfwSwapBuffers only works for opengl
-        //c.glfwSwapBuffers(instance.window);
         c.glfwPollEvents();
     }
 
@@ -180,6 +178,30 @@ fn window_setup(application_name: []const u8, instance: *Instance, allocator: *c
         std.debug.print("\t{s}\n", .{item});
     }
 
+    var available_layers_count: u32 = 0;
+    //var available_layers = std.ArrayList([*:0]const u8).init(allocator.*);
+    //defer allocator.*.free(available_layers);
+    if (c.vkEnumerateInstanceLayerProperties(&available_layers_count, null) != c.VK_SUCCESS) {
+        return VkAbstractionError.InstanceLayerEnumerationFailed;
+    }
+
+    const available_layers = try allocator.*.alloc(c.VkLayerProperties, available_layers_count);
+    const enumeration_success = c.vkEnumerateInstanceLayerProperties(&available_layers_count, available_layers.ptr);
+    if (enumeration_success != c.VK_SUCCESS) {
+        std.debug.print("[Error] Enumeration failure: {}\n", .{enumeration_success});
+        return VkAbstractionError.InstanceLayerEnumerationFailed;
+    }
+
+    std.debug.print("[Info] Available validation layers:\n", .{});
+    for (available_layers) |validation_layer| {
+        std.debug.print("\t{s}\n", .{validation_layer.layerName});
+    }
+
+    std.debug.print("[Info] Vulkan Instance Validation Layers:\n", .{});
+    for (validation_layers) |validation_layer| {
+        std.debug.print("\t{s}\n", .{validation_layer});
+    }
+
     // We want to make sure our conversion from u32 to usize is safe, this is a cast from u64 to u32
     if (extensions_arraylist.items.len > std.math.maxInt(u32)) {
         return VkAbstractionError.TooManyExtensions;
@@ -197,7 +219,7 @@ fn window_setup(application_name: []const u8, instance: *Instance, allocator: *c
     const instance_result = c.vkCreateInstance(&create_info, null, &instance.vk_instance);
 
     if (instance_result != c.VK_SUCCESS) {
-        std.debug.print("Unable to make Vk Instance: {}\n", .{instance_result});
+        std.debug.print("[Error] Unable to make Vk Instance: {}\n", .{instance_result});
         return VkAbstractionError.VkInstanceCreation;
     }
 }
@@ -744,9 +766,56 @@ fn create_command_buffer(instance: *Instance) VkAbstractionError!void {
     }
 }
 
-fn record_command_buffer(command_buffer : c.VkCommandBuffer, image_index : u32) VkAbstractionError!void
-{
-    
+fn record_command_buffer(instance: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32) VkAbstractionError!void {
+    _ = &image_index;
+
+    const begin_info = c.VkCommandBufferBeginInfo{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = 0,
+        .pInheretenceInfo = null,
+    };
+
+    if (c.vkBeginCommandBuffer(command_buffer, &begin_info) == c.VK_SUCCESS) {
+        return VkAbstractionError.UnableToBeginRenderPass;
+    }
+
+    const render_pass_info = c.VkRenderPassBeginInfo{
+        .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass = instance.render_pass,
+        .framebuffer = instance.frame_buffers[image_index],
+        .renderArea = .{
+            .offse = .{ 0, 0 },
+            .extent = instance.swapchain_extent,
+        },
+    };
+
+    c.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
+
+    c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, instance.graphics_pipeline);
+
+    const viewport = c.VkViewport{
+        .x = 0.0,
+        .y = 0.0,
+        .width = @floatFromInt(instance.swapchain_extent.width),
+        .height = @floatFromInt(instance.swapchain_extent.height),
+        .minDepth = 0.0,
+        .maxDepth = 1.0,
+    };
+
+    c.vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+    const scissor = c.VkRect2D{
+        .offset = .{ .x = 0, .y = 0 },
+        .extent = instance.swapchain_extent,
+    };
+
+    c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+    c.vkCmdDraw(command_buffer, 3, 1, 0, 0);
+
+    if (c.vkCmdEndRenderPass(command_buffer)) {
+        return VkAbstractionError.UnableToCompleteRenderPass;
+    }
 }
 
 // TODO make sure to free like 70% of the objects I haven't bothered to, likely memory leaks in the swapchain code
