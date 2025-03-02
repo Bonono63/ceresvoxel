@@ -35,6 +35,8 @@ const VkAbstractionError = error{
     FailedCreatingRenderPass,
     FailedCreatingGraphicsPipeline,
     FailedFramebufferCreation,
+    FailedCommandPoolCreation,
+    CommandBufferAllocationFailed,
     OutOfMemory,
 };
 
@@ -50,15 +52,13 @@ const device_extensions = [_][*:0]const u8{
     c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
-// Is it a compiler quirk that tuples with default values have to be at the end of the struct?
 const Instance = struct {
-    // I hate to initialize these all to NULL, but it is what it is with c compat...
     vk_instance: c.VkInstance = null,
     window: *c.GLFWwindow = undefined,
     surface: c.VkSurfaceKHR = null,
     physical_device: c.VkPhysicalDevice = null,
     device: c.VkDevice = null,
-    queue_family_index = null,
+    queue_family_index: u32 = 0,
     graphics_queue: c.VkQueue = undefined,
     swapchain: c.VkSwapchainKHR = undefined,
     swapchain_format: c.VkSurfaceFormatKHR = undefined,
@@ -69,8 +69,8 @@ const Instance = struct {
     renderpass: c.VkRenderPass = undefined,
     graphics_pipeline: c.VkPipeline = undefined,
     frame_buffers: []c.VkFramebuffer = undefined,
-    command_pool : c.VkCommandPool = undefined,
-    command_buffer: []c.VkCommandBuffer = undefined,
+    command_pool: c.VkCommandPool = undefined,
+    command_buffer: c.VkCommandBuffer = undefined,
     REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
 };
 
@@ -110,7 +110,7 @@ pub fn main() !void {
 
     try create_command_pool(&instance);
 
-    try create_command_buffer(*instance);
+    try create_command_buffer(&instance);
 
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         // glfwSwapBuffers only works for opengl
@@ -259,7 +259,7 @@ fn create_graphics_queue(instance: *Instance, allocator: *const std.mem.Allocato
 
     std.debug.print("[Info] First compatible: {}\n", .{first_compatible});
 
-    instance.queue_family_queue = first_compatible;
+    instance.queue_family_index = first_compatible;
 
     const queue_create_info = c.VkDeviceQueueCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -718,12 +718,11 @@ pub fn create_framebuffers(instance: *Instance, allocator: *const std.mem.Alloca
     }
 }
 
-fn create_command_pool(instance : *Instance)
-{
+fn create_command_pool(instance: *Instance) VkAbstractionError!void {
     const command_pool_info = c.VkCommandPoolCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = instance.queue_family_queue,
+        .queueFamilyIndex = instance.queue_family_index,
     };
 
     const command_pool_success = c.vkCreateCommandPool(instance.device, &command_pool_info, null, &instance.command_pool);
@@ -732,14 +731,27 @@ fn create_command_pool(instance : *Instance)
     }
 }
 
-fn create_command_buffer(instance : *Instance)
+fn create_command_buffer(instance: *Instance) VkAbstractionError!void {
+    const allocation_info = c.VkCommandBufferAllocateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = instance.command_pool,
+        .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+
+    if (c.vkAllocateCommandBuffers(instance.device, &allocation_info, &instance.command_buffer) != c.VK_SUCCESS) {
+        return VkAbstractionError.CommandBufferAllocationFailed;
+    }
+}
+
+fn record_command_buffer(command_buffer : c.VkCommandBuffer, image_index : u32) VkAbstractionError!void
 {
     
 }
 
 // TODO make sure to free like 70% of the objects I haven't bothered to, likely memory leaks in the swapchain code
 fn instance_clean_up(instance: *Instance, allocator: *const std.mem.Allocator) void {
-    vkDestroyCommandPool(instance.device, instance.command_pool, null);
+    c.vkDestroyCommandPool(instance.device, instance.command_pool, null);
     //for framebuffer destroy
     //c.vkDestroyPipeline();
     //c.vkDestroyPipelineLayout();
