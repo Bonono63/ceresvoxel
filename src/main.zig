@@ -173,7 +173,7 @@ fn window_setup(application_name: []const u8, instance: *Instance, allocator: *c
         try extensions_arraylist.append(instance_extensions[i]);
     }
 
-    std.debug.print("[Info] Vulkan Instance Extensions:\n", .{});
+    std.debug.print("[Info] Vulkan Instance Extensions ({}):\n", .{extensions_arraylist.items.len});
     for (extensions_arraylist.items) |item| {
         std.debug.print("\t{s}\n", .{item});
     }
@@ -186,18 +186,20 @@ fn window_setup(application_name: []const u8, instance: *Instance, allocator: *c
     }
 
     const available_layers = try allocator.*.alloc(c.VkLayerProperties, available_layers_count);
+    defer allocator.*.free(available_layers);
+
     const enumeration_success = c.vkEnumerateInstanceLayerProperties(&available_layers_count, available_layers.ptr);
     if (enumeration_success != c.VK_SUCCESS) {
         std.debug.print("[Error] Enumeration failure: {}\n", .{enumeration_success});
         return VkAbstractionError.InstanceLayerEnumerationFailed;
     }
 
-    std.debug.print("[Info] Available validation layers:\n", .{});
+    std.debug.print("[Info] Available validation layers ({}):\n", .{available_layers.len});
     for (available_layers) |validation_layer| {
         std.debug.print("\t{s}\n", .{validation_layer.layerName});
     }
 
-    std.debug.print("[Info] Vulkan Instance Validation Layers:\n", .{});
+    std.debug.print("[Info] Vulkan Instance Validation layers ({}):\n", .{validation_layers.len});
     for (validation_layers) |validation_layer| {
         std.debug.print("\t{s}\n", .{validation_layer});
     }
