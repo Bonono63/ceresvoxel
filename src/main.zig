@@ -212,7 +212,7 @@ fn window_setup(application_name: []const u8, instance: *Instance, allocator: *c
     const create_info = c.VkInstanceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &application_info,
-        .enabledLayerCount = 0, //@intCast(validation_layers.len),
+        .enabledLayerCount = @intCast(validation_layers.len),
         .ppEnabledLayerNames = &validation_layers,
         .enabledExtensionCount = @intCast(extensions_arraylist.items.len),
         .ppEnabledExtensionNames = extensions_arraylist.items.ptr,
@@ -240,7 +240,7 @@ fn pick_physical_device(instance: *Instance, allocator: *const std.mem.Allocator
     const enumerate_physical_devices_success = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, null);
 
     if (enumerate_physical_devices_success != c.VK_SUCCESS) {
-        std.debug.print("[Error] Unable to enumerate physical devices device_count: {} vk error code: {}", .{ device_count, enumerate_physical_devices_success });
+        std.debug.print("[Error] Unable to enumerate physical devices device_count: {} vk error code: {}\n", .{ device_count, enumerate_physical_devices_success });
         return VkAbstractionError.UnableToEnumeratePhysicalDevices;
     }
 
