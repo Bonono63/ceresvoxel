@@ -237,7 +237,12 @@ fn create_surface(instance: *Instance) VkAbstractionError!void {
 
 fn pick_physical_device(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
     var device_count: u32 = 0;
-    _ = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, null);
+    const enumerate_physical_devices_success = c.vkEnumeratePhysicalDevices(instance.vk_instance, &device_count, null);
+
+    if (enumerate_physical_devices_success != c.VK_SUCCESS) {
+        std.debug.print("[Error] Unable to enumerate physical devices device_count: {} vk error code: {}", .{ device_count, enumerate_physical_devices_success });
+        return VkAbstractionError.UnableToEnumeratePhysicalDevices;
+    }
 
     if (device_count <= 0) {
         return VkAbstractionError.InvalidDeviceCount;
