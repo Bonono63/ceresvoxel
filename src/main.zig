@@ -212,7 +212,7 @@ fn window_setup(application_name: []const u8, instance: *Instance, allocator: *c
     const create_info = c.VkInstanceCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &application_info,
-        .enabledLayerCount = @intCast(validation_layers.len),
+        .enabledLayerCount = 0, //@intCast(validation_layers.len),
         .ppEnabledLayerNames = &validation_layers,
         .enabledExtensionCount = @intCast(extensions_arraylist.items.len),
         .ppEnabledExtensionNames = extensions_arraylist.items.ptr,
@@ -221,7 +221,7 @@ fn window_setup(application_name: []const u8, instance: *Instance, allocator: *c
     const instance_result = c.vkCreateInstance(&create_info, null, &instance.vk_instance);
 
     if (instance_result != c.VK_SUCCESS) {
-        std.debug.print("[Error] Unable to make Vk Instance: {}\n", .{instance_result});
+        std.debug.print("[Error] Unable to create Vk Instance: {}\n", .{instance_result});
         return VkAbstractionError.VkInstanceCreation;
     }
 }

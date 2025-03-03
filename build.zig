@@ -29,6 +29,7 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("glfw");
     // TODO add a line for changing to vulkan-1 on Windows
     exe.linkSystemLibrary("vulkan");
+    //exe.linkSystemLibrary("pthread");
 
     b.installArtifact(exe);
 
