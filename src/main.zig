@@ -37,6 +37,7 @@ const VkAbstractionError = error{
     UnableToBeginRenderPass,
     UnableToCompleteRenderPass,
     InstanceLayerEnumerationFailed,
+    UnableToCreateSyncObect,
     OutOfMemory,
 };
 
@@ -72,6 +73,9 @@ const Instance = struct {
     command_pool: c.VkCommandPool = undefined,
     command_buffer: c.VkCommandBuffer = undefined,
     REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
+    image_available_semaphore: c.VkSemaphore = undefined,
+    image_completion_semaphore: c.VkSemaphore = undefined,
+    in_flight_fence: c.VkFence = undefined,
 };
 
 const swapchain_support = struct {
@@ -112,8 +116,12 @@ pub fn main() !void {
 
     try create_command_buffer(&instance);
 
+    try create_sync_objects(&instance);
+
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
+
+        try draw_frame(&instance);
     }
 
     instance_clean_up(&instance, &allocator);
@@ -259,7 +267,7 @@ fn pick_physical_device(instance: *Instance, allocator: *const std.mem.Allocator
     instance.physical_device = devices[0];
 
     var device_properties: c.VkPhysicalDeviceProperties = undefined;
-    _ = c.vkGetPhysicalDeviceProperties(instance.physical_device, &device_properties);
+    c.vkGetPhysicalDeviceProperties(instance.physical_device, &device_properties);
 
     std.debug.print("[Info] API version: {any}\n[Info] Driver version: {any}\n[Info] Device name: {s}\n", .{ device_properties.apiVersion, device_properties.driverVersion, device_properties.deviceName });
 
@@ -395,7 +403,6 @@ fn create_swapchain(instance: *Instance, allocator: *const std.mem.Allocator) Vk
         var extent: c.VkExtent2D = undefined;
         var width: i32 = 0;
         var height: i32 = 0;
-        _ = &width;
         std.debug.print("[Info] current extent: {} {}\n", .{ support.capabilities.currentExtent.width, support.capabilities.currentExtent.height });
         if (support.capabilities.currentExtent.width != std.math.maxInt(u32)) {
             extent = support.capabilities.currentExtent;
@@ -498,8 +505,6 @@ fn create_swapchain_image_views(instance: *Instance, allocator: *const std.mem.A
 }
 
 fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
-    _ = &instance;
-
     const vertex_source = try create_shader_module(instance, allocator, "shaders/simple.vert.spv");
     const fragment_source = try create_shader_module(instance, allocator, "shaders/simple.frag.spv");
 
@@ -645,12 +650,24 @@ fn create_graphics_pipeline(instance: *Instance, allocator: *const std.mem.Alloc
         .pColorAttachments = &color_attachment_ref,
     };
 
+    // Ensure the renderpass is waiting for our frames to complete
+    const subpass_dependency = c.VkSubpassDependency{
+        .srcSubpass = c.VK_SUBPASS_EXTERNAL,
+        .dstSubpass = 0,
+        .srcStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .srcAccessMask = 0,
+        .dstStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .dstAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+    };
+
     const renderpass_create_info = c.VkRenderPassCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
         .attachmentCount = 1,
         .pAttachments = &color_attachment,
         .subpassCount = 1,
         .pSubpasses = &subpass,
+        .dependencyCount = 1,
+        .pDependencies = &subpass_dependency,
     };
 
     const render_pass_creation = c.vkCreateRenderPass(instance.device, &renderpass_create_info, null, &instance.renderpass);
@@ -779,21 +796,26 @@ fn record_command_buffer(instance: *Instance, command_buffer: c.VkCommandBuffer,
     const begin_info = c.VkCommandBufferBeginInfo{
         .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = 0,
-        .pInheretenceInfo = null,
+        //.pInheretenceInfo = null,
     };
 
-    if (c.vkBeginCommandBuffer(command_buffer, &begin_info) == c.VK_SUCCESS) {
+    if (c.vkBeginCommandBuffer(command_buffer, &begin_info) != c.VK_SUCCESS) {
         return VkAbstractionError.UnableToBeginRenderPass;
     }
 
+    var clear_color: c.VkClearValue = undefined;
+    clear_color[0] = 0.0;
+
     const render_pass_info = c.VkRenderPassBeginInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .renderPass = instance.render_pass,
+        .renderPass = instance.renderpass,
         .framebuffer = instance.frame_buffers[image_index],
         .renderArea = .{
-            .offse = .{ 0, 0 },
+            .offset = .{ .x = 0, .y = 0 },
             .extent = instance.swapchain_extent,
         },
+        .clearValueCount = 1,
+        .pClearValues = clear_color,
     };
 
     c.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
@@ -820,13 +842,90 @@ fn record_command_buffer(instance: *Instance, command_buffer: c.VkCommandBuffer,
 
     c.vkCmdDraw(command_buffer, 3, 1, 0, 0);
 
-    if (c.vkCmdEndRenderPass(command_buffer)) {
-        return VkAbstractionError.UnableToCompleteRenderPass;
+    c.vkCmdEndRenderPass(command_buffer);
+}
+
+fn create_sync_objects(instance: *Instance) VkAbstractionError!void {
+    const image_available_semaphore_info = c.VkSemaphoreCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    };
+
+    const image_completion_semaphore_info = c.VkSemaphoreCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    };
+
+    const in_flight_fence_info = c.VkFenceCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
+    };
+
+    const success_a = c.vkCreateSemaphore(instance.device, &image_available_semaphore_info, null, &instance.image_available_semaphore);
+    const success_b = c.vkCreateSemaphore(instance.device, &image_completion_semaphore_info, null, &instance.image_completion_semaphore);
+    const success_c = c.vkCreateFence(instance.device, &in_flight_fence_info, null, &instance.in_flight_fence);
+
+    if (success_a != c.VK_SUCCESS or success_b != c.VK_SUCCESS or success_c != c.VK_SUCCESS) {
+        return VkAbstractionError.UnableToCreateSyncObect;
+    }
+}
+
+fn draw_frame(instance: *Instance) VkAbstractionError!void {
+    const fence_wait = c.vkWaitForFences(instance.device, 1, &instance.in_flight_fence, c.VK_TRUE, std.math.maxInt(u64));
+
+    if (fence_wait != c.VK_SUCCESS and fence_wait != c.VK_TIMEOUT) {
+        return VkAbstractionError.OutOfMemory;
+    }
+
+    if (c.vkResetFences(instance.device, 1, &instance.in_flight_fence) != c.VK_SUCCESS) {
+        return VkAbstractionError.OutOfMemory;
+    }
+
+    var image_index: u32 = 0;
+
+    const acquire_next_image_success = c.vkAcquireNextImageKHR(instance.device, instance.swapchain, std.math.maxInt(u64), instance.image_available_semaphore, null, &image_index);
+
+    _ = &acquire_next_image_success;
+    //if (acquire_next_image_success != c.VK_SUCCESS)
+    //{
+    //    return
+    //}
+
+    if (c.vkResetCommandBuffer(instance.command_buffer, 0) != c.VK_SUCCESS) {
+        return VkAbstractionError.OutOfMemory;
+    }
+
+    try record_command_buffer(instance, instance.command_buffer, image_index);
+
+    //const wait_semaphores = [_]c.VkSemaphore{
+    //    instance.image_available_semaphore,
+    //};
+
+    const wait_stages = [_]c.VkPipelineStageFlags{
+        c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+    };
+
+    //const signal_semaphores: []c.VkSemaphore = .{instance.image_completion_semaphore};
+
+    const submit_info = c.VkSubmitInfo{
+        .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount = 1, //wait_semaphores.len,
+        .pWaitSemaphores = &instance.image_available_semaphore, //wait_semaphores.ptr,
+        .pWaitDstStageMask = &wait_stages,
+        .signalSemaphoreCount = 1, //signal_semaphores.len,
+        .pSignalSemaphores = &instance.image_completion_semaphore, //signal_semaphores.ptr,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &instance.command_buffer,
+    };
+
+    const queue_submit_success = c.vkQueueSubmit(instance.graphics_queue, 1, &submit_info, instance.in_flight_fence);
+    if (queue_submit_success != c.VK_SUCCESS) {
+        return VkAbstractionError.OutOfMemory;
     }
 }
 
 // TODO make sure to free like 70% of the objects I haven't bothered to, likely memory leaks in the swapchain code
 fn instance_clean_up(instance: *Instance, allocator: *const std.mem.Allocator) void {
+    //c.vkDestroySemaphore();
+    //c.vkDestroyFence();
     c.vkDestroyCommandPool(instance.device, instance.command_pool, null);
     //for framebuffer destroy
     //c.vkDestroyPipeline();
