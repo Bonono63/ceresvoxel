@@ -38,6 +38,8 @@ const VkAbstractionError = error{
     UnableToCompleteRenderPass,
     InstanceLayerEnumerationFailed,
     UnableToCreateSyncObect,
+    EndRecordingFailure,
+    UnableToAcquireNextSwapchainImage,
     OutOfMemory,
 };
 
@@ -803,8 +805,8 @@ fn record_command_buffer(instance: *Instance, command_buffer: c.VkCommandBuffer,
         return VkAbstractionError.UnableToBeginRenderPass;
     }
 
-    var clear_color: c.VkClearValue = undefined;
-    clear_color[0] = 0.0;
+    const clear_color: c.VkClearValue = undefined;
+    std.debug.print("clear color [0]: {}\n", .{clear_color});
 
     const render_pass_info = c.VkRenderPassBeginInfo{
         .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -815,7 +817,7 @@ fn record_command_buffer(instance: *Instance, command_buffer: c.VkCommandBuffer,
             .extent = instance.swapchain_extent,
         },
         .clearValueCount = 1,
-        .pClearValues = clear_color,
+        .pClearValues = &clear_color,
     };
 
     c.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
@@ -871,7 +873,7 @@ fn create_sync_objects(instance: *Instance) VkAbstractionError!void {
 fn draw_frame(instance: *Instance) VkAbstractionError!void {
     const fence_wait = c.vkWaitForFences(instance.device, 1, &instance.in_flight_fence, c.VK_TRUE, std.math.maxInt(u64));
 
-    if (fence_wait != c.VK_SUCCESS and fence_wait != c.VK_TIMEOUT) {
+    if (fence_wait != c.VK_SUCCESS) {
         return VkAbstractionError.OutOfMemory;
     }
 
@@ -883,17 +885,22 @@ fn draw_frame(instance: *Instance) VkAbstractionError!void {
 
     const acquire_next_image_success = c.vkAcquireNextImageKHR(instance.device, instance.swapchain, std.math.maxInt(u64), instance.image_available_semaphore, null, &image_index);
 
-    _ = &acquire_next_image_success;
-    //if (acquire_next_image_success != c.VK_SUCCESS)
-    //{
-    //    return
-    //}
+    if (acquire_next_image_success != c.VK_SUCCESS) {
+        std.debug.print("[Error] Unable to acquire next swapchain image: {} \n", .{acquire_next_image_success});
+        return VkAbstractionError.UnableToAcquireNextSwapchainImage;
+    }
 
     if (c.vkResetCommandBuffer(instance.command_buffer, 0) != c.VK_SUCCESS) {
         return VkAbstractionError.OutOfMemory;
     }
 
     try record_command_buffer(instance, instance.command_buffer, image_index);
+
+    // TODO Not sure if it makes sense to place this here or in the record_command_buffer call
+    const end_recording_success = c.vkEndCommandBuffer(instance.command_buffer);
+    if (end_recording_success != c.VK_SUCCESS) {
+        return VkAbstractionError.EndRecordingFailure;
+    }
 
     //const wait_semaphores = [_]c.VkSemaphore{
     //    instance.image_available_semaphore,
