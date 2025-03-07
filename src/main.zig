@@ -877,7 +877,8 @@ fn draw_frame(instance: *Instance) VkAbstractionError!void {
         return VkAbstractionError.OutOfMemory;
     }
 
-    if (c.vkResetFences(instance.device, 1, &instance.in_flight_fence) != c.VK_SUCCESS) {
+    const reset_fence_success = c.vkResetFences(instance.device, 1, &instance.in_flight_fence);
+    if (reset_fence_success != c.VK_SUCCESS) {
         return VkAbstractionError.OutOfMemory;
     }
 
