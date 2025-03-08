@@ -15,7 +15,7 @@ pub const VkAbstractionError = error{
     PhysicalDevicesCountFailure,
     EnumeratePhysicalDevicesFailure,
     InvalidDeviceCount,
-    UnableToEnumeratePhysicalDevices,
+    EnumeratePhysicalDevicesFailed,
     DeviceCreationFailure,
     RetrievePhysicalDeviceSurfaceCapabilitiesFailed,
     GetPhysicalDevicePresentModesFailure,
@@ -23,23 +23,23 @@ pub const VkAbstractionError = error{
     PhysicalDeviceInappropriateSwapchainSupport,
     CreateSwapchainFailed,
     GetSwapchainImagesFailed,
-    UnableToCreateSwapchainImageViews,
+    CreateSwapchainImageViewsFailed,
     InappropriateGLFWFrameBufferSizeReturn,
     CreateShaderModuleFailed,
     ShaderFileInvalidFileSize,
-    UnableToReadShaderFile,
-    UnableToCreatePipelineLayout,
+    ReadShaderFileFailed,
+    CreatePipelineLayoutFailed,
     FailedCreatingRenderPass,
     FailedCreatingGraphicsPipeline,
     FramebufferCreationFailed,
     FailedCommandPoolCreation,
     CommandBufferAllocationFailed,
-    UnableToBeginRenderPass,
-    UnableToCompleteRenderPass,
+    BeginRenderPassFailed,
+    CompleteRenderPassFailed,
     InstanceLayerEnumerationFailed,
-    UnableToCreateSyncObect,
+    CreateSyncObjectsFailed,
     EndRecordingFailure,
-    UnableToAcquireNextSwapchainImage,
+    AcquireNextSwapchainImageFailed,
     PresentationFailure,
 };
 
@@ -50,6 +50,7 @@ const instance_extensions = [_][*:0]const u8{
 
 const validation_layers = [_][*:0]const u8{
     "VK_LAYER_KHRONOS_validation",
+    //"VK_LAYER_RENDERDOC_Capture",
 };
 
 const device_extensions = [_][*:0]const u8{
@@ -86,6 +87,7 @@ pub const Instance = struct {
 
     shader_modules: std.ArrayList(c.VkShaderModule) = undefined,
 
+    pipeline_layout: c.VkPipelineLayout = undefined,
     renderpass: c.VkRenderPass = undefined,
     graphics_pipeline: c.VkPipeline = undefined,
     frame_buffers: []c.VkFramebuffer = undefined,
@@ -112,6 +114,10 @@ pub const Instance = struct {
 
         try create_graphics_pipeline(self, allocator);
         try create_framebuffers(self, allocator);
+        try create_command_pool(self);
+        try create_command_buffer(self);
+
+        try create_sync_objects(self);
     }
 
     /// Initializes GLFW and checks for Vulkan support
@@ -473,15 +479,14 @@ pub const Instance = struct {
 
             const imageview_success = c.vkCreateImageView(self.device, &create_info, null, self.swapchain_image_views.ptr + i);
             if (imageview_success != c.VK_SUCCESS) {
-                return VkAbstractionError.UnableToCreateSwapchainImageViews;
+                return VkAbstractionError.CreateSwapchainImageViewsFailed;
             }
         }
     }
 
     fn create_graphics_pipeline(self: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
-        const vertex_source = try create_shader_module(self, allocator, "shaders/simple.vert.spv");
-        _ = &vertex_source;
-        const fragment_source = try create_shader_module(self, allocator, "shaders/simple.frag.spv");
+        try create_shader_module(self, allocator, "shaders/simple.vert.spv");
+        try create_shader_module(self, allocator, "shaders/simple.frag.spv");
 
         const vertex_shader_stage = c.VkPipelineShaderStageCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -493,7 +498,7 @@ pub const Instance = struct {
         const fragment_shader_stage = c.VkPipelineShaderStageCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = c.VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = fragment_source,
+            .module = self.shader_modules.items[1],
             .pName = "main",
         };
 
@@ -596,11 +601,10 @@ pub const Instance = struct {
             .pPushConstantRanges = null,
         };
 
-        var pipeline_layout: c.VkPipelineLayout = undefined;
-        const pipeline_layout_success = c.vkCreatePipelineLayout(self.device, &pipeline_layout_create_info, null, &pipeline_layout);
+        const pipeline_layout_success = c.vkCreatePipelineLayout(self.device, &pipeline_layout_create_info, null, &self.pipeline_layout);
 
         if (pipeline_layout_success != c.VK_SUCCESS) {
-            return VkAbstractionError.UnableToCreatePipelineLayout;
+            return VkAbstractionError.CreatePipelineLayoutFailed;
         }
 
         const color_attachment = c.VkAttachmentDescription{
@@ -662,7 +666,7 @@ pub const Instance = struct {
             .pDepthStencilState = null,
             .pColorBlendState = &color_blending_create_info,
             .pDynamicState = &dynamic_state_create_info,
-            .layout = pipeline_layout,
+            .layout = self.pipeline_layout,
             .renderPass = self.renderpass,
             .subpass = 0,
         };
@@ -673,7 +677,8 @@ pub const Instance = struct {
         }
     }
 
-    fn create_shader_module(self: *Instance, allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!c.VkShaderModule {
+    /// Creates a shader module and appends the handler to the state's shader array list
+    fn create_shader_module(self: *Instance, allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!void {
         var shader_module: c.VkShaderModule = undefined;
 
         const source = try read_sprv_file_aligned(allocator, file_name);
@@ -693,16 +698,13 @@ pub const Instance = struct {
         }
 
         try self.shader_modules.append(shader_module);
-        std.debug.print("Fortnite\n", .{});
-
-        return shader_module;
     }
 
     /// Creates a 4 byte aligned buffer of any given file, intended for reading SPIR-V binary files
     fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!std.ArrayListAligned(u32, @sizeOf(u32)) {
         const file_array = std.fs.cwd().readFileAlloc(allocator.*, file_name, 10000) catch |err| {
             std.debug.print("[Error] [IO] {}", .{err});
-            return VkAbstractionError.UnableToReadShaderFile;
+            return VkAbstractionError.ReadShaderFileFailed;
         };
 
         var array = std.ArrayListAligned(u32, @sizeOf(u32)).init(allocator.*);
@@ -742,11 +744,200 @@ pub const Instance = struct {
         }
     }
 
+    fn create_command_pool(self: *Instance) VkAbstractionError!void {
+        const command_pool_info = c.VkCommandPoolCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+            .queueFamilyIndex = self.queue_family_index,
+        };
+
+        const command_pool_success = c.vkCreateCommandPool(self.device, &command_pool_info, null, &self.command_pool);
+        if (command_pool_success != c.VK_SUCCESS) {
+            return VkAbstractionError.FailedCommandPoolCreation;
+        }
+    }
+
+    fn create_command_buffer(self: *Instance) VkAbstractionError!void {
+        const allocation_info = c.VkCommandBufferAllocateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = self.command_pool,
+            .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1,
+        };
+
+        if (c.vkAllocateCommandBuffers(self.device, &allocation_info, &self.command_buffer) != c.VK_SUCCESS) {
+            return VkAbstractionError.CommandBufferAllocationFailed;
+        }
+    }
+
+    fn record_command_buffer(self: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32) VkAbstractionError!void {
+        const begin_info = c.VkCommandBufferBeginInfo{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = 0,
+            //.pInheretenceInfo = null,
+        };
+
+        if (c.vkBeginCommandBuffer(command_buffer, &begin_info) != c.VK_SUCCESS) {
+            return VkAbstractionError.BeginRenderPassFailed;
+        }
+
+        const clear_color: c.VkClearValue = undefined;
+        //std.debug.print("clear color [0]: {}\n", .{clear_color});
+
+        const render_pass_info = c.VkRenderPassBeginInfo{
+            .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .renderPass = self.renderpass,
+            .framebuffer = self.frame_buffers[image_index],
+            .renderArea = .{
+                .offset = .{ .x = 0, .y = 0 },
+                .extent = self.swapchain_extent,
+            },
+            .clearValueCount = 1,
+            .pClearValues = &clear_color,
+        };
+
+        c.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
+
+        c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline);
+
+        const viewport = c.VkViewport{
+            .x = 0.0,
+            .y = 0.0,
+            .width = @floatFromInt(self.swapchain_extent.width),
+            .height = @floatFromInt(self.swapchain_extent.height),
+            .minDepth = 0.0,
+            .maxDepth = 1.0,
+        };
+
+        c.vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+        const scissor = c.VkRect2D{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = self.swapchain_extent,
+        };
+
+        c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+        c.vkCmdDraw(command_buffer, 3, 1, 0, 0);
+
+        c.vkCmdEndRenderPass(command_buffer);
+    }
+
+    fn create_sync_objects(self: *Instance) VkAbstractionError!void {
+        const image_available_semaphore_info = c.VkSemaphoreCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        };
+
+        const image_completion_semaphore_info = c.VkSemaphoreCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        };
+
+        const in_flight_fence_info = c.VkFenceCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
+        };
+
+        const success_a = c.vkCreateSemaphore(self.device, &image_available_semaphore_info, null, &self.image_available_semaphore);
+        const success_b = c.vkCreateSemaphore(self.device, &image_completion_semaphore_info, null, &self.image_completion_semaphore);
+        const success_c = c.vkCreateFence(self.device, &in_flight_fence_info, null, &self.in_flight_fence);
+
+        if (success_a != c.VK_SUCCESS or success_b != c.VK_SUCCESS or success_c != c.VK_SUCCESS) {
+            return VkAbstractionError.CreateSyncObjectsFailed;
+        }
+    }
+
+    pub fn draw_frame(self: *Instance) VkAbstractionError!void {
+        const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fence, c.VK_TRUE, std.math.maxInt(u64));
+
+        if (fence_wait != c.VK_SUCCESS) {
+            return VkAbstractionError.OutOfMemory;
+        }
+
+        var image_index: u32 = 0;
+
+        const acquire_next_image_success = c.vkAcquireNextImageKHR(self.device, self.swapchain, std.math.maxInt(u64), self.image_available_semaphore, null, &image_index);
+
+        if (acquire_next_image_success != c.VK_SUCCESS) {
+            std.debug.print("[Error] Unable to acquire next swapchain image: {} \n", .{acquire_next_image_success});
+            return VkAbstractionError.AcquireNextSwapchainImageFailed;
+        }
+
+        const reset_fence_success = c.vkResetFences(self.device, 1, &self.in_flight_fence);
+        if (reset_fence_success != c.VK_SUCCESS) {
+            return VkAbstractionError.OutOfMemory;
+        }
+
+        if (c.vkResetCommandBuffer(self.command_buffer, 0) != c.VK_SUCCESS) {
+            return VkAbstractionError.OutOfMemory;
+        }
+
+        try record_command_buffer(self, self.command_buffer, image_index);
+
+        // TODO Not sure if it makes sense to place this here or in the record_command_buffer call
+        const end_recording_success = c.vkEndCommandBuffer(self.command_buffer);
+        if (end_recording_success != c.VK_SUCCESS) {
+            return VkAbstractionError.EndRecordingFailure;
+        }
+
+        //const wait_semaphores = [_]c.VkSemaphore{
+        //    instance.image_available_semaphore,
+        //};
+
+        const wait_stages = [_]c.VkPipelineStageFlags{
+            c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        };
+
+        //const signal_semaphores: []c.VkSemaphore = .{instance.image_completion_semaphore};
+
+        const submit_info = c.VkSubmitInfo{
+            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .waitSemaphoreCount = 1, //wait_semaphores.len,
+            .pWaitSemaphores = &self.image_available_semaphore, //wait_semaphores.ptr,
+            .pWaitDstStageMask = &wait_stages,
+            .signalSemaphoreCount = 1, //signal_semaphores.len,
+            .pSignalSemaphores = &self.image_completion_semaphore, //signal_semaphores.ptr,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &self.command_buffer,
+        };
+
+        const queue_submit_success = c.vkQueueSubmit(self.present_queue, 1, &submit_info, self.in_flight_fence);
+        if (queue_submit_success != c.VK_SUCCESS) {
+            return VkAbstractionError.OutOfMemory;
+        }
+
+        //const swapchains = []c.VkSwapchainKHR{instance.swapchain};
+
+        const present_info = c.VkPresentInfoKHR{
+            .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &self.image_completion_semaphore,
+            .swapchainCount = 1,
+            .pSwapchains = &self.swapchain, //swapchains,
+            .pImageIndices = &image_index,
+        };
+
+        const present_success = c.vkQueuePresentKHR(self.present_queue, &present_info);
+        if (present_success != c.VK_SUCCESS) {
+            return VkAbstractionError.PresentationFailure;
+        }
+    }
+
     /// Free all of our vulkan state
     pub fn cleanup(self: *Instance, allocator: *const std.mem.Allocator) void {
+        c.vkDestroySemaphore(self.device, self.image_available_semaphore, null);
+        c.vkDestroySemaphore(self.device, self.image_completion_semaphore, null);
+        c.vkDestroyFence(self.device, self.in_flight_fence, null);
+
+        c.vkFreeCommandBuffers(self.device, self.command_pool, 1, &self.command_buffer);
+        c.vkDestroyCommandPool(self.device, self.command_pool, null);
+
+        c.vkDestroyPipeline(self.device, self.graphics_pipeline, null);
+        c.vkDestroyRenderPass(self.device, self.renderpass, null);
+        c.vkDestroyPipelineLayout(self.device, self.pipeline_layout, null);
+
         std.debug.print("fortnite len: {}\n", .{self.shader_modules.items.len});
         for (0..self.shader_modules.items.len) |i| {
-            std.debug.print("index: {}\n", .{i});
+            std.debug.print("index: {} {*}\n", .{ i, self.shader_modules.items.ptr });
             c.vkDestroyShaderModule(self.device, self.shader_modules.items[i], null);
         }
         self.shader_modules.deinit();
