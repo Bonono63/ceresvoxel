@@ -5,6 +5,10 @@ const vulkan = @import("vulkan.zig");
 
 const ENGINE_NAME = "CeresVoxel";
 
+var xpos: f64 = 0.0;
+var ypos: f64 = 0.0;
+var w: bool = false;
+
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     const allocator = arena.allocator();
@@ -19,6 +23,7 @@ pub fn main() !void {
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
 
+        std.debug.print("\tw: {} x: {d:.2} y: {d:.2}\r", .{ w, xpos, ypos });
         try instance.draw_frame();
     }
 
@@ -35,11 +40,20 @@ pub fn key_callback(window: ?*c.GLFWwindow, key: i32, scancode: i32, action: i32
         c.GLFW_KEY_ESCAPE => {
             c.glfwSetWindowShouldClose(window, c.GLFW_TRUE);
         },
+        c.GLFW_KEY_W => {
+            if (action == c.GLFW_PRESS) {
+                w = true;
+            }
+            if (action == c.GLFW_RELEASE) {
+                w = false;
+            }
+        },
         else => {},
     }
 }
 
-pub fn cursor_pos_callback(window: ?*c.GLFWwindow, xpos: f64, ypos: f64) callconv(.C) void {
+pub fn cursor_pos_callback(window: ?*c.GLFWwindow, _xpos: f64, _ypos: f64) callconv(.C) void {
     _ = &window;
-    std.debug.print("\t x: {d:.2} y: {d:.2}\r", .{ xpos, ypos });
+    xpos = _xpos;
+    ypos = _ypos;
 }

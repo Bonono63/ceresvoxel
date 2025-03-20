@@ -110,7 +110,7 @@ pub const Instance = struct {
         try create_swapchain_image_views(self, allocator);
 
         self.shader_modules = std.ArrayList(c.VkShaderModule).init(allocator.*);
-        defer self.shader_modules.deinit();
+        //defer self.shader_modules.deinit();
 
         try create_graphics_pipeline(self, allocator);
         try create_framebuffers(self, allocator);
@@ -935,9 +935,7 @@ pub const Instance = struct {
         c.vkDestroyRenderPass(self.device, self.renderpass, null);
         c.vkDestroyPipelineLayout(self.device, self.pipeline_layout, null);
 
-        std.debug.print("fortnite len: {}\n", .{self.shader_modules.items.len});
         for (0..self.shader_modules.items.len) |i| {
-            std.debug.print("index: {} {*}\n", .{ i, self.shader_modules.items.ptr });
             c.vkDestroyShaderModule(self.device, self.shader_modules.items[i], null);
         }
         self.shader_modules.deinit();
