@@ -60,9 +60,9 @@ const device_extensions = [_][*:0]const u8{
 const swapchain_support = struct {
     capabilities: c.VkSurfaceCapabilitiesKHR = undefined,
     formats: []c.VkSurfaceFormatKHR = undefined,
-    formats_size: u32 = 0,
+    //    formats_size: u32 = 0,
     present_modes: []c.VkPresentModeKHR = undefined,
-    present_size: u32 = 0,
+    //    present_size: u32 = 0,
 };
 
 // The vulkan/render state
@@ -320,38 +320,34 @@ pub const Instance = struct {
         const get_physical_device_surface_formats = c.vkGetPhysicalDeviceSurfaceFormatsKHR(self.physical_device, self.surface, &format_count, null);
         std.debug.print("[Info] Surface format count: {}\n", .{format_count});
 
-        if (get_physical_device_surface_formats != c.VK_SUCCESS) {
+        if (get_physical_device_surface_formats != c.VK_SUCCESS or format_count < 0) {
             return VkAbstractionError.RetrieveSurfaceFormatFailure;
         }
 
-        if (format_count > 0) {
-            result.formats = try allocator.*.alloc(c.VkSurfaceFormatKHR, format_count);
+        result.formats = try allocator.*.alloc(c.VkSurfaceFormatKHR, format_count);
 
-            const retrieve_formats_success = c.vkGetPhysicalDeviceSurfaceFormatsKHR(self.physical_device, self.surface, &format_count, result.formats.ptr);
-            if (retrieve_formats_success != c.VK_SUCCESS) {
-                return VkAbstractionError.RetrieveSurfaceFormatFailure;
-            }
-            result.formats_size = format_count;
+        const retrieve_formats_success = c.vkGetPhysicalDeviceSurfaceFormatsKHR(self.physical_device, self.surface, &format_count, result.formats.ptr);
+        if (retrieve_formats_success != c.VK_SUCCESS) {
+            return VkAbstractionError.RetrieveSurfaceFormatFailure;
         }
+        //result.formats_size = format_count;
 
         var present_modes: u32 = 0;
         var get_physical_device_present_modes = c.vkGetPhysicalDeviceSurfacePresentModesKHR(self.physical_device, self.surface, &present_modes, null);
-        if (get_physical_device_present_modes != c.VK_SUCCESS) {
+        if (get_physical_device_present_modes != c.VK_SUCCESS or present_modes < 0) {
             return VkAbstractionError.GetPhysicalDevicePresentModesFailure;
         }
 
         std.debug.print("[Info] Presentation Count: {}\n", .{present_modes});
 
-        if (present_modes != 0) {
-            result.present_modes = try allocator.*.alloc(c.VkPresentModeKHR, present_modes);
+        result.present_modes = try allocator.*.alloc(c.VkPresentModeKHR, present_modes);
 
-            get_physical_device_present_modes = c.vkGetPhysicalDeviceSurfacePresentModesKHR(self.physical_device, self.surface, &present_modes, result.present_modes.ptr);
-            if (get_physical_device_present_modes != c.VK_SUCCESS) {
-                return VkAbstractionError.GetPhysicalDevicePresentModesFailure;
-            }
-
-            result.present_size = present_modes;
+        get_physical_device_present_modes = c.vkGetPhysicalDeviceSurfacePresentModesKHR(self.physical_device, self.surface, &present_modes, result.present_modes.ptr);
+        if (get_physical_device_present_modes != c.VK_SUCCESS) {
+            return VkAbstractionError.GetPhysicalDevicePresentModesFailure;
         }
+
+        //result.present_size = present_modes;
 
         return result;
     }
@@ -361,96 +357,93 @@ pub const Instance = struct {
         defer allocator.*.free(support.formats);
         defer allocator.*.free(support.present_modes);
 
-        if (support.present_size > 0 and support.formats_size > 0) {
-            var surface_format: c.VkSurfaceFormatKHR = undefined;
-            var image_count: u32 = support.capabilities.minImageCount + 1;
-            var format_index: u32 = 0;
+        //if (support.present_size > 0 and support.formats_size > 0) {
+        var surface_format: c.VkSurfaceFormatKHR = support.formats[0];
+        var image_count: u32 = support.capabilities.minImageCount + 1;
+        var format_index: u32 = 0;
 
-            for (0..support.formats_size) |i| {
-                if (support.formats[i].format == c.VK_FORMAT_B8G8R8A8_SRGB and support.formats[i].colorSpace == c.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-                    format_index = @intCast(i);
-                    surface_format = support.formats[i];
-                    break;
-                }
+        for (support.formats, 0..support.formats.len) |format, i| {
+            if (format.format == c.VK_FORMAT_B8G8R8A8_SRGB and format.colorSpace == c.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+                format_index = @intCast(i);
+                surface_format = format;
+                break;
             }
+        }
 
-            var present_mode: u32 = c.VK_PRESENT_MODE_FIFO_KHR;
-            for (0..support.present_size) |i| {
-                if (support.present_modes[i] == c.VK_PRESENT_MODE_MAILBOX_KHR) {
-                    present_mode = c.VK_PRESENT_MODE_MAILBOX_KHR;
-                }
+        var present_mode: u32 = c.VK_PRESENT_MODE_FIFO_KHR;
+        for (support.present_modes) |mode| {
+            if (mode == c.VK_PRESENT_MODE_MAILBOX_KHR) {
+                present_mode = c.VK_PRESENT_MODE_MAILBOX_KHR;
             }
+        }
 
-            var extent: c.VkExtent2D = undefined;
-            var width: i32 = 0;
-            var height: i32 = 0;
-            std.debug.print("[Info] current extent: {} {}\n", .{ support.capabilities.currentExtent.width, support.capabilities.currentExtent.height });
-            if (support.capabilities.currentExtent.width != std.math.maxInt(u32)) {
-                extent = support.capabilities.currentExtent;
-            } else {
-                // This returns a signed integer
-                c.glfwGetFramebufferSize(self.window, &width, &height);
-
-                if (width < 0 or height < 0) {
-                    return VkAbstractionError.InappropriateGLFWFrameBufferSizeReturn;
-                }
-
-                // This required unsigned integers...
-                extent.width = @intCast(width);
-                extent.height = @intCast(height);
-
-                extent.width = std.math.clamp(extent.width, support.capabilities.minImageExtent.width, support.capabilities.maxImageExtent.width);
-                extent.height = std.math.clamp(extent.height, support.capabilities.minImageExtent.height, support.capabilities.maxImageExtent.height);
-                std.debug.print("[Info] Final extent: {} {}\n", .{ extent.width, extent.height });
-
-                const swapchain_create_info = c.VkSwapchainCreateInfoKHR{
-                    .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-                    .surface = self.surface,
-                    .minImageCount = image_count,
-                    .imageFormat = surface_format.format,
-                    .imageColorSpace = surface_format.colorSpace,
-                    .imageExtent = extent,
-                    .imageArrayLayers = 1,
-                    .imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-                    .imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-                    .queueFamilyIndexCount = 0,
-                    .pQueueFamilyIndices = null,
-                    .preTransform = support.capabilities.currentTransform,
-                    .compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-                    .presentMode = present_mode,
-                    .clipped = c.VK_TRUE,
-                    // This should be VK_NULL_HANDLE, but that is a opaque type and can't be casted properly,
-                    // After a quick look at the vulkan docs it appears to have cpp and msvc specific exceptions
-                    // however, our zig build should be compiling it in c and zig shouldn't be relying on
-                    // msvc either so replacing it with null outright should be ok...
-                    .oldSwapchain = null,
-                };
-
-                const swapchain_creation_success = c.vkCreateSwapchainKHR(self.device, &swapchain_create_info, null, &self.swapchain);
-                if (swapchain_creation_success != c.VK_SUCCESS) {
-                    return VkAbstractionError.CreateSwapchainFailed;
-                }
-
-                const get_swapchain_images_success = c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &image_count, null);
-
-                if (get_swapchain_images_success != c.VK_SUCCESS) {
-                    return VkAbstractionError.GetSwapchainImagesFailed;
-                }
-
-                self.swapchain_images = try allocator.*.alloc(c.VkImage, image_count);
-                const get_swapchain_images_KHR = c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &image_count, self.swapchain_images.ptr);
-
-                if (get_swapchain_images_KHR != c.VK_SUCCESS) {
-                    return VkAbstractionError.GetSwapchainImagesFailed;
-                }
-
-                self.swapchain_format = surface_format;
-                self.swapchain_extent = extent;
-
-                std.debug.print("[Info] Swapchain final image count: {}\n", .{self.swapchain_images.len});
-            }
+        var extent: c.VkExtent2D = undefined;
+        var width: i32 = 0;
+        var height: i32 = 0;
+        std.debug.print("[Info] current extent: {} {}\n", .{ support.capabilities.currentExtent.width, support.capabilities.currentExtent.height });
+        if (support.capabilities.currentExtent.width != std.math.maxInt(u32)) {
+            extent = support.capabilities.currentExtent;
         } else {
-            return VkAbstractionError.PhysicalDeviceInappropriateSwapchainSupport;
+            // This returns a signed integer
+            c.glfwGetFramebufferSize(self.window, &width, &height);
+
+            if (width < 0 or height < 0) {
+                return VkAbstractionError.InappropriateGLFWFrameBufferSizeReturn;
+            }
+
+            // This required unsigned integers...
+            extent.width = @intCast(width);
+            extent.height = @intCast(height);
+
+            extent.width = std.math.clamp(extent.width, support.capabilities.minImageExtent.width, support.capabilities.maxImageExtent.width);
+            extent.height = std.math.clamp(extent.height, support.capabilities.minImageExtent.height, support.capabilities.maxImageExtent.height);
+            std.debug.print("[Info] Final extent: {} {}\n", .{ extent.width, extent.height });
+
+            const swapchain_create_info = c.VkSwapchainCreateInfoKHR{
+                .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+                .surface = self.surface,
+                .minImageCount = image_count,
+                .imageFormat = surface_format.format,
+                .imageColorSpace = surface_format.colorSpace,
+                .imageExtent = extent,
+                .imageArrayLayers = 1,
+                .imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                .imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+                .queueFamilyIndexCount = 0,
+                .pQueueFamilyIndices = null,
+                .preTransform = support.capabilities.currentTransform,
+                .compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+                .presentMode = present_mode,
+                .clipped = c.VK_TRUE,
+                // This should be VK_NULL_HANDLE, but that is a opaque type and can't be casted properly,
+                // After a quick look at the vulkan docs it appears to have cpp and msvc specific exceptions
+                // however, our zig build should be compiling it in c and zig shouldn't be relying on
+                // msvc either so replacing it with null outright should be ok...
+                .oldSwapchain = null,
+            };
+
+            const swapchain_creation_success = c.vkCreateSwapchainKHR(self.device, &swapchain_create_info, null, &self.swapchain);
+            if (swapchain_creation_success != c.VK_SUCCESS) {
+                return VkAbstractionError.CreateSwapchainFailed;
+            }
+
+            const get_swapchain_images_success = c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &image_count, null);
+
+            if (get_swapchain_images_success != c.VK_SUCCESS) {
+                return VkAbstractionError.GetSwapchainImagesFailed;
+            }
+
+            self.swapchain_images = try allocator.*.alloc(c.VkImage, image_count);
+            const get_swapchain_images_KHR = c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &image_count, self.swapchain_images.ptr);
+
+            if (get_swapchain_images_KHR != c.VK_SUCCESS) {
+                return VkAbstractionError.GetSwapchainImagesFailed;
+            }
+
+            self.swapchain_format = surface_format;
+            self.swapchain_extent = extent;
+
+            std.debug.print("[Info] Swapchain final image count: {}\n", .{self.swapchain_images.len});
         }
     }
 
