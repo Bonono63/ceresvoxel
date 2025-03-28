@@ -60,13 +60,27 @@ const device_extensions = [_][*:0]const u8{
 const swapchain_support = struct {
     capabilities: c.VkSurfaceCapabilitiesKHR = undefined,
     formats: []c.VkSurfaceFormatKHR = undefined,
-    //    formats_size: u32 = 0,
     present_modes: []c.VkPresentModeKHR = undefined,
-    //    present_size: u32 = 0,
+};
+
+const Vertex = struct {
+    pos: c.vec2,
+    color: c.vec3,
+};
+
+pub const Mesh = struct {
+    vertices: []Vertex = undefined,
+    binding_description: []c.VkVertexInputBindingDescription = undefined,
+    attribute_description: []c.VkVertexInputAttributeDescription = undefined,
 };
 
 // The vulkan/render state
 pub const Instance = struct {
+    REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
+    MAX_CONCURRENT_FRAMES: u32 = 2,
+
+    allocator: *const std.mem.Allocator = undefined,
+
     vk_instance: c.VkInstance = undefined,
     window: *c.GLFWwindow = undefined,
     surface: c.VkSurfaceKHR = undefined,
@@ -74,16 +88,15 @@ pub const Instance = struct {
     physical_device: c.VkPhysicalDevice = undefined,
     device: c.VkDevice = undefined,
     queue_family_index: u32 = 0,
-    REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
     present_queue: c.VkQueue = undefined,
 
     swapchain: c.VkSwapchainKHR = undefined,
     swapchain_format: c.VkSurfaceFormatKHR = undefined,
-    // TODO don't rely on silly count variables
-    swapchain_image_count: u32 = undefined,
     swapchain_images: []c.VkImage = undefined,
     swapchain_image_views: []c.VkImageView = undefined,
     swapchain_extent: c.VkExtent2D = undefined,
+
+    framebuffer_resized: bool = false,
 
     shader_modules: std.ArrayList(c.VkShaderModule) = undefined,
 
@@ -93,30 +106,38 @@ pub const Instance = struct {
     frame_buffers: []c.VkFramebuffer = undefined,
 
     command_pool: c.VkCommandPool = undefined,
-    command_buffer: c.VkCommandBuffer = undefined,
+    command_buffers: []c.VkCommandBuffer = undefined,
 
-    image_available_semaphore: c.VkSemaphore = undefined,
-    image_completion_semaphore: c.VkSemaphore = undefined,
-    in_flight_fence: c.VkFence = undefined,
+    image_available_semaphore: []c.VkSemaphore = undefined,
+    image_completion_semaphore: []c.VkSemaphore = undefined,
+    in_flight_fence: []c.VkFence = undefined,
 
     /// Initializes the general state of Vulkan and GLFW for our rendering
     pub fn initialize_state(self: *Instance, application_name: []const u8, engine_name: []const u8, allocator: *const std.mem.Allocator) VkAbstractionError!void {
+        self.allocator = allocator;
+
         try glfw_initialization();
-        try window_setup(self, application_name, engine_name, allocator);
+        try window_setup(self, application_name, engine_name);
         try create_surface(self);
-        try pick_physical_device(self, allocator);
-        try create_present_queue(self, self.REQUIRE_FAMILIES, allocator);
-        try create_swapchain(self, allocator);
-        try create_swapchain_image_views(self, allocator);
+        try pick_physical_device(self);
+        try create_present_queue(self, self.REQUIRE_FAMILIES);
+        try create_swapchain(self);
+        try create_swapchain_image_views(self);
 
-        self.shader_modules = std.ArrayList(c.VkShaderModule).init(allocator.*);
-        //defer self.shader_modules.deinit();
+        // TODO this can be done prior to this function and we can defer its deinitialization
+        self.shader_modules = std.ArrayList(c.VkShaderModule).init(self.allocator.*);
 
-        try create_graphics_pipeline(self, allocator);
-        try create_framebuffers(self, allocator);
+        try create_graphics_pipeline(self);
+        try create_framebuffers(self);
         try create_command_pool(self);
-        try create_command_buffer(self);
 
+        //TODO move these concurrent frame based allocations to before this function in the main loop (we can use defer :D)
+        self.command_buffers = try allocator.alloc(c.VkCommandBuffer, self.MAX_CONCURRENT_FRAMES);
+        try create_command_buffers(self);
+
+        self.image_available_semaphore = try self.allocator.alloc(c.VkSemaphore, self.MAX_CONCURRENT_FRAMES);
+        self.image_completion_semaphore = try self.allocator.alloc(c.VkSemaphore, self.MAX_CONCURRENT_FRAMES);
+        self.in_flight_fence = try self.allocator.alloc(c.VkFence, self.MAX_CONCURRENT_FRAMES);
         try create_sync_objects(self);
     }
 
@@ -136,9 +157,9 @@ pub const Instance = struct {
     }
 
     /// Creates our Vulkan instance and GLFW window
-    fn window_setup(self: *Instance, application_name: []const u8, engine_name: []const u8, allocator: *const std.mem.Allocator) VkAbstractionError!void {
+    fn window_setup(self: *Instance, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
         c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
-        c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
+        // c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
 
         self.window = c.glfwCreateWindow(800, 600, application_name.ptr, null, null) orelse return VkAbstractionError.NullWindow;
 
@@ -157,7 +178,7 @@ pub const Instance = struct {
         var required_extension_count: u32 = 0;
         const required_extensions = c.glfwGetRequiredInstanceExtensions(&required_extension_count) orelse return VkAbstractionError.NullRequiredInstances;
 
-        var extensions_arraylist = std.ArrayList([*:0]const u8).init(allocator.*);
+        var extensions_arraylist = std.ArrayList([*:0]const u8).init(self.allocator.*);
         defer extensions_arraylist.deinit();
 
         for (0..required_extension_count) |i| {
@@ -178,8 +199,8 @@ pub const Instance = struct {
             return VkAbstractionError.InstanceLayerEnumerationFailed;
         }
 
-        const available_layers = try allocator.*.alloc(c.VkLayerProperties, available_layers_count);
-        defer allocator.*.free(available_layers);
+        const available_layers = try self.allocator.*.alloc(c.VkLayerProperties, available_layers_count);
+        defer self.allocator.*.free(available_layers);
 
         const enumeration_success = c.vkEnumerateInstanceLayerProperties(&available_layers_count, available_layers.ptr);
         if (enumeration_success != c.VK_SUCCESS) {
@@ -223,7 +244,7 @@ pub const Instance = struct {
         }
     }
 
-    fn pick_physical_device(self: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
+    fn pick_physical_device(self: *Instance) VkAbstractionError!void {
         var device_count: u32 = 0;
         const physical_device_count_success = c.vkEnumeratePhysicalDevices(self.vk_instance, &device_count, null);
 
@@ -236,8 +257,8 @@ pub const Instance = struct {
             return VkAbstractionError.InvalidDeviceCount;
         }
 
-        const devices = try allocator.*.alloc(c.VkPhysicalDevice, device_count);
-        defer allocator.*.free(devices);
+        const devices = try self.allocator.*.alloc(c.VkPhysicalDevice, device_count);
+        defer self.allocator.*.free(devices);
         const enumerate_physical_devices_success = c.vkEnumeratePhysicalDevices(self.vk_instance, &device_count, devices.ptr);
 
         if (enumerate_physical_devices_success != c.VK_SUCCESS) {
@@ -255,15 +276,15 @@ pub const Instance = struct {
         // TODO Check for device extension compatibility
     }
 
-    fn create_present_queue(self: *Instance, flags: u32, allocator: *const std.mem.Allocator) VkAbstractionError!void {
+    fn create_present_queue(self: *Instance, flags: u32) VkAbstractionError!void {
         const priority: f32 = 1.0;
 
         var queue_count: u32 = 0;
         _ = c.vkGetPhysicalDeviceQueueFamilyProperties(self.*.physical_device, &queue_count, null);
         std.debug.print("[Info] Queue count: {}\n", .{queue_count});
 
-        const properties = try allocator.*.alloc(c.VkQueueFamilyProperties, queue_count);
-        defer allocator.*.free(properties);
+        const properties = try self.allocator.*.alloc(c.VkQueueFamilyProperties, queue_count);
+        defer self.allocator.*.free(properties);
         _ = c.vkGetPhysicalDeviceQueueFamilyProperties(self.*.physical_device, &queue_count, properties.ptr);
 
         var first_compatible: u32 = 0;
@@ -308,7 +329,7 @@ pub const Instance = struct {
     }
 
     /// The formats returned in swapchain_support must be freed later
-    fn query_swapchain_support(self: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!swapchain_support {
+    fn query_swapchain_support(self: *Instance) VkAbstractionError!swapchain_support {
         var result = swapchain_support{};
 
         const surface_capabilities_success = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(self.physical_device, self.surface, &result.capabilities);
@@ -324,7 +345,7 @@ pub const Instance = struct {
             return VkAbstractionError.RetrieveSurfaceFormatFailure;
         }
 
-        result.formats = try allocator.*.alloc(c.VkSurfaceFormatKHR, format_count);
+        result.formats = try self.allocator.*.alloc(c.VkSurfaceFormatKHR, format_count);
 
         const retrieve_formats_success = c.vkGetPhysicalDeviceSurfaceFormatsKHR(self.physical_device, self.surface, &format_count, result.formats.ptr);
         if (retrieve_formats_success != c.VK_SUCCESS) {
@@ -340,7 +361,7 @@ pub const Instance = struct {
 
         std.debug.print("[Info] Presentation Count: {}\n", .{present_modes});
 
-        result.present_modes = try allocator.*.alloc(c.VkPresentModeKHR, present_modes);
+        result.present_modes = try self.allocator.*.alloc(c.VkPresentModeKHR, present_modes);
 
         get_physical_device_present_modes = c.vkGetPhysicalDeviceSurfacePresentModesKHR(self.physical_device, self.surface, &present_modes, result.present_modes.ptr);
         if (get_physical_device_present_modes != c.VK_SUCCESS) {
@@ -352,10 +373,10 @@ pub const Instance = struct {
         return result;
     }
 
-    fn create_swapchain(self: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
-        const support = try query_swapchain_support(self, allocator);
-        defer allocator.*.free(support.formats);
-        defer allocator.*.free(support.present_modes);
+    fn create_swapchain(self: *Instance) VkAbstractionError!void {
+        const support = try query_swapchain_support(self);
+        defer self.allocator.*.free(support.formats);
+        defer self.allocator.*.free(support.present_modes);
 
         //if (support.present_size > 0 and support.formats_size > 0) {
         var surface_format: c.VkSurfaceFormatKHR = support.formats[0];
@@ -433,7 +454,7 @@ pub const Instance = struct {
                 return VkAbstractionError.GetSwapchainImagesFailed;
             }
 
-            self.swapchain_images = try allocator.*.alloc(c.VkImage, image_count);
+            self.swapchain_images = try self.allocator.*.alloc(c.VkImage, image_count);
             const get_swapchain_images_KHR = c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &image_count, self.swapchain_images.ptr);
 
             if (get_swapchain_images_KHR != c.VK_SUCCESS) {
@@ -447,8 +468,8 @@ pub const Instance = struct {
         }
     }
 
-    fn create_swapchain_image_views(self: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
-        self.swapchain_image_views = try allocator.*.alloc(c.VkImageView, self.swapchain_images.len);
+    fn create_swapchain_image_views(self: *Instance) VkAbstractionError!void {
+        self.swapchain_image_views = try self.allocator.*.alloc(c.VkImageView, self.swapchain_images.len);
         for (0..self.swapchain_images.len) |i| {
             var create_info = c.VkImageViewCreateInfo{
                 .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -477,9 +498,9 @@ pub const Instance = struct {
         }
     }
 
-    fn create_graphics_pipeline(self: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
-        try create_shader_module(self, allocator, "shaders/simple.vert.spv");
-        try create_shader_module(self, allocator, "shaders/simple.frag.spv");
+    fn create_graphics_pipeline(self: *Instance) VkAbstractionError!void {
+        try create_shader_module(self, self.allocator, "shaders/simple.vert.spv");
+        try create_shader_module(self, self.allocator, "shaders/simple.frag.spv");
 
         const vertex_shader_stage = c.VkPipelineShaderStageCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -495,7 +516,7 @@ pub const Instance = struct {
             .pName = "main",
         };
 
-        var shader_stages = std.ArrayList(c.VkPipelineShaderStageCreateInfo).init(allocator.*);
+        var shader_stages = std.ArrayList(c.VkPipelineShaderStageCreateInfo).init(self.allocator.*);
         defer shader_stages.deinit();
 
         try shader_stages.append(vertex_shader_stage);
@@ -512,12 +533,29 @@ pub const Instance = struct {
             .pDynamicStates = &dynamic_state,
         };
 
+        const binding_description = []c.VkVertexInputBindingDescription{
+                .{.binding = 0,
+                .stride = @sizeOf(Vertex),
+                .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,}
+        };
+
+        const attribute_description = []c.VkVertexInputAttributeDescription{
+            .{ .binding = 0, .location = 0, .format = c.VK_FORMAT_R32G32_SFLOAT, .offset = c.offsetof(Vertex, .pos) },
+            .{ .binding = 0, .location = 1, .format = c.VK_FORMAT_R32G32B32_SFLOAT, .offset = c.offsetof(Vertex, .color) },
+        };
+
+        const vertices : []Vertex = .{
+            .{ .pos = .{ -0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
+            .{ .pos = .{ 0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
+            .{ .pos = .{ 0.0, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
+        };
+
         const vertex_input_info = c.VkPipelineVertexInputStateCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-            .vertexBindingDescriptionCount = 0,
-            .pVertexBindingDescriptions = null,
-            .vertexAttributeDescriptionCount = 0,
-            .pVertexAttributeDescriptions = null,
+            .vertexBindingDescriptionCount = binding_description.len,
+            .pVertexBindingDescriptions = binding_description.ptr,
+            .vertexAttributeDescriptionCount = attribute_description.len,
+            .pVertexAttributeDescriptions = attribute_description.ptr,
         };
 
         const assembly_create_info = c.VkPipelineInputAssemblyStateCreateInfo{
@@ -716,8 +754,8 @@ pub const Instance = struct {
         return array;
     }
 
-    fn create_framebuffers(self: *Instance, allocator: *const std.mem.Allocator) VkAbstractionError!void {
-        self.frame_buffers = try allocator.*.alloc(c.VkFramebuffer, self.swapchain_image_views.len);
+    fn create_framebuffers(self: *Instance) VkAbstractionError!void {
+        self.frame_buffers = try self.allocator.*.alloc(c.VkFramebuffer, self.swapchain_image_views.len);
 
         for (self.swapchain_image_views, 0..self.swapchain_image_views.len) |image_view, i| {
             const framebuffer_create_info = c.VkFramebufferCreateInfo{
@@ -750,15 +788,15 @@ pub const Instance = struct {
         }
     }
 
-    fn create_command_buffer(self: *Instance) VkAbstractionError!void {
+    fn create_command_buffers(self: *Instance) VkAbstractionError!void {
         const allocation_info = c.VkCommandBufferAllocateInfo{
             .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             .commandPool = self.command_pool,
             .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = 1,
+            .commandBufferCount = @intCast(self.command_buffers.len),
         };
 
-        if (c.vkAllocateCommandBuffers(self.device, &allocation_info, &self.command_buffer) != c.VK_SUCCESS) {
+        if (c.vkAllocateCommandBuffers(self.device, &allocation_info, self.command_buffers.ptr) != c.VK_SUCCESS) {
             return VkAbstractionError.CommandBufferAllocationFailed;
         }
     }
@@ -830,17 +868,19 @@ pub const Instance = struct {
             .flags = c.VK_FENCE_CREATE_SIGNALED_BIT,
         };
 
-        const success_a = c.vkCreateSemaphore(self.device, &image_available_semaphore_info, null, &self.image_available_semaphore);
-        const success_b = c.vkCreateSemaphore(self.device, &image_completion_semaphore_info, null, &self.image_completion_semaphore);
-        const success_c = c.vkCreateFence(self.device, &in_flight_fence_info, null, &self.in_flight_fence);
+        for (0..self.MAX_CONCURRENT_FRAMES) |i| {
+            const success_a = c.vkCreateSemaphore(self.device, &image_available_semaphore_info, null, &self.image_available_semaphore[i]);
+            const success_b = c.vkCreateSemaphore(self.device, &image_completion_semaphore_info, null, &self.image_completion_semaphore[i]);
+            const success_c = c.vkCreateFence(self.device, &in_flight_fence_info, null, &self.in_flight_fence[i]);
 
-        if (success_a != c.VK_SUCCESS or success_b != c.VK_SUCCESS or success_c != c.VK_SUCCESS) {
-            return VkAbstractionError.CreateSyncObjectsFailed;
+            if (success_a != c.VK_SUCCESS or success_b != c.VK_SUCCESS or success_c != c.VK_SUCCESS) {
+                return VkAbstractionError.CreateSyncObjectsFailed;
+            }
         }
     }
 
-    pub fn draw_frame(self: *Instance) VkAbstractionError!void {
-        const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fence, c.VK_TRUE, std.math.maxInt(u64));
+    pub fn draw_frame(self: *Instance, frame_index: u32) VkAbstractionError!void {
+        const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fence[frame_index], c.VK_TRUE, std.math.maxInt(u64));
 
         if (fence_wait != c.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
@@ -848,26 +888,30 @@ pub const Instance = struct {
 
         var image_index: u32 = 0;
 
-        const acquire_next_image_success = c.vkAcquireNextImageKHR(self.device, self.swapchain, std.math.maxInt(u64), self.image_available_semaphore, null, &image_index);
+        const acquire_next_image_success = c.vkAcquireNextImageKHR(self.device, self.swapchain, std.math.maxInt(u64), self.image_available_semaphore[frame_index], null, &image_index);
 
-        if (acquire_next_image_success != c.VK_SUCCESS) {
+        if (acquire_next_image_success == c.VK_ERROR_OUT_OF_DATE_KHR or acquire_next_image_success == c.VK_SUBOPTIMAL_KHR or self.framebuffer_resized) {
+            try recreate_swapchain(self);
+            self.framebuffer_resized = false;
+            return;
+        } else if (acquire_next_image_success != c.VK_SUCCESS) {
             std.debug.print("[Error] Unable to acquire next swapchain image: {} \n", .{acquire_next_image_success});
             return VkAbstractionError.AcquireNextSwapchainImageFailed;
         }
 
-        const reset_fence_success = c.vkResetFences(self.device, 1, &self.in_flight_fence);
+        const reset_fence_success = c.vkResetFences(self.device, 1, &self.in_flight_fence[frame_index]);
         if (reset_fence_success != c.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
         }
 
-        if (c.vkResetCommandBuffer(self.command_buffer, 0) != c.VK_SUCCESS) {
+        if (c.vkResetCommandBuffer(self.command_buffers[frame_index], 0) != c.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
         }
 
-        try record_command_buffer(self, self.command_buffer, image_index);
+        try record_command_buffer(self, self.command_buffers[frame_index], image_index);
 
         // TODO Not sure if it makes sense to place this here or in the record_command_buffer call
-        const end_recording_success = c.vkEndCommandBuffer(self.command_buffer);
+        const end_recording_success = c.vkEndCommandBuffer(self.command_buffers[frame_index]);
         if (end_recording_success != c.VK_SUCCESS) {
             return VkAbstractionError.EndRecordingFailure;
         }
@@ -885,15 +929,15 @@ pub const Instance = struct {
         const submit_info = c.VkSubmitInfo{
             .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
             .waitSemaphoreCount = 1, //wait_semaphores.len,
-            .pWaitSemaphores = &self.image_available_semaphore, //wait_semaphores.ptr,
+            .pWaitSemaphores = &self.image_available_semaphore[frame_index], //wait_semaphores.ptr,
             .pWaitDstStageMask = &wait_stages,
             .signalSemaphoreCount = 1, //signal_semaphores.len,
-            .pSignalSemaphores = &self.image_completion_semaphore, //signal_semaphores.ptr,
+            .pSignalSemaphores = &self.image_completion_semaphore[frame_index], //signal_semaphores.ptr,
             .commandBufferCount = 1,
-            .pCommandBuffers = &self.command_buffer,
+            .pCommandBuffers = &self.command_buffers[frame_index],
         };
 
-        const queue_submit_success = c.vkQueueSubmit(self.present_queue, 1, &submit_info, self.in_flight_fence);
+        const queue_submit_success = c.vkQueueSubmit(self.present_queue, 1, &submit_info, self.in_flight_fence[frame_index]);
         if (queue_submit_success != c.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
         }
@@ -903,7 +947,7 @@ pub const Instance = struct {
         const present_info = c.VkPresentInfoKHR{
             .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &self.image_completion_semaphore,
+            .pWaitSemaphores = &self.image_completion_semaphore[frame_index],
             .swapchainCount = 1,
             .pSwapchains = &self.swapchain, //swapchains,
             .pImageIndices = &image_index,
@@ -915,14 +959,56 @@ pub const Instance = struct {
         }
     }
 
-    /// Free all of our vulkan state
-    pub fn cleanup(self: *Instance, allocator: *const std.mem.Allocator) void {
-        c.vkDestroySemaphore(self.device, self.image_available_semaphore, null);
-        c.vkDestroySemaphore(self.device, self.image_completion_semaphore, null);
-        c.vkDestroyFence(self.device, self.in_flight_fence, null);
+    fn cleanup_swapchain(self: *Instance) void {
+        for (self.frame_buffers) |i| {
+            c.vkDestroyFramebuffer(self.device, i, null);
+        }
+        self.allocator.*.free(self.frame_buffers);
 
-        c.vkFreeCommandBuffers(self.device, self.command_pool, 1, &self.command_buffer);
+        for (self.swapchain_image_views) |image_view| {
+            c.vkDestroyImageView(self.device, image_view, null);
+        }
+        self.allocator.*.free(self.swapchain_image_views);
+        c.vkDestroySwapchainKHR(self.device, self.swapchain, null);
+        self.allocator.*.free(self.swapchain_images);
+    }
+
+    pub fn recreate_swapchain(self: *Instance) VkAbstractionError!void {
+        var width: i32 = 0;
+        var height: i32 = 0;
+        c.glfwGetFramebufferSize(self.window, &width, &height);
+        while (width == 0 or height == 0) {
+            c.glfwGetFramebufferSize(self.window, &width, &height);
+            c.glfwWaitEvents();
+        }
+
+        _ = c.vkDeviceWaitIdle(self.device);
+
+        cleanup_swapchain(self);
+
+        try create_swapchain(self);
+        try create_swapchain_image_views(self);
+        try create_framebuffers(self);
+    }
+
+    fn create_vertex_buffer(self : *Instance) VkAbstractionError!void {
+    }
+
+    /// This should be called before the end of the main loop so all zig allocations can be deferred
+    /// Free all of our vulkan state
+    pub fn cleanup(self: *Instance) void {
+        for (0..self.MAX_CONCURRENT_FRAMES) |i| {
+            c.vkDestroySemaphore(self.device, self.image_available_semaphore[i], null);
+            c.vkDestroySemaphore(self.device, self.image_completion_semaphore[i], null);
+            c.vkDestroyFence(self.device, self.in_flight_fence[i], null);
+        }
+
+        c.vkFreeCommandBuffers(self.device, self.command_pool, self.MAX_CONCURRENT_FRAMES, self.command_buffers.ptr);
+        self.allocator.free(self.command_buffers);
+
         c.vkDestroyCommandPool(self.device, self.command_pool, null);
+
+        cleanup_swapchain(self);
 
         c.vkDestroyPipeline(self.device, self.graphics_pipeline, null);
         c.vkDestroyRenderPass(self.device, self.renderpass, null);
@@ -933,17 +1019,6 @@ pub const Instance = struct {
         }
         self.shader_modules.deinit();
 
-        for (self.frame_buffers) |i| {
-            c.vkDestroyFramebuffer(self.device, i, null);
-        }
-        allocator.*.free(self.frame_buffers);
-
-        for (self.swapchain_image_views) |image_view| {
-            c.vkDestroyImageView(self.device, image_view, null);
-        }
-        allocator.*.free(self.swapchain_image_views);
-        c.vkDestroySwapchainKHR(self.device, self.swapchain, null);
-        allocator.*.free(self.swapchain_images);
         c.vkDestroySurfaceKHR(self.vk_instance, self.surface, null);
         c.vkDestroyDevice(self.device, null);
         c.vkDestroyInstance(self.vk_instance, null);

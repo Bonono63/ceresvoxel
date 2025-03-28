@@ -31,6 +31,10 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("vulkan");
     //exe.linkSystemLibrary("pthread");
 
+    exe.addIncludePath(b.path("cglm-0.9.6/include"));
+    exe.addLibraryPath(b.path("cglm-0.9.6/build"));
+    exe.linkSystemLibrary("cglm");
+
     b.installArtifact(exe);
 
     // This *creates* a Run step in the build graph, to be executed when another
