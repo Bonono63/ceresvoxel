@@ -533,28 +533,24 @@ pub const Instance = struct {
             .pDynamicStates = &dynamic_state,
         };
 
-        const binding_description = []c.VkVertexInputBindingDescription{
-                .{.binding = 0,
-                .stride = @sizeOf(Vertex),
-                .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,}
+        var binding_description: []c.VkVertexInputBindingDescription = undefined;
+        binding_description = try self.allocator.*.alloc(c.VkVertexInputBindingDescription, 1);
+        binding_description[0] = .{
+            .binding = 0,
+            .stride = @sizeOf(Vertex),
+            .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,
         };
 
-        const attribute_description = []c.VkVertexInputAttributeDescription{
-            .{ .binding = 0, .location = 0, .format = c.VK_FORMAT_R32G32_SFLOAT, .offset = c.offsetof(Vertex, .pos) },
-            .{ .binding = 0, .location = 1, .format = c.VK_FORMAT_R32G32B32_SFLOAT, .offset = c.offsetof(Vertex, .color) },
-        };
-
-        const vertices : []Vertex = .{
-            .{ .pos = .{ -0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
-            .{ .pos = .{ 0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
-            .{ .pos = .{ 0.0, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
-        };
+        var attribute_description: []c.VkVertexInputAttributeDescription = undefined;
+        attribute_description = try self.allocator.*.alloc(c.VkVertexInputAttributeDescription, 2);
+        attribute_description[0] = .{ .binding = 0, .location = 0, .format = c.VK_FORMAT_R32G32_SFLOAT, .offset = 0 };
+        attribute_description[1] = .{ .binding = 0, .location = 1, .format = c.VK_FORMAT_R32G32B32_SFLOAT, .offset = 8 };
 
         const vertex_input_info = c.VkPipelineVertexInputStateCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-            .vertexBindingDescriptionCount = binding_description.len,
+            .vertexBindingDescriptionCount = @intCast(binding_description.len),
             .pVertexBindingDescriptions = binding_description.ptr,
-            .vertexAttributeDescriptionCount = attribute_description.len,
+            .vertexAttributeDescriptionCount = @intCast(attribute_description.len),
             .pVertexAttributeDescriptions = attribute_description.ptr,
         };
 
@@ -879,7 +875,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn draw_frame(self: *Instance, frame_index: u32) VkAbstractionError!void {
+    pub fn draw_frame(self: *Instance, frame_index: u32, vertex_buffer : *c.VkBuffer) VkAbstractionError!void {
         const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fence[frame_index], c.VK_TRUE, std.math.maxInt(u64));
 
         if (fence_wait != c.VK_SUCCESS) {
@@ -989,9 +985,6 @@ pub const Instance = struct {
         try create_swapchain(self);
         try create_swapchain_image_views(self);
         try create_framebuffers(self);
-    }
-
-    fn create_vertex_buffer(self : *Instance) VkAbstractionError!void {
     }
 
     /// This should be called before the end of the main loop so all zig allocations can be deferred

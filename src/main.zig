@@ -22,6 +22,39 @@ pub fn main() !void {
     _ = c.glfwSetWindowUserPointer(instance.window, &instance);
     _ = c.glfwSetFramebufferSizeCallback(instance.window, window_resize_callback);
 
+    const vertices: []vulkan.Vertex = .{
+        .{ .pos = .{ -0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
+        .{ .pos = .{ 0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
+        .{ .pos = .{ 0.0, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
+    };
+
+    var vertex_buffer: c.VkBuffer = undefined;
+    const vertex_buffer_info = c.VkBufferCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = vertices.len * @sizeOf(vulkan.Vertex),
+        .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .sharing = c.VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    const create_vertex_buffer = c.VkCreateBuffer(instance.device, &vertex_buffer_info, null, &vertex_buffer);
+    if (create_vertex_buffer != c.VK_SUCCESS) {
+        std.debug.print("poopy \n", .{});
+    }
+
+    var mem_requirements: c.VkMemoryRequirements = undefined;
+    if (c.vkGetBufferMemoryRequirements(instance.device, vertex_buffer, &mem_requirements) != c.VK_SUCCESS) {
+        std.debug.print("[Error] Unable to retrieve vertex buffer memory requirements\n", .{});
+    }
+
+    var memory_type: u32 = 0;
+
+    for (0..mem_requirements.memoryTypeCount) |i| {
+        if (type_filter & (1 << i))
+        {
+            memory_type = i;
+        }
+    }
+
     var frame_count: u64 = 0;
     var current_frame_index: u32 = 0;
 
@@ -42,6 +75,7 @@ pub fn main() !void {
     }
 
     _ = c.vkDeviceWaitIdle(instance.device);
+    c.VkDestroyBuffer(instance.device, vertex_buffer, null);
     instance.cleanup();
 }
 
