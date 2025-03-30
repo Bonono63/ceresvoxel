@@ -797,7 +797,7 @@ pub const Instance = struct {
         }
     }
 
-    fn record_command_buffer(self: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32, buffers: []c.VkBuffer) VkAbstractionError!void {
+    fn record_command_buffer(self: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32, buffers: []c.VkBuffer, vertex_count: u32) VkAbstractionError!void {
         const begin_info = c.VkCommandBufferBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .flags = 0,
@@ -827,8 +827,8 @@ pub const Instance = struct {
 
         c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline);
 
-        const offsets: []c.VkDeviceSize = .{};
-        c.vkCmdBindVertexBuffers(command_buffer, 0, 1, buffers[0], offsets);
+        const offsets: [1]c.VkDeviceSize = .{0};
+        c.vkCmdBindVertexBuffers(command_buffer, 0, 1, buffers.ptr, &offsets);
 
         const viewport = c.VkViewport{
             .x = 0.0,
@@ -848,7 +848,7 @@ pub const Instance = struct {
 
         c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-        c.vkCmdDraw(command_buffer, 3, 1, 0, 0);
+        c.vkCmdDraw(command_buffer, vertex_count, 1, 0, 0);
 
         c.vkCmdEndRenderPass(command_buffer);
     }
@@ -878,7 +878,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn draw_frame(self: *Instance, frame_index: u32, buffers: []c.VkBuffer) VkAbstractionError!void {
+    pub fn draw_frame(self: *Instance, frame_index: u32, buffers: []c.VkBuffer, vertex_count: u32) VkAbstractionError!void {
         const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fence[frame_index], c.VK_TRUE, std.math.maxInt(u64));
 
         if (fence_wait != c.VK_SUCCESS) {
@@ -907,7 +907,7 @@ pub const Instance = struct {
             return VkAbstractionError.OutOfMemory;
         }
 
-        try record_command_buffer(self, self.command_buffers[frame_index], image_index, buffers);
+        try record_command_buffer(self, self.command_buffers[frame_index], image_index, buffers, vertex_count);
 
         // TODO Not sure if it makes sense to place this here or in the record_command_buffer call
         const end_recording_success = c.vkEndCommandBuffer(self.command_buffers[frame_index]);

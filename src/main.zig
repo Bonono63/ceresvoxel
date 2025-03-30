@@ -22,10 +22,14 @@ pub fn main() !void {
     _ = c.glfwSetWindowUserPointer(instance.window, &instance);
     _ = c.glfwSetFramebufferSizeCallback(instance.window, window_resize_callback);
 
-    const vertices: [3]vulkan.Vertex = .{
-        .{ .pos = .{ -0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
-        .{ .pos = .{ 0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
-        .{ .pos = .{ 0.0, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
+    const vertices: [6]vulkan.Vertex = .{
+        .{ .pos = .{ -0.5, -0.5 }, .color = .{ 1.0, 1.0, 1.0 } },
+        .{ .pos = .{ 0.5, -0.5 }, .color = .{ 0.0, 1.0, 0.0 } },
+        .{ .pos = .{ 0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
+
+        .{ .pos = .{ 0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
+        .{ .pos = .{ -0.5, 0.5 }, .color = .{ 1.0, 0.0, 0.0 } },
+        .{ .pos = .{ -0.5, -0.5 }, .color = .{ 1.0, 1.0, 1.0 } },
     };
 
     var vertex_buffer: c.VkBuffer = undefined;
@@ -52,12 +56,19 @@ pub fn main() !void {
     const properties: u32 = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     var memory_type: u32 = 0;
 
+    std.debug.print("memory type count: {} \n", .{mem_properties.memoryTypeCount});
+
     for (0..mem_properties.memoryTypeCount) |i| {
-        if (mem_requirements.memoryTypeBits & (@as(u32, 1) << @intCast(i)) == 0 and mem_properties.memoryTypes[i].propertyFlags & properties == properties) {
+        // TODO this additional line checking memory TypeBits is in vulkan tutorial,
+        // but I'm not sure it really works good...
+        // mem_requirements.memoryTypeBits & (@as(u32, 1) << @intCast(i)) == 0
+        if ((mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
             memory_type = @intCast(i);
             break;
         }
     }
+
+    std.debug.print("memory type: {b}\n", .{memory_type});
 
     const vertex_buffer_allocation_info: c.VkMemoryAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -84,9 +95,9 @@ pub fn main() !void {
         c.vkUnmapMemory(instance.device, vertex_device_memory);
     }
 
-    const buffers: [1]c.VkBuffer = .{
-        vertex_buffer,
-    };
+    var buffers: []c.VkBuffer = try allocator.alloc(c.VkBuffer, 1);
+    defer allocator.free(buffers);
+    buffers[0] = vertex_buffer;
 
     var frame_count: u64 = 0;
     var current_frame_index: u32 = 0;
@@ -101,7 +112,7 @@ pub fn main() !void {
         previous_frame_time = current_time;
 
         std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms {}   \r", .{ w, xpos, ypos, (frame_delta * 100.0), frame_count });
-        try instance.draw_frame(current_frame_index, buffers);
+        try instance.draw_frame(current_frame_index, buffers, vertices.len);
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
