@@ -41,6 +41,7 @@ pub const VkAbstractionError = error{
     EndRecordingFailure,
     AcquireNextSwapchainImageFailed,
     PresentationFailure,
+    DescriptorSetCreationFailure,
 };
 
 // These parameters are the minimum required for what we want to do
@@ -86,6 +87,8 @@ pub const Instance = struct {
     surface: c.VkSurfaceKHR = undefined,
 
     physical_device: c.VkPhysicalDevice = undefined,
+    mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined,
+
     device: c.VkDevice = undefined,
     queue_family_index: u32 = 0,
     present_queue: c.VkQueue = undefined,
@@ -100,10 +103,16 @@ pub const Instance = struct {
 
     shader_modules: std.ArrayList(c.VkShaderModule) = undefined,
 
+    descriptor_set_layout: c.VkDescriptorSetLayout = undefined,
     pipeline_layout: c.VkPipelineLayout = undefined,
     renderpass: c.VkRenderPass = undefined,
     graphics_pipeline: c.VkPipeline = undefined,
     frame_buffers: []c.VkFramebuffer = undefined,
+
+    vertex_buffers: []c.VkBuffer = undefined,
+    ubo_buffers: []c.VkBuffer = undefined,
+
+    device_memory_allocations: []c.VkDeviceMemory = undefined,
 
     command_pool: c.VkCommandPool = undefined,
     command_buffers: []c.VkCommandBuffer = undefined,
@@ -120,6 +129,7 @@ pub const Instance = struct {
         try window_setup(self, application_name, engine_name);
         try create_surface(self);
         try pick_physical_device(self);
+        c.vkGetPhysicalDeviceMemoryProperties(self.physical_device, &self.mem_properties);
         try create_present_queue(self, self.REQUIRE_FAMILIES);
         try create_swapchain(self);
         try create_swapchain_image_views(self);
@@ -221,8 +231,8 @@ pub const Instance = struct {
         const create_info = c.VkInstanceCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
             .pApplicationInfo = &application_info,
-            .enabledLayerCount = @intCast(validation_layers.len),
-            .ppEnabledLayerNames = &validation_layers,
+            .enabledLayerCount = if (std.debug.runtime_safety) @intCast(validation_layers.len) else 0,
+            .ppEnabledLayerNames = if (std.debug.runtime_safety) &validation_layers else null,
             .enabledExtensionCount = @intCast(extensions_arraylist.items.len),
             .ppEnabledExtensionNames = extensions_arraylist.items.ptr,
         };
@@ -380,6 +390,8 @@ pub const Instance = struct {
 
         //if (support.present_size > 0 and support.formats_size > 0) {
         var surface_format: c.VkSurfaceFormatKHR = support.formats[0];
+        // TODO Come up with a solution for why adding 1 to the image count causes a serious memory leak (Nvidia Linux Proprietary driver only?)...
+        // Time between frames significantly decreases when allocating at least one more image than the minimum on some systems
         var image_count: u32 = support.capabilities.minImageCount + 1;
         var format_index: u32 = 0;
 
@@ -619,11 +631,29 @@ pub const Instance = struct {
             .pAttachments = &color_blending_attachment_create_info,
         };
 
+        const layout_binding = c.VkDescriptorSetLayoutBinding{
+            .binding = 0,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
+            .pImmutableSamplers = null,
+        };
+
+        const layout_info = c.VkDescriptorSetLayoutCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = 1,
+            .pBindings = &layout_binding,
+        };
+
+        if (c.vkCreateDescriptorSetLayout(self.device, &layout_info, null, &self.descriptor_set_layout) != c.VK_SUCCESS) {
+            return VkAbstractionError.DescriptorSetCreationFailure;
+        }
+
         // This is for shader uniforms
         const pipeline_layout_create_info = c.VkPipelineLayoutCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            .setLayoutCount = 0,
-            .pSetLayouts = null,
+            .setLayoutCount = 1,
+            .pSetLayouts = &self.descriptor_set_layout,
             .pushConstantRangeCount = 0,
             .pPushConstantRanges = null,
         };

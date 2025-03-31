@@ -10,6 +10,8 @@ var ypos: f64 = 0.0;
 var w: bool = false;
 
 pub fn main() !void {
+    std.debug.print("Runtime Safety: {}\n", .{std.debug.runtime_safety});
+
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     const allocator = arena.allocator();
 
@@ -50,19 +52,16 @@ pub fn main() !void {
     var mem_requirements: c.VkMemoryRequirements = undefined;
     c.vkGetBufferMemoryRequirements(instance.device, vertex_buffer, &mem_requirements);
 
-    var mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
-    c.vkGetPhysicalDeviceMemoryProperties(instance.physical_device, &mem_properties);
-
     const properties: u32 = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     var memory_type: u32 = 0;
 
-    std.debug.print("memory type count: {} \n", .{mem_properties.memoryTypeCount});
+    std.debug.print("memory type count: {} \n", .{instance.mem_properties.memoryTypeCount});
 
-    for (0..mem_properties.memoryTypeCount) |i| {
+    for (0..instance.mem_properties.memoryTypeCount) |i| {
         // TODO this additional line checking memory TypeBits is in vulkan tutorial,
         // but I'm not sure it really works good...
         // mem_requirements.memoryTypeBits & (@as(u32, 1) << @intCast(i)) == 0
-        if ((mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+        if ((instance.mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
             memory_type = @intCast(i);
             break;
         }
@@ -99,6 +98,12 @@ pub fn main() !void {
     defer allocator.free(buffers);
     buffers[0] = vertex_buffer;
 
+    //const object_transform = struct {
+    //    model : c.mat4,
+    //    view : c.mat4,
+    //    projection : c.mat4,
+    //};
+
     var frame_count: u64 = 0;
     var current_frame_index: u32 = 0;
 
@@ -119,6 +124,7 @@ pub fn main() !void {
     }
 
     _ = c.vkDeviceWaitIdle(instance.device);
+    c.vkFreeMemory(instance.device, vertex_device_memory, null);
     c.vkDestroyBuffer(instance.device, vertex_buffer, null);
     instance.cleanup();
 }
