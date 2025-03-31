@@ -42,6 +42,8 @@ pub const VkAbstractionError = error{
     AcquireNextSwapchainImageFailed,
     PresentationFailure,
     DescriptorSetCreationFailure,
+    DeviceBufferAllocationFailure,
+    DeviceBufferBindFailure,
 };
 
 // These parameters are the minimum required for what we want to do
@@ -69,11 +71,11 @@ pub const Vertex = struct {
     color: c.vec3,
 };
 
-pub const Mesh = struct {
-    vertices: []Vertex = undefined,
-    binding_description: []c.VkVertexInputBindingDescription = undefined,
-    attribute_description: []c.VkVertexInputAttributeDescription = undefined,
-};
+//pub const Mesh = struct {
+//    vertices: []Vertex = undefined,
+//    binding_description: []c.VkVertexInputBindingDescription = undefined,
+//    attribute_description: []c.VkVertexInputAttributeDescription = undefined,
+//};
 
 // The vulkan/render state
 pub const Instance = struct {
@@ -112,8 +114,8 @@ pub const Instance = struct {
     vertex_buffers: []c.VkBuffer = undefined,
     ubo_buffers: []c.VkBuffer = undefined,
 
-    vertex_buffer_MMIOs: []*void = undefined,
-    ubo_buffer_MMIOs: []*void = undefined,
+    vertex_buffer_MMIOs: []?*anyopaque = undefined,
+    ubo_buffer_MMIOs: []?*anyopaque = undefined,
 
     device_memory_allocations: std.ArrayList(c.VkDeviceMemory) = undefined,
 
@@ -134,16 +136,10 @@ pub const Instance = struct {
         try create_present_queue(self, self.REQUIRE_FAMILIES);
         try create_swapchain(self);
         try create_swapchain_image_views(self);
-
-        // TODO this can be done prior to this function and we can defer its deinitialization
-
         try create_graphics_pipeline(self);
         try create_framebuffers(self);
         try create_command_pool(self);
-
-        //TODO move these concurrent frame based allocations to before this function in the main loop (we can use defer :D)
         try create_command_buffers(self);
-
         try create_sync_objects(self);
     }
 
@@ -162,6 +158,7 @@ pub const Instance = struct {
         _ = c.glfwSetErrorCallback(glfw_error_callback);
     }
 
+    // TODO move the GLFW code out and make this a vulkan only function
     /// Creates our Vulkan instance and GLFW window
     fn window_setup(self: *Instance, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
         c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
@@ -332,51 +329,6 @@ pub const Instance = struct {
         }
 
         c.vkGetDeviceQueue(self.device, first_compatible, 0, &self.present_queue);
-    }
-
-    /// The formats returned in swapchain_support must be freed later
-    fn query_swapchain_support(self: *Instance) VkAbstractionError!swapchain_support {
-        var result = swapchain_support{};
-
-        const surface_capabilities_success = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(self.physical_device, self.surface, &result.capabilities);
-        if (surface_capabilities_success != c.VK_SUCCESS) {
-            return VkAbstractionError.RetrievePhysicalDeviceSurfaceCapabilitiesFailed;
-        }
-
-        var format_count: u32 = 0;
-        const get_physical_device_surface_formats = c.vkGetPhysicalDeviceSurfaceFormatsKHR(self.physical_device, self.surface, &format_count, null);
-        std.debug.print("[Info] Surface format count: {}\n", .{format_count});
-
-        if (get_physical_device_surface_formats != c.VK_SUCCESS or format_count < 0) {
-            return VkAbstractionError.RetrieveSurfaceFormatFailure;
-        }
-
-        result.formats = try self.allocator.*.alloc(c.VkSurfaceFormatKHR, format_count);
-
-        const retrieve_formats_success = c.vkGetPhysicalDeviceSurfaceFormatsKHR(self.physical_device, self.surface, &format_count, result.formats.ptr);
-        if (retrieve_formats_success != c.VK_SUCCESS) {
-            return VkAbstractionError.RetrieveSurfaceFormatFailure;
-        }
-        //result.formats_size = format_count;
-
-        var present_modes: u32 = 0;
-        var get_physical_device_present_modes = c.vkGetPhysicalDeviceSurfacePresentModesKHR(self.physical_device, self.surface, &present_modes, null);
-        if (get_physical_device_present_modes != c.VK_SUCCESS or present_modes < 0) {
-            return VkAbstractionError.GetPhysicalDevicePresentModesFailure;
-        }
-
-        std.debug.print("[Info] Presentation Count: {}\n", .{present_modes});
-
-        result.present_modes = try self.allocator.*.alloc(c.VkPresentModeKHR, present_modes);
-
-        get_physical_device_present_modes = c.vkGetPhysicalDeviceSurfacePresentModesKHR(self.physical_device, self.surface, &present_modes, result.present_modes.ptr);
-        if (get_physical_device_present_modes != c.VK_SUCCESS) {
-            return VkAbstractionError.GetPhysicalDevicePresentModesFailure;
-        }
-
-        //result.present_size = present_modes;
-
-        return result;
     }
 
     fn create_swapchain(self: *Instance) VkAbstractionError!void {
@@ -753,29 +705,6 @@ pub const Instance = struct {
         try self.shader_modules.append(shader_module);
     }
 
-    /// Creates a 4 byte aligned buffer of any given file, intended for reading SPIR-V binary files
-    fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!std.ArrayListAligned(u32, @sizeOf(u32)) {
-        const file_array = std.fs.cwd().readFileAlloc(allocator.*, file_name, 10000) catch |err| {
-            std.debug.print("[Error] [IO] {}", .{err});
-            return VkAbstractionError.ReadShaderFileFailed;
-        };
-
-        var array = std.ArrayListAligned(u32, @sizeOf(u32)).init(allocator.*);
-
-        std.debug.print("[Info] {s} length: {} divided by 4: {}\n", .{ file_name, file_array.len, file_array.len / 4 });
-
-        if (file_array.len % 4 != 0) {
-            return VkAbstractionError.ShaderFileInvalidFileSize;
-        }
-
-        for (0..file_array.len / 4) |i| {
-            const item: u32 = @as(u32, file_array[i * 4 + 3]) << 24 | @as(u32, file_array[i * 4 + 2]) << 16 | @as(u32, file_array[i * 4 + 1]) << 8 | @as(u32, file_array[i * 4]);
-            try array.append(item);
-        }
-
-        return array;
-    }
-
     fn create_framebuffers(self: *Instance) VkAbstractionError!void {
         self.frame_buffers = try self.allocator.*.alloc(c.VkFramebuffer, self.swapchain_image_views.len);
 
@@ -1016,21 +945,44 @@ pub const Instance = struct {
         try create_framebuffers(self);
     }
 
-    pub fn memory_type_selection(self: *Instance, properties: u32) u32 {
-        for (0..self.mem_properties.memoryTypeCount) |i| {
-            // TODO this additional line checking memory TypeBits is in vulkan tutorial,
-            // but I'm not sure it really works good...
-            // mem_requirements.memoryTypeBits & (@as(u32, 1) << @intCast(i)) == 0
-            if ((self.mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
-                return @intCast(i);
-            }
+    pub fn createBuffer(self: *Instance, size: u32, usage_flags: u32, property_flags: u32, buffer: *c.VkBuffer, device_memory: *c.VkDeviceMemory) VkAbstractionError!u64 {
+        const buffer_info = c.VkBufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = size,
+            .usage = usage_flags,
+            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        };
+
+        if (c.vkCreateBuffer(self.device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
+            // Techinically VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR can also be returned,
+            // but if the program gets this far that shouldn't be the return error.
+            return VkAbstractionError.OutOfMemory;
         }
-        std.debug.print("Unable to find adequate memory type on device with flags: {}\n", .{properties});
-        return 0;
+
+        var mem_requirements: c.VkMemoryRequirements = undefined;
+        c.vkGetBufferMemoryRequirements(self.device, buffer.*, &mem_requirements);
+
+        const memory_type: u32 = memory_type_selection(self, property_flags);
+
+        const buffer_allocation_info: c.VkMemoryAllocateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            .allocationSize = mem_requirements.size,
+            .memoryTypeIndex = memory_type,
+        };
+
+        if (c.vkAllocateMemory(self.device, &buffer_allocation_info, null, device_memory) != c.VK_SUCCESS) {
+            return VkAbstractionError.DeviceBufferAllocationFailure;
+        }
+
+        if (c.vkBindBufferMemory(self.device, buffer.*, device_memory.*, 0) != c.VK_SUCCESS) {
+            return VkAbstractionError.DeviceBufferBindFailure;
+        }
+
+        return mem_requirements.size;
     }
 
-    /// This should be called before the end of the main loop so all zig allocations can be deferred
-    /// Free all of our vulkan state
+    /// Frees all Vulkan state
+    /// All zig allocations should be deferred to after this function is called
     pub fn cleanup(self: *Instance) void {
         for (0..self.MAX_CONCURRENT_FRAMES) |i| {
             c.vkDestroySemaphore(self.device, self.image_available_semaphores[i], null);
@@ -1061,6 +1013,87 @@ pub const Instance = struct {
         c.glfwTerminate();
     }
 };
+
+pub fn memory_type_selection(self: *Instance, properties: u32) u32 {
+    for (0..self.mem_properties.memoryTypeCount) |i| {
+        // TODO this additional line checking memory TypeBits is in vulkan tutorial,
+        // but I'm not sure it really works good...
+        // mem_requirements.memoryTypeBits & (@as(u32, 1) << @intCast(i)) == 0
+        if ((self.mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return @intCast(i);
+        }
+    }
+    std.debug.print("Unable to find adequate memory type on device with flags: {}\n", .{properties});
+    return 0;
+}
+
+/// Creates a 4 byte aligned buffer of any given file, intended for reading SPIR-V binary files
+fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!std.ArrayListAligned(u32, @sizeOf(u32)) {
+    const file_array = std.fs.cwd().readFileAlloc(allocator.*, file_name, 10000) catch |err| {
+        std.debug.print("[Error] [IO] {}", .{err});
+        return VkAbstractionError.ReadShaderFileFailed;
+    };
+
+    var array = std.ArrayListAligned(u32, @sizeOf(u32)).init(allocator.*);
+
+    std.debug.print("[Info] {s} length: {} divided by 4: {}\n", .{ file_name, file_array.len, file_array.len / 4 });
+
+    if (file_array.len % 4 != 0) {
+        return VkAbstractionError.ShaderFileInvalidFileSize;
+    }
+
+    for (0..file_array.len / 4) |i| {
+        const item: u32 = @as(u32, file_array[i * 4 + 3]) << 24 | @as(u32, file_array[i * 4 + 2]) << 16 | @as(u32, file_array[i * 4 + 1]) << 8 | @as(u32, file_array[i * 4]);
+        try array.append(item);
+    }
+
+    return array;
+}
+
+/// The formats returned in swapchain_support must be freed later
+fn query_swapchain_support(self: *Instance) VkAbstractionError!swapchain_support {
+    var result = swapchain_support{};
+
+    const surface_capabilities_success = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(self.physical_device, self.surface, &result.capabilities);
+    if (surface_capabilities_success != c.VK_SUCCESS) {
+        return VkAbstractionError.RetrievePhysicalDeviceSurfaceCapabilitiesFailed;
+    }
+
+    var format_count: u32 = 0;
+    const get_physical_device_surface_formats = c.vkGetPhysicalDeviceSurfaceFormatsKHR(self.physical_device, self.surface, &format_count, null);
+    std.debug.print("[Info] Surface format count: {}\n", .{format_count});
+
+    if (get_physical_device_surface_formats != c.VK_SUCCESS or format_count < 0) {
+        return VkAbstractionError.RetrieveSurfaceFormatFailure;
+    }
+
+    result.formats = try self.allocator.*.alloc(c.VkSurfaceFormatKHR, format_count);
+
+    const retrieve_formats_success = c.vkGetPhysicalDeviceSurfaceFormatsKHR(self.physical_device, self.surface, &format_count, result.formats.ptr);
+    if (retrieve_formats_success != c.VK_SUCCESS) {
+        return VkAbstractionError.RetrieveSurfaceFormatFailure;
+    }
+    //result.formats_size = format_count;
+
+    var present_modes: u32 = 0;
+    var get_physical_device_present_modes = c.vkGetPhysicalDeviceSurfacePresentModesKHR(self.physical_device, self.surface, &present_modes, null);
+    if (get_physical_device_present_modes != c.VK_SUCCESS or present_modes < 0) {
+        return VkAbstractionError.GetPhysicalDevicePresentModesFailure;
+    }
+
+    std.debug.print("[Info] Presentation Count: {}\n", .{present_modes});
+
+    result.present_modes = try self.allocator.*.alloc(c.VkPresentModeKHR, present_modes);
+
+    get_physical_device_present_modes = c.vkGetPhysicalDeviceSurfacePresentModesKHR(self.physical_device, self.surface, &present_modes, result.present_modes.ptr);
+    if (get_physical_device_present_modes != c.VK_SUCCESS) {
+        return VkAbstractionError.GetPhysicalDevicePresentModesFailure;
+    }
+
+    //result.present_size = present_modes;
+
+    return result;
+}
 
 pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) void {
     std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });

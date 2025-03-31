@@ -58,65 +58,38 @@ pub fn main() !void {
         .{ .pos = .{ -0.5, -0.5 }, .color = .{ 1.0, 1.0, 1.0 } },
     };
 
-    var vertex_buffer: c.VkBuffer = undefined;
+    instance.vertex_buffers = try instance.allocator.*.alloc(c.VkBuffer, 1);
+    defer allocator.free(instance.vertex_buffers);
+
+    //    var vertex_buffer: c.VkBuffer = undefined;
     var vertex_device_memory: c.VkDeviceMemory = undefined;
 
-    const vertex_buffer_info = c.VkBufferCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = vertices.len * @sizeOf(vulkan.Vertex),
-        .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-    };
-
-    const create_vertex_buffer = c.vkCreateBuffer(instance.device, &vertex_buffer_info, null, &vertex_buffer);
-    if (create_vertex_buffer != c.VK_SUCCESS) {
-        std.debug.print("poopy \n", .{});
-    }
-
-    var mem_requirements: c.VkMemoryRequirements = undefined;
-    c.vkGetBufferMemoryRequirements(instance.device, vertex_buffer, &mem_requirements);
-
-    const properties: u32 = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    const memory_type: u32 = instance.memory_type_selection(properties);
-
-    std.debug.print("memory type count: {} \n", .{instance.mem_properties.memoryTypeCount});
-
-    std.debug.print("memory type: {b}\n", .{memory_type});
-
-    const vertex_buffer_allocation_info: c.VkMemoryAllocateInfo = .{
-        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize = mem_requirements.size,
-        .memoryTypeIndex = memory_type,
-    };
-
-    if (c.vkAllocateMemory(instance.device, &vertex_buffer_allocation_info, null, &vertex_device_memory) != c.VK_SUCCESS) {
-        std.debug.print("Unable to allocate vertex buffer memory on device\n", .{});
-    }
-
-    if (c.vkBindBufferMemory(instance.device, vertex_buffer, vertex_device_memory, 0) != c.VK_SUCCESS) {
-        std.debug.print("Unable to bind vertex memory buffer\n", .{});
-    }
-
-    //TODO free memory allocated in these buffers and on the device...
+    const buffer_size: u64 = try instance.createBuffer(vertices.len * @sizeOf(vulkan.Vertex), c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &instance.vertex_buffers[0], &vertex_device_memory);
 
     // We copy the data over once?
-    var data: ?*anyopaque = undefined;
-    if (c.vkMapMemory(instance.device, vertex_device_memory, 0, vertex_buffer_info.size, 0, &data) != c.VK_SUCCESS) {
+    var vertex_mmio: ?*anyopaque = undefined;
+    if (c.vkMapMemory(instance.device, vertex_device_memory, 0, buffer_size, 0, &vertex_mmio) != c.VK_SUCCESS) {
         std.debug.print("Unable to map device memory to CPU memory\n", .{});
     } else {
-        @memcpy(@as([*]vulkan.Vertex, @ptrCast(@alignCast(data))), &vertices);
+        @memcpy(@as([*]vulkan.Vertex, @ptrCast(@alignCast(vertex_mmio))), &vertices);
         c.vkUnmapMemory(instance.device, vertex_device_memory);
     }
-
-    var buffers: []c.VkBuffer = try allocator.alloc(c.VkBuffer, 1);
-    defer allocator.free(buffers);
-    buffers[0] = vertex_buffer;
 
     //const object_transform = struct {
     //    model : c.mat4,
     //    view : c.mat4,
     //    projection : c.mat4,
     //};
+    //
+    //var ubo_buffers : [instance.MAX_CONCURRENT_FRAMES]c.VkBuffer = undefined;
+    //const device_size :[instance.MAX_CONCURRENT_FRAMES]c.VkDeviceSize = @sizeOf(object_transform);
+
+    //var ubo_device_memory : [instance.MAX_CONCURRENT_FRAMES]c.VkDeviceMemory = undefined;
+    //var ubo_mmio : [instance.MAX_CONCURRENT_FRAMES]?*anyopaque = undefined;
+
+    //for (0..instance.MAX_CONCURRENT_FRAMES) |i| {
+    //    c.createBuffer();
+    //}
 
     var frame_count: u64 = 0;
     var current_frame_index: u32 = 0;
@@ -131,7 +104,7 @@ pub fn main() !void {
         previous_frame_time = current_time;
 
         std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms {}   \r", .{ w, xpos, ypos, (frame_delta * 100.0), frame_count });
-        try instance.draw_frame(current_frame_index, buffers, vertices.len);
+        try instance.draw_frame(current_frame_index, instance.vertex_buffers, vertices.len);
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
@@ -139,7 +112,9 @@ pub fn main() !void {
 
     _ = c.vkDeviceWaitIdle(instance.device);
     c.vkFreeMemory(instance.device, vertex_device_memory, null);
-    c.vkDestroyBuffer(instance.device, vertex_buffer, null);
+    for (instance.vertex_buffers) |buffer| {
+        c.vkDestroyBuffer(instance.device, buffer, null);
+    }
     instance.cleanup();
 }
 
