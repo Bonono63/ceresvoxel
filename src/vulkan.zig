@@ -78,9 +78,9 @@ pub const Mesh = struct {
 // The vulkan/render state
 pub const Instance = struct {
     REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
-    MAX_CONCURRENT_FRAMES: u32 = 2,
+    MAX_CONCURRENT_FRAMES: u32,
 
-    allocator: *const std.mem.Allocator = undefined,
+    allocator: *const std.mem.Allocator,
 
     vk_instance: c.VkInstance = undefined,
     window: *c.GLFWwindow = undefined,
@@ -112,19 +112,20 @@ pub const Instance = struct {
     vertex_buffers: []c.VkBuffer = undefined,
     ubo_buffers: []c.VkBuffer = undefined,
 
-    device_memory_allocations: []c.VkDeviceMemory = undefined,
+    vertex_buffer_MMIOs: []*void = undefined,
+    ubo_buffer_MMIOs: []*void = undefined,
+
+    device_memory_allocations: std.ArrayList(c.VkDeviceMemory) = undefined,
 
     command_pool: c.VkCommandPool = undefined,
     command_buffers: []c.VkCommandBuffer = undefined,
 
-    image_available_semaphore: []c.VkSemaphore = undefined,
-    image_completion_semaphore: []c.VkSemaphore = undefined,
-    in_flight_fence: []c.VkFence = undefined,
+    image_available_semaphores: []c.VkSemaphore = undefined,
+    image_completion_semaphores: []c.VkSemaphore = undefined,
+    in_flight_fences: []c.VkFence = undefined,
 
     /// Initializes the general state of Vulkan and GLFW for our rendering
-    pub fn initialize_state(self: *Instance, application_name: []const u8, engine_name: []const u8, allocator: *const std.mem.Allocator) VkAbstractionError!void {
-        self.allocator = allocator;
-
+    pub fn initialize_state(self: *Instance, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
         try glfw_initialization();
         try window_setup(self, application_name, engine_name);
         try create_surface(self);
@@ -135,19 +136,14 @@ pub const Instance = struct {
         try create_swapchain_image_views(self);
 
         // TODO this can be done prior to this function and we can defer its deinitialization
-        self.shader_modules = std.ArrayList(c.VkShaderModule).init(self.allocator.*);
 
         try create_graphics_pipeline(self);
         try create_framebuffers(self);
         try create_command_pool(self);
 
         //TODO move these concurrent frame based allocations to before this function in the main loop (we can use defer :D)
-        self.command_buffers = try allocator.alloc(c.VkCommandBuffer, self.MAX_CONCURRENT_FRAMES);
         try create_command_buffers(self);
 
-        self.image_available_semaphore = try self.allocator.alloc(c.VkSemaphore, self.MAX_CONCURRENT_FRAMES);
-        self.image_completion_semaphore = try self.allocator.alloc(c.VkSemaphore, self.MAX_CONCURRENT_FRAMES);
-        self.in_flight_fence = try self.allocator.alloc(c.VkFence, self.MAX_CONCURRENT_FRAMES);
         try create_sync_objects(self);
     }
 
@@ -898,9 +894,9 @@ pub const Instance = struct {
         };
 
         for (0..self.MAX_CONCURRENT_FRAMES) |i| {
-            const success_a = c.vkCreateSemaphore(self.device, &image_available_semaphore_info, null, &self.image_available_semaphore[i]);
-            const success_b = c.vkCreateSemaphore(self.device, &image_completion_semaphore_info, null, &self.image_completion_semaphore[i]);
-            const success_c = c.vkCreateFence(self.device, &in_flight_fence_info, null, &self.in_flight_fence[i]);
+            const success_a = c.vkCreateSemaphore(self.device, &image_available_semaphore_info, null, &self.image_available_semaphores[i]);
+            const success_b = c.vkCreateSemaphore(self.device, &image_completion_semaphore_info, null, &self.image_completion_semaphores[i]);
+            const success_c = c.vkCreateFence(self.device, &in_flight_fence_info, null, &self.in_flight_fences[i]);
 
             if (success_a != c.VK_SUCCESS or success_b != c.VK_SUCCESS or success_c != c.VK_SUCCESS) {
                 return VkAbstractionError.CreateSyncObjectsFailed;
@@ -909,7 +905,7 @@ pub const Instance = struct {
     }
 
     pub fn draw_frame(self: *Instance, frame_index: u32, buffers: []c.VkBuffer, vertex_count: u32) VkAbstractionError!void {
-        const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fence[frame_index], c.VK_TRUE, std.math.maxInt(u64));
+        const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fences[frame_index], c.VK_TRUE, std.math.maxInt(u64));
 
         if (fence_wait != c.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
@@ -917,7 +913,7 @@ pub const Instance = struct {
 
         var image_index: u32 = 0;
 
-        const acquire_next_image_success = c.vkAcquireNextImageKHR(self.device, self.swapchain, std.math.maxInt(u64), self.image_available_semaphore[frame_index], null, &image_index);
+        const acquire_next_image_success = c.vkAcquireNextImageKHR(self.device, self.swapchain, std.math.maxInt(u64), self.image_available_semaphores[frame_index], null, &image_index);
 
         if (acquire_next_image_success == c.VK_ERROR_OUT_OF_DATE_KHR or acquire_next_image_success == c.VK_SUBOPTIMAL_KHR or self.framebuffer_resized) {
             try recreate_swapchain(self);
@@ -928,7 +924,7 @@ pub const Instance = struct {
             return VkAbstractionError.AcquireNextSwapchainImageFailed;
         }
 
-        const reset_fence_success = c.vkResetFences(self.device, 1, &self.in_flight_fence[frame_index]);
+        const reset_fence_success = c.vkResetFences(self.device, 1, &self.in_flight_fences[frame_index]);
         if (reset_fence_success != c.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
         }
@@ -958,15 +954,15 @@ pub const Instance = struct {
         const submit_info = c.VkSubmitInfo{
             .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
             .waitSemaphoreCount = 1, //wait_semaphores.len,
-            .pWaitSemaphores = &self.image_available_semaphore[frame_index], //wait_semaphores.ptr,
+            .pWaitSemaphores = &self.image_available_semaphores[frame_index], //wait_semaphores.ptr,
             .pWaitDstStageMask = &wait_stages,
             .signalSemaphoreCount = 1, //signal_semaphores.len,
-            .pSignalSemaphores = &self.image_completion_semaphore[frame_index], //signal_semaphores.ptr,
+            .pSignalSemaphores = &self.image_completion_semaphores[frame_index], //signal_semaphores.ptr,
             .commandBufferCount = 1,
             .pCommandBuffers = &self.command_buffers[frame_index],
         };
 
-        const queue_submit_success = c.vkQueueSubmit(self.present_queue, 1, &submit_info, self.in_flight_fence[frame_index]);
+        const queue_submit_success = c.vkQueueSubmit(self.present_queue, 1, &submit_info, self.in_flight_fences[frame_index]);
         if (queue_submit_success != c.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
         }
@@ -976,7 +972,7 @@ pub const Instance = struct {
         const present_info = c.VkPresentInfoKHR{
             .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &self.image_completion_semaphore[frame_index],
+            .pWaitSemaphores = &self.image_completion_semaphores[frame_index],
             .swapchainCount = 1,
             .pSwapchains = &self.swapchain, //swapchains,
             .pImageIndices = &image_index,
@@ -1020,17 +1016,30 @@ pub const Instance = struct {
         try create_framebuffers(self);
     }
 
+    pub fn memory_type_selection(self: *Instance, properties: u32) u32 {
+        for (0..self.mem_properties.memoryTypeCount) |i| {
+            // TODO this additional line checking memory TypeBits is in vulkan tutorial,
+            // but I'm not sure it really works good...
+            // mem_requirements.memoryTypeBits & (@as(u32, 1) << @intCast(i)) == 0
+            if ((self.mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+                return @intCast(i);
+            }
+        }
+        std.debug.print("Unable to find adequate memory type on device with flags: {}\n", .{properties});
+        return 0;
+    }
+
     /// This should be called before the end of the main loop so all zig allocations can be deferred
     /// Free all of our vulkan state
     pub fn cleanup(self: *Instance) void {
         for (0..self.MAX_CONCURRENT_FRAMES) |i| {
-            c.vkDestroySemaphore(self.device, self.image_available_semaphore[i], null);
-            c.vkDestroySemaphore(self.device, self.image_completion_semaphore[i], null);
-            c.vkDestroyFence(self.device, self.in_flight_fence[i], null);
+            c.vkDestroySemaphore(self.device, self.image_available_semaphores[i], null);
+            c.vkDestroySemaphore(self.device, self.image_completion_semaphores[i], null);
+            c.vkDestroyFence(self.device, self.in_flight_fences[i], null);
         }
 
         c.vkFreeCommandBuffers(self.device, self.command_pool, self.MAX_CONCURRENT_FRAMES, self.command_buffers.ptr);
-        self.allocator.free(self.command_buffers);
+        //self.allocator.free(self.command_buffers);
 
         c.vkDestroyCommandPool(self.device, self.command_pool, null);
 
@@ -1043,7 +1052,7 @@ pub const Instance = struct {
         for (0..self.shader_modules.items.len) |i| {
             c.vkDestroyShaderModule(self.device, self.shader_modules.items[i], null);
         }
-        self.shader_modules.deinit();
+        //self.shader_modules.deinit();
 
         c.vkDestroySurfaceKHR(self.vk_instance, self.surface, null);
         c.vkDestroyDevice(self.device, null);

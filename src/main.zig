@@ -15,8 +15,32 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     const allocator = arena.allocator();
 
-    var instance = vulkan.Instance{};
-    try instance.initialize_state(ENGINE_NAME, ENGINE_NAME, &allocator);
+    // TODO: use gpa/debug allocator if runtime safety is enabled
+    //    if (std.debug.runtime_safety)
+    //    {
+    //
+    //        allocator.
+    //    }
+
+    var instance = vulkan.Instance{ .allocator = &allocator, .MAX_CONCURRENT_FRAMES = 2 };
+
+    instance.shader_modules = std.ArrayList(c.VkShaderModule).init(instance.allocator.*);
+    defer instance.shader_modules.deinit();
+
+    instance.device_memory_allocations = std.ArrayList(c.VkDeviceMemory).init(instance.allocator.*);
+    defer instance.device_memory_allocations.deinit();
+
+    instance.command_buffers = try instance.allocator.*.alloc(c.VkCommandBuffer, instance.MAX_CONCURRENT_FRAMES);
+    defer instance.allocator.*.free(instance.command_buffers);
+
+    instance.image_available_semaphores = try instance.allocator.*.alloc(c.VkSemaphore, instance.MAX_CONCURRENT_FRAMES);
+    defer instance.allocator.*.free(instance.image_available_semaphores);
+    instance.image_completion_semaphores = try instance.allocator.*.alloc(c.VkSemaphore, instance.MAX_CONCURRENT_FRAMES);
+    defer instance.allocator.*.free(instance.image_completion_semaphores);
+    instance.in_flight_fences = try instance.allocator.*.alloc(c.VkFence, instance.MAX_CONCURRENT_FRAMES);
+    defer instance.allocator.*.free(instance.in_flight_fences);
+
+    try instance.initialize_state(ENGINE_NAME, ENGINE_NAME);
 
     _ = c.glfwSetKeyCallback(instance.window, key_callback);
 
@@ -53,19 +77,9 @@ pub fn main() !void {
     c.vkGetBufferMemoryRequirements(instance.device, vertex_buffer, &mem_requirements);
 
     const properties: u32 = c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    var memory_type: u32 = 0;
+    const memory_type: u32 = instance.memory_type_selection(properties);
 
     std.debug.print("memory type count: {} \n", .{instance.mem_properties.memoryTypeCount});
-
-    for (0..instance.mem_properties.memoryTypeCount) |i| {
-        // TODO this additional line checking memory TypeBits is in vulkan tutorial,
-        // but I'm not sure it really works good...
-        // mem_requirements.memoryTypeBits & (@as(u32, 1) << @intCast(i)) == 0
-        if ((instance.mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
-            memory_type = @intCast(i);
-            break;
-        }
-    }
 
     std.debug.print("memory type: {b}\n", .{memory_type});
 
