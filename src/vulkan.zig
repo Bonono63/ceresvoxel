@@ -999,6 +999,7 @@ pub const Instance = struct {
 
         c.vkDestroyPipeline(self.device, self.graphics_pipeline, null);
         c.vkDestroyRenderPass(self.device, self.renderpass, null);
+        c.vkDestroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
         c.vkDestroyPipelineLayout(self.device, self.pipeline_layout, null);
 
         for (0..self.shader_modules.items.len) |i| {

@@ -22,7 +22,8 @@ pub fn main() !void {
     //        allocator.
     //    }
 
-    var instance = vulkan.Instance{ .allocator = &allocator, .MAX_CONCURRENT_FRAMES = 2 };
+    const MAX_CONCURRENT_FRAMES = 2;
+    var instance = vulkan.Instance{ .allocator = &allocator, .MAX_CONCURRENT_FRAMES = MAX_CONCURRENT_FRAMES };
 
     instance.shader_modules = std.ArrayList(c.VkShaderModule).init(instance.allocator.*);
     defer instance.shader_modules.deinit();
@@ -75,26 +76,42 @@ pub fn main() !void {
         c.vkUnmapMemory(instance.device, vertex_device_memory);
     }
 
-    //const object_transform = struct {
-    //    model : c.mat4,
-    //    view : c.mat4,
-    //    projection : c.mat4,
-    //};
-    //
-    //var ubo_buffers : [instance.MAX_CONCURRENT_FRAMES]c.VkBuffer = undefined;
-    //const device_size :[instance.MAX_CONCURRENT_FRAMES]c.VkDeviceSize = @sizeOf(object_transform);
+    const ObjectTransform = struct {
+        model: c.mat4,
+        view: c.mat4,
+        projection: c.mat4,
+    };
 
-    //var ubo_device_memory : [instance.MAX_CONCURRENT_FRAMES]c.VkDeviceMemory = undefined;
-    //var ubo_mmio : [instance.MAX_CONCURRENT_FRAMES]?*anyopaque = undefined;
+    var ubo_buffers: [MAX_CONCURRENT_FRAMES]c.VkBuffer = undefined;
 
-    //for (0..instance.MAX_CONCURRENT_FRAMES) |i| {
-    //    c.createBuffer();
-    //}
+    var ubo_device_memory: [MAX_CONCURRENT_FRAMES]c.VkDeviceMemory = undefined;
+    var ubo_mmio: [MAX_CONCURRENT_FRAMES]?*anyopaque = undefined;
+
+    for (0..MAX_CONCURRENT_FRAMES) |i| {
+        const size = try instance.createBuffer(@sizeOf(ObjectTransform), c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ubo_buffers[i], &ubo_device_memory[i]);
+
+        if (c.vkMapMemory(instance.device, ubo_device_memory[i], 0, size, 0, &ubo_mmio[i]) != c.VK_SUCCESS) {
+            std.debug.print("Unable to map device memory to CPU memory\n", .{});
+        }
+    }
 
     var frame_count: u64 = 0;
     var current_frame_index: u32 = 0;
 
     var previous_frame_time: f64 = 0.0;
+
+    const MAT4_IDENTITY = .{
+        .{ 0, 0, 0, 0 },
+        .{ 0, 0, 0, 0 },
+        .{ 0, 0, 0, 0 },
+        .{ 0, 0, 0, 0 },
+    };
+
+    var object_transform = ObjectTransform{
+        .model = MAT4_IDENTITY,
+        .view = MAT4_IDENTITY,
+        .projection = MAT4_IDENTITY,
+    };
 
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
@@ -104,6 +121,11 @@ pub fn main() !void {
         previous_frame_time = current_time;
 
         std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms {}   \r", .{ w, xpos, ypos, (frame_delta * 100.0), frame_count });
+
+        //update uniform buffer
+
+        @memcpy(@as(*ObjectTransform, @ptrCast(@alignCast(&ubo_mmio[current_frame_index]))), &object_transform);
+
         try instance.draw_frame(current_frame_index, instance.vertex_buffers, vertices.len);
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
@@ -112,6 +134,10 @@ pub fn main() !void {
 
     _ = c.vkDeviceWaitIdle(instance.device);
     c.vkFreeMemory(instance.device, vertex_device_memory, null);
+    for (0..MAX_CONCURRENT_FRAMES) |i| {
+        c.vkDestroyBuffer(instance.device, ubo_buffers[i], null);
+        c.vkFreeMemory(instance.device, ubo_device_memory[i], null);
+    }
     for (instance.vertex_buffers) |buffer| {
         c.vkDestroyBuffer(instance.device, buffer, null);
     }
