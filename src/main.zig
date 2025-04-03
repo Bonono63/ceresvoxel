@@ -101,10 +101,10 @@ pub fn main() !void {
     var previous_frame_time: f64 = 0.0;
 
     const MAT4_IDENTITY = .{
-        .{ 0, 0, 0, 0 },
-        .{ 0, 0, 0, 0 },
-        .{ 0, 0, 0, 0 },
-        .{ 0, 0, 0, 0 },
+        .{ 1, 0, 0, 0 },
+        .{ 0, 1, 0, 0 },
+        .{ 0, 0, 1, 0 },
+        .{ 0, 0, 0, 1 },
     };
 
     var object_transform = ObjectTransform{
@@ -112,6 +112,10 @@ pub fn main() !void {
         .view = MAT4_IDENTITY,
         .projection = MAT4_IDENTITY,
     };
+
+    c.glm_perspective(3.14, 800.0/600.0, 0.001, 1000, &object_transform.projection);
+
+    const temp: [1]ObjectTransform = .{object_transform};
 
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
@@ -124,7 +128,7 @@ pub fn main() !void {
 
         //update uniform buffer
 
-        @memcpy(@as(*ObjectTransform, @ptrCast(@alignCast(&ubo_mmio[current_frame_index]))), &object_transform);
+        @memcpy(@as([*]ObjectTransform, @ptrCast(@alignCast(&ubo_mmio[current_frame_index]))), &temp);
 
         try instance.draw_frame(current_frame_index, instance.vertex_buffers, vertices.len);
 
