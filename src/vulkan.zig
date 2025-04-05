@@ -105,7 +105,10 @@ pub const Instance = struct {
 
     shader_modules: std.ArrayList(c.VkShaderModule) = undefined,
 
-    descriptor_set_layout: c.VkDescriptorSetLayout = undefined,
+    descriptor_pool : c.VkDescriptorPool = undefined,
+    descriptor_sets : []c.VkDescriptorSet = undefined,
+    descriptor_set_layouts : []c.VkDescriptorSetLayout = undefined,
+
     pipeline_layout: c.VkPipelineLayout = undefined,
     renderpass: c.VkRenderPass = undefined,
     graphics_pipeline: c.VkPipeline = undefined,
@@ -126,41 +129,10 @@ pub const Instance = struct {
     image_completion_semaphores: []c.VkSemaphore = undefined,
     in_flight_fences: []c.VkFence = undefined,
 
-    /// Initializes the general state of Vulkan and GLFW for our rendering
-    pub fn initialize_state(self: *Instance, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
-        try glfw_initialization();
-        try window_setup(self, application_name, engine_name);
-        try create_surface(self);
-        try pick_physical_device(self);
-        c.vkGetPhysicalDeviceMemoryProperties(self.physical_device, &self.mem_properties);
-        try create_present_queue(self, self.REQUIRE_FAMILIES);
-        try create_swapchain(self);
-        try create_swapchain_image_views(self);
-        try create_graphics_pipeline(self);
-        try create_framebuffers(self);
-        try create_command_pool(self);
-        try create_command_buffers(self);
-        try create_sync_objects(self);
-    }
-
-    /// Initializes GLFW and checks for Vulkan support
-    fn glfw_initialization() VkAbstractionError!void {
-        if (c.glfwInit() != c.GLFW_TRUE) {
-            return VkAbstractionError.GLFWInitializationFailed;
-        }
-
-        const vulkan_support = c.glfwVulkanSupported();
-        if (vulkan_support != c.GLFW_TRUE) {
-            std.debug.print("[Error] GLFW could not find Vulkan support.\n", .{});
-            return VkAbstractionError.VulkanUnavailable;
-        }
-
-        _ = c.glfwSetErrorCallback(glfw_error_callback);
-    }
 
     // TODO move the GLFW code out and make this a vulkan only function
     /// Creates our Vulkan instance and GLFW window
-    fn window_setup(self: *Instance, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
+    pub fn window_setup(self: *Instance, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
         c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
         // c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
 
@@ -238,7 +210,7 @@ pub const Instance = struct {
         }
     }
 
-    fn create_surface(self: *Instance) VkAbstractionError!void {
+    pub fn create_surface(self: *Instance) VkAbstractionError!void {
         const success = c.glfwCreateWindowSurface(self.vk_instance, self.window, null, &self.surface);
 
         if (success != c.VK_SUCCESS) {
@@ -247,7 +219,7 @@ pub const Instance = struct {
         }
     }
 
-    fn pick_physical_device(self: *Instance) VkAbstractionError!void {
+    pub fn pick_physical_device(self: *Instance) VkAbstractionError!void {
         var device_count: u32 = 0;
         const physical_device_count_success = c.vkEnumeratePhysicalDevices(self.vk_instance, &device_count, null);
 
@@ -279,7 +251,7 @@ pub const Instance = struct {
         // TODO Check for device extension compatibility
     }
 
-    fn create_present_queue(self: *Instance, flags: u32) VkAbstractionError!void {
+    pub fn create_present_queue(self: *Instance, flags: u32) VkAbstractionError!void {
         const priority: f32 = 1.0;
 
         var queue_count: u32 = 0;
@@ -331,7 +303,7 @@ pub const Instance = struct {
         c.vkGetDeviceQueue(self.device, first_compatible, 0, &self.present_queue);
     }
 
-    fn create_swapchain(self: *Instance) VkAbstractionError!void {
+    pub fn create_swapchain(self: *Instance) VkAbstractionError!void {
         const support = try query_swapchain_support(self);
         defer self.allocator.*.free(support.formats);
         defer self.allocator.*.free(support.present_modes);
@@ -428,7 +400,7 @@ pub const Instance = struct {
         }
     }
 
-    fn create_swapchain_image_views(self: *Instance) VkAbstractionError!void {
+    pub fn create_swapchain_image_views(self: *Instance) VkAbstractionError!void {
         self.swapchain_image_views = try self.allocator.*.alloc(c.VkImageView, self.swapchain_images.len);
         for (0..self.swapchain_images.len) |i| {
             var create_info = c.VkImageViewCreateInfo{
@@ -458,7 +430,7 @@ pub const Instance = struct {
         }
     }
 
-    fn create_graphics_pipeline(self: *Instance) VkAbstractionError!void {
+    pub fn create_graphics_pipeline(self: *Instance) VkAbstractionError!void {
         try create_shader_module(self, self.allocator, "shaders/simple.vert.spv");
         try create_shader_module(self, self.allocator, "shaders/simple.frag.spv");
 
@@ -579,29 +551,37 @@ pub const Instance = struct {
             .pAttachments = &color_blending_attachment_create_info,
         };
 
+        var layout_bindings : []c.VkDescriptorSetLayoutBinding = try self.allocator.*.alloc(c.VkDescriptorSetLayoutBinding, 1);
+        // TODO decide whether this needs to be added to the vulkan state so it can be freed later...
+
+
         const layout_binding = c.VkDescriptorSetLayoutBinding{
             .binding = 0,
             .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
+            .descriptorCount = self.MAX_CONCURRENT_FRAMES,
             .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
             .pImmutableSamplers = null,
         };
 
+        layout_bindings[0] = layout_binding;
+
         const layout_info = c.VkDescriptorSetLayoutCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = 1,
-            .pBindings = &layout_binding,
+            .bindingCount = @intCast(layout_bindings.len),
+            .pBindings = layout_bindings.ptr,
         };
 
-        if (c.vkCreateDescriptorSetLayout(self.device, &layout_info, null, &self.descriptor_set_layout) != c.VK_SUCCESS) {
+        const descriptor_set_success = c.vkCreateDescriptorSetLayout(self.device, &layout_info, null, self.descriptor_set_layouts.ptr);
+        if (descriptor_set_success != c.VK_SUCCESS) {
+            std.debug.print("[Error] Unable to create descriptor set: {}\n", .{descriptor_set_success});
             return VkAbstractionError.DescriptorSetCreationFailure;
         }
 
         // This is for shader uniforms
         const pipeline_layout_create_info = c.VkPipelineLayoutCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            .setLayoutCount = 1,
-            .pSetLayouts = &self.descriptor_set_layout,
+            .setLayoutCount = 0,//1,
+            .pSetLayouts = null,//self.descriptor_set_layouts.ptr,
             .pushConstantRangeCount = 0,
             .pPushConstantRanges = null,
         };
@@ -683,7 +663,7 @@ pub const Instance = struct {
     }
 
     /// Creates a shader module and appends the handler to the state's shader array list
-    fn create_shader_module(self: *Instance, allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!void {
+    pub fn create_shader_module(self: *Instance, allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!void {
         var shader_module: c.VkShaderModule = undefined;
 
         const source = try read_sprv_file_aligned(allocator, file_name);
@@ -705,7 +685,7 @@ pub const Instance = struct {
         try self.shader_modules.append(shader_module);
     }
 
-    fn create_framebuffers(self: *Instance) VkAbstractionError!void {
+    pub fn create_framebuffers(self: *Instance) VkAbstractionError!void {
         self.frame_buffers = try self.allocator.*.alloc(c.VkFramebuffer, self.swapchain_image_views.len);
 
         for (self.swapchain_image_views, 0..self.swapchain_image_views.len) |image_view, i| {
@@ -726,7 +706,7 @@ pub const Instance = struct {
         }
     }
 
-    fn create_command_pool(self: *Instance) VkAbstractionError!void {
+    pub fn create_command_pool(self: *Instance) VkAbstractionError!void {
         const command_pool_info = c.VkCommandPoolCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
             .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
@@ -739,7 +719,7 @@ pub const Instance = struct {
         }
     }
 
-    fn create_command_buffers(self: *Instance) VkAbstractionError!void {
+    pub fn create_command_buffers(self: *Instance) VkAbstractionError!void {
         const allocation_info = c.VkCommandBufferAllocateInfo{
             .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             .commandPool = self.command_pool,
@@ -756,7 +736,6 @@ pub const Instance = struct {
         const begin_info = c.VkCommandBufferBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .flags = 0,
-            //.pInheretenceInfo = null,
         };
 
         if (c.vkBeginCommandBuffer(command_buffer, &begin_info) != c.VK_SUCCESS) {
@@ -764,7 +743,6 @@ pub const Instance = struct {
         }
 
         const clear_color: c.VkClearValue = undefined;
-        //std.debug.print("clear color [0]: {}\n", .{clear_color});
 
         const render_pass_info = c.VkRenderPassBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -803,12 +781,14 @@ pub const Instance = struct {
 
         c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
+//        c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[current_frame_index], 0, null);
+
         c.vkCmdDraw(command_buffer, vertex_count, 1, 0, 0);
 
         c.vkCmdEndRenderPass(command_buffer);
     }
 
-    fn create_sync_objects(self: *Instance) VkAbstractionError!void {
+    pub fn create_sync_objects(self: *Instance) VkAbstractionError!void {
         const image_available_semaphore_info = c.VkSemaphoreCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
         };
@@ -864,29 +844,22 @@ pub const Instance = struct {
 
         try record_command_buffer(self, self.command_buffers[frame_index], image_index, buffers, vertex_count);
 
-        // TODO Not sure if it makes sense to place this here or in the record_command_buffer call
         const end_recording_success = c.vkEndCommandBuffer(self.command_buffers[frame_index]);
         if (end_recording_success != c.VK_SUCCESS) {
             return VkAbstractionError.EndRecordingFailure;
         }
 
-        //const wait_semaphores = [_]c.VkSemaphore{
-        //    instance.image_available_semaphore,
-        //};
-
         const wait_stages = [_]c.VkPipelineStageFlags{
             c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
         };
 
-        //const signal_semaphores: []c.VkSemaphore = .{instance.image_completion_semaphore};
-
         const submit_info = c.VkSubmitInfo{
             .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .waitSemaphoreCount = 1, //wait_semaphores.len,
-            .pWaitSemaphores = &self.image_available_semaphores[frame_index], //wait_semaphores.ptr,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &self.image_available_semaphores[frame_index],
             .pWaitDstStageMask = &wait_stages,
-            .signalSemaphoreCount = 1, //signal_semaphores.len,
-            .pSignalSemaphores = &self.image_completion_semaphores[frame_index], //signal_semaphores.ptr,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &self.image_completion_semaphores[frame_index],
             .commandBufferCount = 1,
             .pCommandBuffers = &self.command_buffers[frame_index],
         };
@@ -896,14 +869,12 @@ pub const Instance = struct {
             return VkAbstractionError.OutOfMemory;
         }
 
-        //const swapchains = []c.VkSwapchainKHR{instance.swapchain};
-
         const present_info = c.VkPresentInfoKHR{
             .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = &self.image_completion_semaphores[frame_index],
             .swapchainCount = 1,
-            .pSwapchains = &self.swapchain, //swapchains,
+            .pSwapchains = &self.swapchain,
             .pImageIndices = &image_index,
         };
 
@@ -991,7 +962,6 @@ pub const Instance = struct {
         }
 
         c.vkFreeCommandBuffers(self.device, self.command_pool, self.MAX_CONCURRENT_FRAMES, self.command_buffers.ptr);
-        //self.allocator.free(self.command_buffers);
 
         c.vkDestroyCommandPool(self.device, self.command_pool, null);
 
@@ -999,13 +969,14 @@ pub const Instance = struct {
 
         c.vkDestroyPipeline(self.device, self.graphics_pipeline, null);
         c.vkDestroyRenderPass(self.device, self.renderpass, null);
-        c.vkDestroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
+        
+        c.vkDestroyDescriptorSetLayout(self.device, self.descriptor_set_layouts[0], null);
+        
         c.vkDestroyPipelineLayout(self.device, self.pipeline_layout, null);
 
         for (0..self.shader_modules.items.len) |i| {
             c.vkDestroyShaderModule(self.device, self.shader_modules.items[i], null);
         }
-        //self.shader_modules.deinit();
 
         c.vkDestroySurfaceKHR(self.vk_instance, self.surface, null);
         c.vkDestroyDevice(self.device, null);
@@ -1074,7 +1045,6 @@ fn query_swapchain_support(self: *Instance) VkAbstractionError!swapchain_support
     if (retrieve_formats_success != c.VK_SUCCESS) {
         return VkAbstractionError.RetrieveSurfaceFormatFailure;
     }
-    //result.formats_size = format_count;
 
     var present_modes: u32 = 0;
     var get_physical_device_present_modes = c.vkGetPhysicalDeviceSurfacePresentModesKHR(self.physical_device, self.surface, &present_modes, null);
@@ -1091,9 +1061,22 @@ fn query_swapchain_support(self: *Instance) VkAbstractionError!swapchain_support
         return VkAbstractionError.GetPhysicalDevicePresentModesFailure;
     }
 
-    //result.present_size = present_modes;
-
     return result;
+}
+
+/// Initializes GLFW and checks for Vulkan support
+pub fn glfw_initialization() VkAbstractionError!void {
+    if (c.glfwInit() != c.GLFW_TRUE) {
+        return VkAbstractionError.GLFWInitializationFailed;
+    }
+
+    const vulkan_support = c.glfwVulkanSupported();
+    if (vulkan_support != c.GLFW_TRUE) {
+        std.debug.print("[Error] GLFW could not find Vulkan support.\n", .{});
+        return VkAbstractionError.VulkanUnavailable;
+    }
+
+    _ = c.glfwSetErrorCallback(glfw_error_callback);
 }
 
 pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) void {
