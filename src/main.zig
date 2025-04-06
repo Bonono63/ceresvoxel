@@ -43,7 +43,8 @@ pub fn main() !void {
     instance.descriptor_sets = try instance.allocator.*.alloc(c.VkDescriptorSet, instance.MAX_CONCURRENT_FRAMES);
     defer instance.allocator.*.free(instance.descriptor_sets);
 
-    instance.descriptor_set_layouts = try instance.allocator.*.alloc(c.VkDescriptorSetLayout, 1);
+    // One set per frame
+    instance.descriptor_set_layouts = try instance.allocator.*.alloc(c.VkDescriptorSetLayout, 2);
     defer instance.allocator.*.free(instance.descriptor_set_layouts);
 
     instance.image_available_semaphores = try instance.allocator.*.alloc(c.VkSemaphore, instance.MAX_CONCURRENT_FRAMES);
@@ -61,6 +62,10 @@ pub fn main() !void {
     try instance.create_present_queue(instance.REQUIRE_FAMILIES);
     try instance.create_swapchain();
     try instance.create_swapchain_image_views();
+    try instance.create_descriptor_pool();
+
+    try instance.create_descriptor_set_layouts();
+
     try instance.create_graphics_pipeline();
     try instance.create_framebuffers();
     try instance.create_command_pool();
@@ -83,21 +88,20 @@ pub fn main() !void {
         .{ .pos = .{ -0.5, -0.5 }, .color = .{ 1.0, 1.0, 1.0 } },
     };
 
-    instance.vertex_buffers = try instance.allocator.*.alloc(c.VkBuffer, 1);
-    defer allocator.free(instance.vertex_buffers);
-
-    //    var vertex_buffer: c.VkBuffer = undefined;
     var vertex_device_memory: c.VkDeviceMemory = undefined;
 
-    const buffer_size: u64 = try instance.createBuffer(vertices.len * @sizeOf(vulkan.Vertex), c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &instance.vertex_buffers[0], &vertex_device_memory);
+    var vertex_buffers = try instance.allocator.*.alloc(c.VkBuffer, 1);
+    defer instance.allocator.*.free(vertex_buffers);
+
+    const buffer_size: u64 = try instance.createBuffer(vertices.len * @sizeOf(vulkan.Vertex), c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &vertex_buffers[0], &vertex_device_memory);
 
     // We copy the data over once?
     var vertex_mmio: ?*anyopaque = undefined;
     if (c.vkMapMemory(instance.device, vertex_device_memory, 0, buffer_size, 0, &vertex_mmio) != c.VK_SUCCESS) {
         std.debug.print("Unable to map device memory to CPU memory\n", .{});
+        return;
     } else {
         @memcpy(@as([*]vulkan.Vertex, @ptrCast(@alignCast(vertex_mmio))), &vertices);
-        c.vkUnmapMemory(instance.device, vertex_device_memory);
     }
 
     const ObjectTransform = struct {
@@ -119,79 +123,65 @@ pub fn main() !void {
         }
     }
 
-    //const pool_size = c.VkDescriptorPoolSize{
-    //    .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-    //    .descriptorCount = MAX_CONCURRENT_FRAMES,
-    //};
+    const alloc_info = c.VkDescriptorSetAllocateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = instance.descriptor_pool,
+        .descriptorSetCount = MAX_CONCURRENT_FRAMES,
+        .pSetLayouts = instance.descriptor_set_layouts.ptr,
+    };
 
-    //const pool_info = c.VkDescriptorPoolCreateInfo{
-    //    .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-    //    .poolSizeCount = 1,
-    //    .pPoolSizes = &pool_size,
-    //    .maxSets = MAX_CONCURRENT_FRAMES,
-    //};
+    if (c.vkAllocateDescriptorSets(instance.device, &alloc_info, instance.descriptor_sets.ptr) != c.VK_SUCCESS) {
+        std.debug.print("Unable to allocate Descriptor Sets\n", .{});
+    }
 
-    //if (c.vkCreateDescriptorPool(instance.device, &pool_info, null, &instance.descriptor_pool) != c.VK_SUCCESS)
-    //{
-    //    std.debug.print("Unable to create Descriptor Pool\n", .{});
-    //}
+    const MAT4_IDENTITY = .{
+        .{ 2.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 1.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    };
+    
+    const object_transform = ObjectTransform{
+        .model = MAT4_IDENTITY,
+        .view = MAT4_IDENTITY,
+        .projection = MAT4_IDENTITY,
+    };
+    
+    //c.glm_perspective(3.14, 800.0/600.0, 0.001, 1000, &object_transform.projection);
+    
+    var temp: [1]ObjectTransform = .{object_transform};
 
-    //const alloc_info = c.VkDescriptorSetAllocateInfo{
-    //    .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-    //    .descriptorPool = instance.descriptor_pool,
-    //    .descriptorSetCount = 1,
-    //    .pSetLayouts = instance.descriptor_set_layouts.ptr,
-    //};
+    @memcpy(@as([*]ObjectTransform, @ptrCast(@alignCast(&ubo_mmio[0]))), &temp);
+    //@memcpy(@as([*]ObjectTransform, @ptrCast(@alignCast(&ubo_mmio[1]))), &temp);
+    
+    for (0..MAX_CONCURRENT_FRAMES) |i| {
+        const buffer_info = c.VkDescriptorBufferInfo{
+            .buffer = ubo_buffers[i],
+            .offset = 0,
+            .range = @sizeOf(ObjectTransform),
+        };
 
-    //if (c.vkAllocateDescriptorSets(instance.device, &alloc_info, instance.descriptor_sets.ptr) != c.VK_SUCCESS) {
-    //    std.debug.print("Unable to allocate Descriptor Sets\n", .{});
-    //}
+        const descriptor_write = c.VkWriteDescriptorSet{
+            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = instance.descriptor_sets[i],
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .pBufferInfo = &buffer_info,
+            .pImageInfo = null,
+            .pTexelBufferView = null,
+        };
 
-    //for (0..MAX_CONCURRENT_FRAMES) |i| {
-    //    const buffer_info = c.VkDescriptorBufferInfo{
-    //        .buffer = ubo_buffers[i],
-    //        .offset = 0,
-    //        .range = @sizeOf(ObjectTransform),
-    //    };
-
-    //    const descriptor_write = c.VkWriteDescriptorSet{
-    //        .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-    //        .dstSet = instance.descriptor_sets[i],
-    //        .dstBinding = 0,
-    //        .dstArrayElement = 0,
-    //        .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-    //        .descriptorCount = 1,
-    //        .pBufferInfo = &buffer_info,
-    //        .pImageInfo = null,
-    //        .pTexelBufferView = null,
-    //    };
-
-    //    c.vkUpdateDescriptorSets(instance.device, 1, &descriptor_write, 0, null);
-    //}
+        c.vkUpdateDescriptorSets(instance.device, 1, &descriptor_write, 0, null);
+    }
 
     var frame_count: u64 = 0;
     var current_frame_index: u32 = 0;
 
     var previous_frame_time: f64 = 0.0;
 
-    //const MAT4_IDENTITY = .{
-    //    .{ 1, 0, 0, 0 },
-    //    .{ 0, 1, 0, 0 },
-    //    .{ 0, 0, 1, 0 },
-    //    .{ 0, 0, 0, 1 },
-    //};
-
-    //var object_transform = ObjectTransform{
-    //    .model = MAT4_IDENTITY,
-    //    .view = MAT4_IDENTITY,
-    //    .projection = MAT4_IDENTITY,
-    //};
-
-    //c.glm_perspective(3.14, 800.0/600.0, 0.001, 1000, &object_transform.projection);
-
-    //const temp: [1]ObjectTransform = .{object_transform};
-
-    //_ = &temp;
+    
 
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
@@ -200,15 +190,19 @@ pub fn main() !void {
         const frame_delta: f64 = current_time - previous_frame_time;
         previous_frame_time = current_time;
 
-        std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms {}   \r", .{ w, xpos, ypos, (frame_delta * 100.0), frame_count });
+        std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms pos: {d:.5} {}   \r", .{ w, xpos, ypos, (frame_delta * 100.0), temp[0].model[0][0], frame_count });
 
-        //@memcpy(@as([*]ObjectTransform, @ptrCast(@alignCast(&ubo_mmio[current_frame_index]))), &temp);
+        @memcpy(@as([*]ObjectTransform, @ptrCast(@alignCast(&ubo_mmio[current_frame_index]))), &temp);
 
-        try instance.draw_frame(current_frame_index, instance.vertex_buffers, vertices.len);
+        temp[0].model[0][0] = std.math.sin(0.01 * @as(f32, @floatFromInt(frame_count % 4712)));
+
+        try instance.draw_frame(current_frame_index, vertex_buffers, vertices.len);
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
     }
+
+    c.vkUnmapMemory(instance.device, vertex_device_memory);
 
     _ = c.vkDeviceWaitIdle(instance.device);
     c.vkFreeMemory(instance.device, vertex_device_memory, null);
@@ -216,7 +210,7 @@ pub fn main() !void {
         c.vkDestroyBuffer(instance.device, ubo_buffers[i], null);
         c.vkFreeMemory(instance.device, ubo_device_memory[i], null);
     }
-    for (instance.vertex_buffers) |buffer| {
+    for (vertex_buffers) |buffer| {
         c.vkDestroyBuffer(instance.device, buffer, null);
     }
     instance.cleanup();

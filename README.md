@@ -8,4 +8,4 @@ TODO:
 
     Use a staging buffer for vertex data
     Fix resizing error reported by validation layer
-    abstract all vk buffers so we ensure they are freed
+    Fix Nvidia proprietary driver leak during render runtime

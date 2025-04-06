@@ -44,6 +44,7 @@ pub const VkAbstractionError = error{
     DescriptorSetCreationFailure,
     DeviceBufferAllocationFailure,
     DeviceBufferBindFailure,
+    DescriptorPoolCreationFailed,
 };
 
 // These parameters are the minimum required for what we want to do
@@ -114,7 +115,6 @@ pub const Instance = struct {
     graphics_pipeline: c.VkPipeline = undefined,
     frame_buffers: []c.VkFramebuffer = undefined,
 
-    vertex_buffers: []c.VkBuffer = undefined,
     ubo_buffers: []c.VkBuffer = undefined,
 
     vertex_buffer_MMIOs: []?*anyopaque = undefined,
@@ -430,9 +430,62 @@ pub const Instance = struct {
         }
     }
 
+    pub fn create_descriptor_pool(self : *Instance) VkAbstractionError!void {
+        const pool_size = c.VkDescriptorPoolSize{
+            .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = self.MAX_CONCURRENT_FRAMES,
+        };
+
+        const pool_info = c.VkDescriptorPoolCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .poolSizeCount = 1,
+            .pPoolSizes = &pool_size,
+            .maxSets = self.MAX_CONCURRENT_FRAMES,
+        };
+        
+        const success = c.vkCreateDescriptorPool(self.device, &pool_info, null, &self.descriptor_pool);
+        if (success != c.VK_SUCCESS)
+        {
+            std.debug.print("[Error] Unable to create Descriptor Pool: {}\n", .{success});
+            return VkAbstractionError.DescriptorPoolCreationFailed;
+        }
+    }
+
+    pub fn create_descriptor_set_layouts(self : *Instance) VkAbstractionError!void
+    {
+        //var layout_bindings : []c.VkDescriptorSetLayoutBinding = try self.allocator.*.alloc(c.VkDescriptorSetLayoutBinding, 2);
+        //defer self.allocator.*.free(layout_bindings);
+
+        // A description of the bindings and their contents
+        // Essentially we need one of these per uniform buffer
+        const layout_binding = c.VkDescriptorSetLayoutBinding{
+            .binding = 0,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
+            .pImmutableSamplers = null,
+        };
+
+        //layout_bindings[0] = layout_binding;
+
+        const layout_info = c.VkDescriptorSetLayoutCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = 1,//@intCast(layout_bindings.len),
+            .pBindings = &layout_binding,//layout_bindings.ptr,
+        };
+
+        for (0..self.MAX_CONCURRENT_FRAMES) |i| {
+            const descriptor_set_success = c.vkCreateDescriptorSetLayout(self.device, &layout_info, null, &self.descriptor_set_layouts[i]);
+            if (descriptor_set_success != c.VK_SUCCESS) {
+                std.debug.print("[Error] Unable to create descriptor set: {}\n", .{descriptor_set_success});
+                return VkAbstractionError.DescriptorSetCreationFailure;
+            }
+        }
+    }
+
     pub fn create_graphics_pipeline(self: *Instance) VkAbstractionError!void {
-        try create_shader_module(self, self.allocator, "shaders/simple.vert.spv");
-        try create_shader_module(self, self.allocator, "shaders/simple.frag.spv");
+        try create_shader_module(self, "shaders/simple.vert.spv");
+        try create_shader_module(self, "shaders/simple.frag.spv");
 
         const vertex_shader_stage = c.VkPipelineShaderStageCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -467,6 +520,7 @@ pub const Instance = struct {
 
         var binding_description: []c.VkVertexInputBindingDescription = undefined;
         binding_description = try self.allocator.*.alloc(c.VkVertexInputBindingDescription, 1);
+        defer self.allocator.*.free(binding_description);
         binding_description[0] = .{
             .binding = 0,
             .stride = @sizeOf(Vertex),
@@ -475,6 +529,7 @@ pub const Instance = struct {
 
         var attribute_description: []c.VkVertexInputAttributeDescription = undefined;
         attribute_description = try self.allocator.*.alloc(c.VkVertexInputAttributeDescription, 2);
+        defer self.allocator.*.free(attribute_description);
         attribute_description[0] = .{ .binding = 0, .location = 0, .format = c.VK_FORMAT_R32G32_SFLOAT, .offset = 0 };
         attribute_description[1] = .{ .binding = 0, .location = 1, .format = c.VK_FORMAT_R32G32B32_SFLOAT, .offset = 8 };
 
@@ -551,37 +606,10 @@ pub const Instance = struct {
             .pAttachments = &color_blending_attachment_create_info,
         };
 
-        var layout_bindings : []c.VkDescriptorSetLayoutBinding = try self.allocator.*.alloc(c.VkDescriptorSetLayoutBinding, 1);
-        // TODO decide whether this needs to be added to the vulkan state so it can be freed later...
-
-
-        const layout_binding = c.VkDescriptorSetLayoutBinding{
-            .binding = 0,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = self.MAX_CONCURRENT_FRAMES,
-            .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
-            .pImmutableSamplers = null,
-        };
-
-        layout_bindings[0] = layout_binding;
-
-        const layout_info = c.VkDescriptorSetLayoutCreateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = @intCast(layout_bindings.len),
-            .pBindings = layout_bindings.ptr,
-        };
-
-        const descriptor_set_success = c.vkCreateDescriptorSetLayout(self.device, &layout_info, null, self.descriptor_set_layouts.ptr);
-        if (descriptor_set_success != c.VK_SUCCESS) {
-            std.debug.print("[Error] Unable to create descriptor set: {}\n", .{descriptor_set_success});
-            return VkAbstractionError.DescriptorSetCreationFailure;
-        }
-
-        // This is for shader uniforms
         const pipeline_layout_create_info = c.VkPipelineLayoutCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            .setLayoutCount = 0,//1,
-            .pSetLayouts = null,//self.descriptor_set_layouts.ptr,
+            .setLayoutCount = @intCast(self.descriptor_set_layouts.len),
+            .pSetLayouts = self.descriptor_set_layouts.ptr,
             .pushConstantRangeCount = 0,
             .pPushConstantRanges = null,
         };
@@ -663,18 +691,18 @@ pub const Instance = struct {
     }
 
     /// Creates a shader module and appends the handler to the state's shader array list
-    pub fn create_shader_module(self: *Instance, allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!void {
+    pub fn create_shader_module(self: *Instance, file_name: []const u8) VkAbstractionError!void {
         var shader_module: c.VkShaderModule = undefined;
 
-        const source = try read_sprv_file_aligned(allocator, file_name);
-        defer source.deinit();
+        const source = try read_sprv_file_aligned(self.allocator, file_name);
+        defer self.allocator.*.free(source);
 
         const create_info = c.VkShaderModuleCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
             // Size of the source in bytes not u32
-            .codeSize = source.items.len * 4,
+            .codeSize = source.len,
             // This must be aligned to 4 bytes
-            .pCode = source.items.ptr,
+            .pCode = @alignCast(@ptrCast(source.ptr)),
         };
 
         const create_shader_module_success = c.vkCreateShaderModule(self.device, &create_info, null, &shader_module);
@@ -732,7 +760,7 @@ pub const Instance = struct {
         }
     }
 
-    fn record_command_buffer(self: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32, buffers: []c.VkBuffer, vertex_count: u32) VkAbstractionError!void {
+    fn record_command_buffer(self: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32, frame_index: u32, buffers: []c.VkBuffer, vertex_count: u32) VkAbstractionError!void {
         const begin_info = c.VkCommandBufferBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .flags = 0,
@@ -781,7 +809,7 @@ pub const Instance = struct {
 
         c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-//        c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[current_frame_index], 0, null);
+        c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 
         c.vkCmdDraw(command_buffer, vertex_count, 1, 0, 0);
 
@@ -842,7 +870,7 @@ pub const Instance = struct {
             return VkAbstractionError.OutOfMemory;
         }
 
-        try record_command_buffer(self, self.command_buffers[frame_index], image_index, buffers, vertex_count);
+        try record_command_buffer(self, self.command_buffers[frame_index], image_index, frame_index, buffers, vertex_count);
 
         const end_recording_success = c.vkEndCommandBuffer(self.command_buffers[frame_index]);
         if (end_recording_success != c.VK_SUCCESS) {
@@ -969,8 +997,12 @@ pub const Instance = struct {
 
         c.vkDestroyPipeline(self.device, self.graphics_pipeline, null);
         c.vkDestroyRenderPass(self.device, self.renderpass, null);
+      
+        c.vkDestroyDescriptorPool(self.device, self.descriptor_pool, null);
         
-        c.vkDestroyDescriptorSetLayout(self.device, self.descriptor_set_layouts[0], null);
+        for (self.descriptor_set_layouts) |descriptor_set_layout| {
+            c.vkDestroyDescriptorSetLayout(self.device, descriptor_set_layout, null);
+        }
         
         c.vkDestroyPipelineLayout(self.device, self.pipeline_layout, null);
 
@@ -1000,26 +1032,19 @@ pub fn memory_type_selection(self: *Instance, properties: u32) u32 {
 }
 
 /// Creates a 4 byte aligned buffer of any given file, intended for reading SPIR-V binary files
-fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError!std.ArrayListAligned(u32, @sizeOf(u32)) {
-    const file_array = std.fs.cwd().readFileAlloc(allocator.*, file_name, 10000) catch |err| {
+fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError![]align(@sizeOf(u32)) u8 {
+    const file_array = std.fs.cwd().readFileAllocOptions(allocator.*, file_name, 10000, null, @sizeOf(u32), null) catch |err| {
         std.debug.print("[Error] [IO] {}", .{err});
         return VkAbstractionError.ReadShaderFileFailed;
     };
 
-    var array = std.ArrayListAligned(u32, @sizeOf(u32)).init(allocator.*);
-
-    std.debug.print("[Info] {s} length: {} divided by 4: {}\n", .{ file_name, file_array.len, file_array.len / 4 });
+    std.debug.print("[Info] \"{s}\" file length: {} aligned length: {}\n", .{ file_name, file_array.len, file_array.len / 4 });
 
     if (file_array.len % 4 != 0) {
         return VkAbstractionError.ShaderFileInvalidFileSize;
     }
 
-    for (0..file_array.len / 4) |i| {
-        const item: u32 = @as(u32, file_array[i * 4 + 3]) << 24 | @as(u32, file_array[i * 4 + 2]) << 16 | @as(u32, file_array[i * 4 + 1]) << 8 | @as(u32, file_array[i * 4]);
-        try array.append(item);
-    }
-
-    return array;
+    return file_array;
 }
 
 /// The formats returned in swapchain_support must be freed later
