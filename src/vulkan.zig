@@ -108,7 +108,7 @@ pub const Instance = struct {
 
     descriptor_pool : c.VkDescriptorPool = undefined,
     descriptor_sets : []c.VkDescriptorSet = undefined,
-    descriptor_set_layouts : []c.VkDescriptorSetLayout = undefined,
+    descriptor_set_layout : c.VkDescriptorSetLayout = undefined,
 
     pipeline_layout: c.VkPipelineLayout = undefined,
     renderpass: c.VkRenderPass = undefined,
@@ -474,12 +474,10 @@ pub const Instance = struct {
             .pBindings = &layout_binding,//layout_bindings.ptr,
         };
 
-        for (0..self.MAX_CONCURRENT_FRAMES) |i| {
-            const descriptor_set_success = c.vkCreateDescriptorSetLayout(self.device, &layout_info, null, &self.descriptor_set_layouts[i]);
-            if (descriptor_set_success != c.VK_SUCCESS) {
-                std.debug.print("[Error] Unable to create descriptor set: {}\n", .{descriptor_set_success});
-                return VkAbstractionError.DescriptorSetCreationFailure;
-            }
+        const descriptor_set_success = c.vkCreateDescriptorSetLayout(self.device, &layout_info, null, &self.descriptor_set_layout);
+        if (descriptor_set_success != c.VK_SUCCESS) {
+            std.debug.print("[Error] Unable to create descriptor set: {}\n", .{descriptor_set_success});
+            return VkAbstractionError.DescriptorSetCreationFailure;
         }
     }
 
@@ -608,8 +606,8 @@ pub const Instance = struct {
 
         const pipeline_layout_create_info = c.VkPipelineLayoutCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            .setLayoutCount = @intCast(self.descriptor_set_layouts.len),
-            .pSetLayouts = self.descriptor_set_layouts.ptr,
+            .setLayoutCount = 1,
+            .pSetLayouts = &self.descriptor_set_layout,
             .pushConstantRangeCount = 0,
             .pPushConstantRanges = null,
         };
@@ -1000,9 +998,7 @@ pub const Instance = struct {
       
         c.vkDestroyDescriptorPool(self.device, self.descriptor_pool, null);
         
-        for (self.descriptor_set_layouts) |descriptor_set_layout| {
-            c.vkDestroyDescriptorSetLayout(self.device, descriptor_set_layout, null);
-        }
+        c.vkDestroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
         
         c.vkDestroyPipelineLayout(self.device, self.pipeline_layout, null);
 

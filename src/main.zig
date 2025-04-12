@@ -44,8 +44,8 @@ pub fn main() !void {
     defer instance.allocator.*.free(instance.descriptor_sets);
 
     // One set per frame
-    instance.descriptor_set_layouts = try instance.allocator.*.alloc(c.VkDescriptorSetLayout, 2);
-    defer instance.allocator.*.free(instance.descriptor_set_layouts);
+    //instance.descriptor_set_layouts = try instance.allocator.*.alloc(c.VkDescriptorSetLayout, 2);
+    //defer instance.allocator.*.free(instance.descriptor_set_layouts);
 
     instance.image_available_semaphores = try instance.allocator.*.alloc(c.VkSemaphore, instance.MAX_CONCURRENT_FRAMES);
     defer instance.allocator.*.free(instance.image_available_semaphores);
@@ -103,12 +103,29 @@ pub fn main() !void {
     } else {
         @memcpy(@as([*]vulkan.Vertex, @ptrCast(@alignCast(vertex_mmio))), &vertices);
     }
+    
+    const MAT4_IDENTITY = .{
+        .{ 1.0, 0.0, 0.0, 0.0 },
+        .{ 0.0, 1.0, 0.0, 0.0 },
+        .{ 0.0, 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 0.0, 1.0 },
+    };
 
     const ObjectTransform = struct {
-        model: c.mat4,
-        view: c.mat4,
-        projection: c.mat4,
+        model: c.mat4 = MAT4_IDENTITY,
+        view: c.mat4 = MAT4_IDENTITY,
+        projection: c.mat4 = MAT4_IDENTITY,
     };
+    
+    var object_transform = ObjectTransform{};
+    
+    std.debug.print("object transform content: {any}\n", .{@as([*]u8, @ptrCast(@alignCast(&object_transform)))[0..@sizeOf(ObjectTransform)]});
+
+    _ = &object_transform;
+    
+    //c.glm_perspective(3.14, 800.0/600.0, 0.001, 1000, @as([*c][4]f32, @ptrCast(@alignCast(&object_transform.projection))));
+    
+    //var temp: [1]ObjectTransform = .{object_transform};
 
     var ubo_buffers: [MAX_CONCURRENT_FRAMES]c.VkBuffer = undefined;
 
@@ -120,39 +137,26 @@ pub fn main() !void {
 
         if (c.vkMapMemory(instance.device, ubo_device_memory[i], 0, size, 0, &ubo_mmio[i]) != c.VK_SUCCESS) {
             std.debug.print("Unable to map device memory to CPU memory\n", .{});
-        }
+        } 
+        @memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[i])))[0..@sizeOf(ObjectTransform)], @as([*]u8, @ptrCast(@alignCast(&object_transform)))[0..@sizeOf(ObjectTransform)]);
+        //c.vkUnmapMemory(instance.device, ubo_device_memory[i]);
     }
+
+    std.debug.print("{*}\n", .{ubo_mmio[0]});
+    std.debug.print("{*}\n", .{ubo_mmio[1]});
+
+    const layouts = [2]c.VkDescriptorSetLayout{instance.descriptor_set_layout, instance.descriptor_set_layout};
 
     const alloc_info = c.VkDescriptorSetAllocateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = instance.descriptor_pool,
         .descriptorSetCount = MAX_CONCURRENT_FRAMES,
-        .pSetLayouts = instance.descriptor_set_layouts.ptr,
+        .pSetLayouts = &layouts,
     };
 
     if (c.vkAllocateDescriptorSets(instance.device, &alloc_info, instance.descriptor_sets.ptr) != c.VK_SUCCESS) {
         std.debug.print("Unable to allocate Descriptor Sets\n", .{});
     }
-
-    const MAT4_IDENTITY = .{
-        .{ 2.0, 0.0, 0.0, 0.0 },
-        .{ 0.0, 1.0, 0.0, 0.0 },
-        .{ 0.0, 0.0, 1.0, 0.0 },
-        .{ 0.0, 0.0, 0.0, 1.0 },
-    };
-    
-    const object_transform = ObjectTransform{
-        .model = MAT4_IDENTITY,
-        .view = MAT4_IDENTITY,
-        .projection = MAT4_IDENTITY,
-    };
-    
-    //c.glm_perspective(3.14, 800.0/600.0, 0.001, 1000, &object_transform.projection);
-    
-    var temp: [1]ObjectTransform = .{object_transform};
-
-    @memcpy(@as([*]ObjectTransform, @ptrCast(@alignCast(&ubo_mmio[0]))), &temp);
-    //@memcpy(@as([*]ObjectTransform, @ptrCast(@alignCast(&ubo_mmio[1]))), &temp);
     
     for (0..MAX_CONCURRENT_FRAMES) |i| {
         const buffer_info = c.VkDescriptorBufferInfo{
@@ -181,8 +185,21 @@ pub fn main() !void {
 
     var previous_frame_time: f64 = 0.0;
 
-    
+    std.debug.print("sizeof of {}\n", .{@sizeOf(ObjectTransform)});
 
+    @memset(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..@sizeOf(ObjectTransform)], 0);
+    @memset(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[1])))[0..@sizeOf(ObjectTransform)], 0);
+    
+    @memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..@sizeOf(ObjectTransform)], @as([*]u8, @ptrCast(@alignCast(&object_transform)))[0..@sizeOf(ObjectTransform)]);
+    
+    std.debug.print("object transform content: {any}\n", .{@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..@sizeOf(ObjectTransform)]});
+    std.debug.print("object transform content: {any}\n", .{@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[1])))[0..@sizeOf(ObjectTransform)]});
+
+
+    //std.debug.print("object transform content: {any}\n", .{@as([*]f32, @ptrCast(@alignCast(&ubo_mmio[0])))[0..48]});
+    //@memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..192], @as([*]u8, @ptrCast(@alignCast(&temp)))[0..192]);
+    //std.debug.print("object transform content: {any}\n", .{@as([*]f32, @ptrCast(@alignCast(&ubo_mmio[0])))[0..48]});
+    
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
 
@@ -190,11 +207,12 @@ pub fn main() !void {
         const frame_delta: f64 = current_time - previous_frame_time;
         previous_frame_time = current_time;
 
-        std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms pos: {d:.5} {}   \r", .{ w, xpos, ypos, (frame_delta * 100.0), temp[0].model[0][0], frame_count });
+        std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms   \r", .{ w, xpos, ypos, (frame_delta * 100.0)});
 
-        @memcpy(@as([*]ObjectTransform, @ptrCast(@alignCast(&ubo_mmio[current_frame_index]))), &temp);
+        //temp[0].model[0][0] = std.math.sin(0.01 * @as(f32, @floatFromInt(frame_count % 4712)));
 
-        temp[0].model[0][0] = std.math.sin(0.01 * @as(f32, @floatFromInt(frame_count % 4712)));
+    //std.debug.print("object transform content: {any}\n", .{@as([*]f32, @ptrCast(@alignCast(&ubo_mmio[1])))[0..48]});
+        //@memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[current_frame_index])))[0..192], @as([*]u8, @ptrCast(@alignCast(&temp)))[0..192]);
 
         try instance.draw_frame(current_frame_index, vertex_buffers, vertices.len);
 
