@@ -1,6 +1,9 @@
 const std = @import("std");
 const c = @import("clibs.zig");
 
+const vert_source = @embedFile("shaders/simple.vert.spv");
+const frag_source = @embedFile("shaders/simple.frag.spv");
+
 // Attempt at descriptive Errors
 pub const VkAbstractionError = error{
     Success,
@@ -8,7 +11,7 @@ pub const VkAbstractionError = error{
     GLFWInitializationFailed,
     GLFWErrorCallbackFailure,
     NullWindow,
-    NullRequiredInstances,
+    RequiredExtensionsFailure,
     VkInstanceCreationFailure,
     SurfaceCreationFailed,
     VulkanUnavailable,
@@ -151,7 +154,7 @@ pub const Instance = struct {
         std.debug.print("\tEngine name: {s}\n", .{application_info.pEngineName});
 
         var required_extension_count: u32 = 0;
-        const required_extensions = c.glfwGetRequiredInstanceExtensions(&required_extension_count) orelse return VkAbstractionError.NullRequiredInstances;
+        const required_extensions = c.glfwGetRequiredInstanceExtensions(&required_extension_count) orelse return VkAbstractionError.RequiredExtensionsFailure;
 
         var extensions_arraylist = std.ArrayList([*:0]const u8).init(self.allocator.*);
         defer extensions_arraylist.deinit();
@@ -312,6 +315,7 @@ pub const Instance = struct {
         var surface_format: c.VkSurfaceFormatKHR = support.formats[0];
         // TODO Come up with a solution for why adding 1 to the image count causes a serious memory leak (Nvidia Linux Proprietary driver only?)...
         // Time between frames significantly decreases when allocating at least one more image than the minimum on some systems
+        std.debug.print("[Info] Swapchain minimum image count: {}\n", .{support.capabilities.minImageCount});
         var image_count: u32 = support.capabilities.minImageCount + 1;
         var format_index: u32 = 0;
 
@@ -334,6 +338,7 @@ pub const Instance = struct {
         var width: i32 = 0;
         var height: i32 = 0;
         std.debug.print("[Info] current extent: {} {}\n", .{ support.capabilities.currentExtent.width, support.capabilities.currentExtent.height });
+        
         if (support.capabilities.currentExtent.width != std.math.maxInt(u32)) {
             extent = support.capabilities.currentExtent;
         } else {
@@ -350,54 +355,55 @@ pub const Instance = struct {
 
             extent.width = std.math.clamp(extent.width, support.capabilities.minImageExtent.width, support.capabilities.maxImageExtent.width);
             extent.height = std.math.clamp(extent.height, support.capabilities.minImageExtent.height, support.capabilities.maxImageExtent.height);
-            std.debug.print("[Info] Final extent: {} {}\n", .{ extent.width, extent.height });
-
-            const swapchain_create_info = c.VkSwapchainCreateInfoKHR{
-                .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-                .surface = self.surface,
-                .minImageCount = image_count,
-                .imageFormat = surface_format.format,
-                .imageColorSpace = surface_format.colorSpace,
-                .imageExtent = extent,
-                .imageArrayLayers = 1,
-                .imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-                .imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-                .queueFamilyIndexCount = 0,
-                .pQueueFamilyIndices = null,
-                .preTransform = support.capabilities.currentTransform,
-                .compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-                .presentMode = present_mode,
-                .clipped = c.VK_TRUE,
-                // This should be VK_NULL_HANDLE, but that is a opaque type and can't be casted properly,
-                // After a quick look at the vulkan docs it appears to have cpp and msvc specific exceptions
-                // however, our zig build should be compiling it in c and zig shouldn't be relying on
-                // msvc either so replacing it with null outright should be ok...
-                .oldSwapchain = null,
-            };
-
-            const swapchain_creation_success = c.vkCreateSwapchainKHR(self.device, &swapchain_create_info, null, &self.swapchain);
-            if (swapchain_creation_success != c.VK_SUCCESS) {
-                return VkAbstractionError.CreateSwapchainFailed;
-            }
-
-            const get_swapchain_images_success = c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &image_count, null);
-
-            if (get_swapchain_images_success != c.VK_SUCCESS) {
-                return VkAbstractionError.GetSwapchainImagesFailed;
-            }
-
-            self.swapchain_images = try self.allocator.*.alloc(c.VkImage, image_count);
-            const get_swapchain_images_KHR = c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &image_count, self.swapchain_images.ptr);
-
-            if (get_swapchain_images_KHR != c.VK_SUCCESS) {
-                return VkAbstractionError.GetSwapchainImagesFailed;
-            }
-
-            self.swapchain_format = surface_format;
-            self.swapchain_extent = extent;
-
-            std.debug.print("[Info] Swapchain final image count: {}\n", .{self.swapchain_images.len});
         }
+        
+        std.debug.print("[Info] Final extent: {} {}\n", .{ extent.width, extent.height });
+
+        const swapchain_create_info = c.VkSwapchainCreateInfoKHR{
+            .sType = c.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            .surface = self.surface,
+            .minImageCount = image_count,
+            .imageFormat = surface_format.format,
+            .imageColorSpace = surface_format.colorSpace,
+            .imageExtent = extent,
+            .imageArrayLayers = 1,
+            .imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            .imageSharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+            .queueFamilyIndexCount = 0,
+            .pQueueFamilyIndices = null,
+            .preTransform = support.capabilities.currentTransform,
+            .compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            .presentMode = present_mode,
+            .clipped = c.VK_TRUE,
+            // This should be VK_NULL_HANDLE, but that is a opaque type and can't be casted properly,
+            // After a quick look at the vulkan docs it appears to have cpp and msvc specific exceptions
+            // however, our zig build should be compiling it in c and zig shouldn't be relying on
+            // msvc either so replacing it with null outright should be ok...
+            .oldSwapchain = null,
+        };
+
+        const swapchain_creation_success = c.vkCreateSwapchainKHR(self.device, &swapchain_create_info, null, &self.swapchain);
+        if (swapchain_creation_success != c.VK_SUCCESS) {
+            return VkAbstractionError.CreateSwapchainFailed;
+        }
+
+        const get_swapchain_images_success = c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &image_count, null);
+
+        if (get_swapchain_images_success != c.VK_SUCCESS) {
+            return VkAbstractionError.GetSwapchainImagesFailed;
+        }
+
+        self.swapchain_images = try self.allocator.*.alloc(c.VkImage, image_count);
+        const get_swapchain_images_KHR = c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &image_count, self.swapchain_images.ptr);
+
+        if (get_swapchain_images_KHR != c.VK_SUCCESS) {
+            return VkAbstractionError.GetSwapchainImagesFailed;
+        }
+
+        self.swapchain_format = surface_format;
+        self.swapchain_extent = extent;
+
+        std.debug.print("[Info] Swapchain final image count: {}\n", .{self.swapchain_images.len});
     }
 
     pub fn create_swapchain_image_views(self: *Instance) VkAbstractionError!void {
@@ -482,8 +488,8 @@ pub const Instance = struct {
     }
 
     pub fn create_graphics_pipeline(self: *Instance) VkAbstractionError!void {
-        try create_shader_module(self, "shaders/simple.vert.spv");
-        try create_shader_module(self, "shaders/simple.frag.spv");
+        try create_shader_module(self, @as([]align(4) u8, @constCast(@alignCast(@ptrCast(vert_source)))));
+        try create_shader_module(self, @as([]align(4) u8, @constCast(@alignCast(@ptrCast(frag_source)))));
 
         const vertex_shader_stage = c.VkPipelineShaderStageCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -689,18 +695,15 @@ pub const Instance = struct {
     }
 
     /// Creates a shader module and appends the handler to the state's shader array list
-    pub fn create_shader_module(self: *Instance, file_name: []const u8) VkAbstractionError!void {
+    pub fn create_shader_module(self: *Instance, file_source : [] const align(4) u8) VkAbstractionError!void {
         var shader_module: c.VkShaderModule = undefined;
-
-        const source = try read_sprv_file_aligned(self.allocator, file_name);
-        defer self.allocator.*.free(source);
 
         const create_info = c.VkShaderModuleCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
             // Size of the source in bytes not u32
-            .codeSize = source.len,
+            .codeSize = file_source.len,
             // This must be aligned to 4 bytes
-            .pCode = @alignCast(@ptrCast(source.ptr)),
+            .pCode = @alignCast(@ptrCast(file_source.ptr)),
         };
 
         const create_shader_module_success = c.vkCreateShaderModule(self.device, &create_info, null, &shader_module);
@@ -905,7 +908,7 @@ pub const Instance = struct {
         };
 
         const present_success = c.vkQueuePresentKHR(self.present_queue, &present_info);
-        if (present_success != c.VK_SUCCESS) {
+        if (present_success != c.VK_SUCCESS and present_success != c.VK_SUBOPTIMAL_KHR) {
             return VkAbstractionError.PresentationFailure;
         }
     }
