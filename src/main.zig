@@ -104,13 +104,20 @@ pub fn main() !void {
         @memcpy(@as([*]vulkan.Vertex, @ptrCast(@alignCast(vertex_mmio))), &vertices);
     }
     
-    const MAT4_IDENTITY = .{
-        .{ 1.0, 0.0, 0.0, 0.0 },
-        .{ 0.0, 1.0, 0.0, 0.0 },
-        .{ 0.0, 0.0, 1.0, 0.0 },
-        .{ 0.0, 0.0, 0.0, 1.0 },
-    };
+    //const MAT4_IDENTITY = .{
+    //    .{ 1.0, 0.0, 0.0, 0.0 },
+    //    .{ 0.0, 1.0, 0.0, 0.0 },
+    //    .{ 0.0, 0.0, 1.0, 0.0 },
+    //    .{ 0.0, 0.0, 0.0, 1.0 },
+    //};
 
+    const MAT4_IDENTITY = .{
+        .{ 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA },
+        .{ 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA },
+        .{ 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA },
+        .{ 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA },
+    };
+    
     const ObjectTransform = struct {
         model: c.mat4 = MAT4_IDENTITY,
         view: c.mat4 = MAT4_IDENTITY,
@@ -130,20 +137,29 @@ pub fn main() !void {
     var ubo_buffers: [MAX_CONCURRENT_FRAMES]c.VkBuffer = undefined;
 
     var ubo_device_memory: [MAX_CONCURRENT_FRAMES]c.VkDeviceMemory = undefined;
-    var ubo_mmio: [MAX_CONCURRENT_FRAMES]?*anyopaque = undefined;
+    var ubo_mmio: [MAX_CONCURRENT_FRAMES]?*anyopaque = .{null, null};
 
-    for (0..MAX_CONCURRENT_FRAMES) |i| {
-        const size = try instance.createBuffer(@sizeOf(ObjectTransform), c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ubo_buffers[i], &ubo_device_memory[i]);
+    //for (0..MAX_CONCURRENT_FRAMES) |i| {
+        const size0 = try instance.createBuffer(@sizeOf(ObjectTransform), c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ubo_buffers[0], &ubo_device_memory[0]);
 
-        if (c.vkMapMemory(instance.device, ubo_device_memory[i], 0, size, 0, &ubo_mmio[i]) != c.VK_SUCCESS) {
+        if (c.vkMapMemory(instance.device, ubo_device_memory[0], 0, size0, 0, &ubo_mmio[0]) != c.VK_SUCCESS) {
             std.debug.print("Unable to map device memory to CPU memory\n", .{});
         } 
-        @memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[i])))[0..@sizeOf(ObjectTransform)], @as([*]u8, @ptrCast(@alignCast(&object_transform)))[0..@sizeOf(ObjectTransform)]);
-        //c.vkUnmapMemory(instance.device, ubo_device_memory[i]);
-    }
+        @memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..@sizeOf(ObjectTransform)], @as([*]u8, @ptrCast(@alignCast(&object_transform)))[0..@sizeOf(ObjectTransform)]);
 
-    std.debug.print("{*}\n", .{ubo_mmio[0]});
-    std.debug.print("{*}\n", .{ubo_mmio[1]});
+
+        const size1 = try instance.createBuffer(@sizeOf(ObjectTransform), c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ubo_buffers[1], &ubo_device_memory[1]);
+
+        if (c.vkMapMemory(instance.device, ubo_device_memory[1], 0, size1, 0, &ubo_mmio[1]) != c.VK_SUCCESS) {
+            std.debug.print("Unable to map device memory to CPU memory\n", .{});
+        } 
+        @memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[1])))[0..@sizeOf(ObjectTransform)], @as([*]u8, @ptrCast(@alignCast(&object_transform)))[0..@sizeOf(ObjectTransform)]);
+        //c.vkUnmapMemory(instance.device, ubo_device_memory[i]);
+    //}
+
+    std.debug.print("vertex mmio {*}\n", .{vertex_mmio});
+    std.debug.print("ubo mmio {*}\n", .{ubo_mmio[0]});
+    std.debug.print("ubo mmio {*}\n", .{ubo_mmio[1]});
 
     const layouts = [2]c.VkDescriptorSetLayout{instance.descriptor_set_layout, instance.descriptor_set_layout};
 
@@ -207,7 +223,7 @@ pub fn main() !void {
         const frame_delta: f64 = current_time - previous_frame_time;
         previous_frame_time = current_time;
 
-        std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms   \r", .{ w, xpos, ypos, (frame_delta * 100.0)});
+        std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms   \r", .{ w, xpos, ypos, (frame_delta * 1000.0)});
 
         //temp[0].model[0][0] = std.math.sin(0.01 * @as(f32, @floatFromInt(frame_count % 4712)));
 

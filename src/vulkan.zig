@@ -48,6 +48,7 @@ pub const VkAbstractionError = error{
     DeviceBufferAllocationFailure,
     DeviceBufferBindFailure,
     DescriptorPoolCreationFailed,
+    SuitableDeviceMemoryTypeSelectionFailure,
 };
 
 // These parameters are the minimum required for what we want to do
@@ -908,7 +909,8 @@ pub const Instance = struct {
         };
 
         const present_success = c.vkQueuePresentKHR(self.present_queue, &present_info);
-        if (present_success != c.VK_SUCCESS and present_success != c.VK_SUBOPTIMAL_KHR) {
+        if (present_success != c.VK_SUCCESS and present_success != c.VK_SUBOPTIMAL_KHR and present_success != c.VK_ERROR_OUT_OF_DATE_KHR) {
+            std.debug.print("presentation failure: {}                    \n", .{present_success});
             return VkAbstractionError.PresentationFailure;
         }
     }
@@ -962,7 +964,7 @@ pub const Instance = struct {
         var mem_requirements: c.VkMemoryRequirements = undefined;
         c.vkGetBufferMemoryRequirements(self.device, buffer.*, &mem_requirements);
 
-        const memory_type: u32 = memory_type_selection(self, property_flags);
+        const memory_type: u32 = try memory_type_selection(self, mem_requirements.memoryTypeBits, property_flags);
 
         const buffer_allocation_info: c.VkMemoryAllocateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -1017,17 +1019,17 @@ pub const Instance = struct {
     }
 };
 
-pub fn memory_type_selection(self: *Instance, properties: u32) u32 {
+pub fn memory_type_selection(self: *Instance, typeFilter : u32, properties: u32) VkAbstractionError!u32 {
     for (0..self.mem_properties.memoryTypeCount) |i| {
         // TODO this additional line checking memory TypeBits is in vulkan tutorial,
         // but I'm not sure it really works good...
         // mem_requirements.memoryTypeBits & (@as(u32, 1) << @intCast(i)) == 0
-        if ((self.mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+        if ((typeFilter & (@as(usize, 1) << @intCast(i))) != 0 and (self.mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
             return @intCast(i);
         }
     }
     std.debug.print("Unable to find adequate memory type on device with flags: {}\n", .{properties});
-    return 0;
+    return VkAbstractionError.SuitableDeviceMemoryTypeSelectionFailure;
 }
 
 /// Creates a 4 byte aligned buffer of any given file, intended for reading SPIR-V binary files
