@@ -33,7 +33,10 @@ pub fn build(b: *std.Build) void {
 
     exe.addIncludePath(b.path("cglm-0.9.6/include"));
     exe.addLibraryPath(b.path("cglm-0.9.6/build"));
-    exe.linkSystemLibrary("cglm");
+    if (target.result.os.tag == .linux)
+        exe.linkSystemLibrary("cglm");
+    if (target.result.os.tag == .windows)
+        exe.linkSystemLibrary("libcglm-0");
 
     b.installArtifact(exe);
 
