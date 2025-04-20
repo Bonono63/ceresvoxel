@@ -26,7 +26,11 @@ pub fn build(b: *std.Build) void {
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
+   
+    // Hackery to get a cpp header only library to work with zig
     exe.addIncludePath(b.path("VulkanMemoryAllocator-3.2.1/include"));
+    exe.addLibraryPath(b.path("vma_lib"));
+    exe.linkSystemLibrary("vma");
 
     exe.addIncludePath(b.path("glfw-3.4/include"));
     exe.addLibraryPath(b.path("glfw-3.4/build/src"));

@@ -762,7 +762,7 @@ pub const Instance = struct {
         }
     }
 
-    fn record_command_buffer(self: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32, frame_index: u32, buffers: []c.VkBuffer, vertex_count: u32) VkAbstractionError!void {
+    fn record_command_buffer(self: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32, frame_index: u32, vertex_buffers: *[]c.VkBuffer, vertex_count: u32) VkAbstractionError!void {
         const begin_info = c.VkCommandBufferBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .flags = 0,
@@ -791,7 +791,7 @@ pub const Instance = struct {
         c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline);
 
         const offsets: [1]c.VkDeviceSize = .{0};
-        c.vkCmdBindVertexBuffers(command_buffer, 0, 1, buffers.ptr, &offsets);
+        c.vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers.*.ptr, &offsets);
 
         const viewport = c.VkViewport{
             .x = 0.0,
@@ -843,7 +843,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn draw_frame(self: *Instance, frame_index: u32, buffers: []c.VkBuffer, vertex_count: u32) VkAbstractionError!void {
+    pub fn draw_frame(self: *Instance, frame_index: u32, vertex_buffers: *[]c.VkBuffer, vertex_count: u32) VkAbstractionError!void {
         const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fences[frame_index], c.VK_TRUE, std.math.maxInt(u64));
 
         if (fence_wait != c.VK_SUCCESS) {
@@ -872,7 +872,7 @@ pub const Instance = struct {
             return VkAbstractionError.OutOfMemory;
         }
 
-        try record_command_buffer(self, self.command_buffers[frame_index], image_index, frame_index, buffers, vertex_count);
+        try record_command_buffer(self, self.command_buffers[frame_index], image_index, frame_index, vertex_buffers, vertex_count);
 
         const end_recording_success = c.vkEndCommandBuffer(self.command_buffers[frame_index]);
         if (end_recording_success != c.VK_SUCCESS) {

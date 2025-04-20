@@ -12,6 +12,7 @@ var w: bool = false;
 const MAX_CONCURRENT_FRAMES = 2;
 
 pub fn main() !void {
+    // ZIG INIT
     std.debug.print("[Info] Runtime Safety: {}\n", .{std.debug.runtime_safety});
 
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
@@ -29,23 +30,17 @@ pub fn main() !void {
         allocator = gpa.allocator();
     }
 
+    // VULKAN INIT
     var instance = vulkan.Instance{ .allocator = &allocator, .MAX_CONCURRENT_FRAMES = MAX_CONCURRENT_FRAMES };
 
     instance.shader_modules = std.ArrayList(c.VkShaderModule).init(instance.allocator.*);
     defer instance.shader_modules.deinit();
-
-    instance.device_memory_allocations = std.ArrayList(c.VkDeviceMemory).init(instance.allocator.*);
-    defer instance.device_memory_allocations.deinit();
 
     instance.command_buffers = try instance.allocator.*.alloc(c.VkCommandBuffer, instance.MAX_CONCURRENT_FRAMES);
     defer instance.allocator.*.free(instance.command_buffers);
 
     instance.descriptor_sets = try instance.allocator.*.alloc(c.VkDescriptorSet, instance.MAX_CONCURRENT_FRAMES);
     defer instance.allocator.*.free(instance.descriptor_sets);
-
-    // One set per frame
-    //instance.descriptor_set_layouts = try instance.allocator.*.alloc(c.VkDescriptorSetLayout, 2);
-    //defer instance.allocator.*.free(instance.descriptor_set_layouts);
 
     instance.image_available_semaphores = try instance.allocator.*.alloc(c.VkSemaphore, instance.MAX_CONCURRENT_FRAMES);
     defer instance.allocator.*.free(instance.image_available_semaphores);
@@ -72,11 +67,32 @@ pub fn main() !void {
     try instance.create_command_buffers();
     try instance.create_sync_objects();
 
+    // GLFW INIT
     _ = c.glfwSetKeyCallback(instance.window, key_callback);
 
     _ = c.glfwSetCursorPosCallback(instance.window, cursor_pos_callback);
     _ = c.glfwSetWindowUserPointer(instance.window, &instance);
     _ = c.glfwSetFramebufferSizeCallback(instance.window, window_resize_callback);
+
+    const vulkan_functions = c.VmaVulkanFunctions{
+        .vkGetInstanceProcAddr = &c.vkGetInstanceProcAddr,
+        .vkGetDeviceProcAddr = &c.vkGetDeviceProcAddr,
+    };
+
+    const vma_allocator_create_info = c.VmaAllocatorCreateInfo{
+        .flags = c.VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
+        .vulkanApiVersion = c.VK_API_VERSION_1_2,
+        .physicalDevice = instance.physical_device,
+        .device = instance.device,
+        .instance = instance.vk_instance,
+        .pVulkanFunctions = &vulkan_functions,
+    };
+    
+    var vma_allocator : c.VmaAllocator = undefined;
+    const vma_allocator_success = c.vmaCreateAllocator(&vma_allocator_create_info, &vma_allocator);
+
+    if (vma_allocator_success != c.VK_SUCCESS)
+        std.debug.print("Unable to create vma allocator {}\n", .{vma_allocator_success});
 
     const vertices: [6]vulkan.Vertex = .{
         .{ .pos = .{ -0.5, -0.5 }, .color = .{ 1.0, 1.0, 1.0 } },
@@ -88,21 +104,44 @@ pub fn main() !void {
         .{ .pos = .{ -0.5, -0.5 }, .color = .{ 1.0, 1.0, 1.0 } },
     };
 
-    var vertex_device_memory: c.VkDeviceMemory = undefined;
+    //var vertex_device_memory: c.VkDeviceMemory = undefined;
 
     var vertex_buffers = try instance.allocator.*.alloc(c.VkBuffer, 1);
     defer instance.allocator.*.free(vertex_buffers);
 
-    const buffer_size: u64 = try instance.createBuffer(vertices.len * @sizeOf(vulkan.Vertex), c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &vertex_buffers[0], &vertex_device_memory);
+    var vertex_buffer : c.VkBuffer = undefined;
+
+    const vertices_size = vertices.len * @sizeOf(vulkan.Vertex);
+
+    var buffer_create_info = c.VkBufferCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = vertices_size,
+        .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+        //.usage = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+    }; 
+
+    const alloc_create_info = c.VmaAllocationCreateInfo{
+        .usage = c.VMA_MEMORY_USAGE_AUTO,
+        .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+    };
+
+    var alloc : c.VmaAllocation = undefined;
+    _ = c.vmaCreateBuffer(vma_allocator, &buffer_create_info, &alloc_create_info, &vertex_buffer, &alloc, null);
+
+    _ = c.vmaCopyMemoryToAllocation(vma_allocator, &vertices, alloc, 0, vertices_size);
+
+    vertex_buffers[0] = vertex_buffer;
+
+    //const buffer_size: u64 = try instance.createBuffer(vertices.len * @sizeOf(vulkan.Vertex), c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &vertex_buffers[0], &vertex_device_memory);
 
     // We copy the data over once?
-    var vertex_mmio: ?*anyopaque = undefined;
-    if (c.vkMapMemory(instance.device, vertex_device_memory, 0, buffer_size, 0, &vertex_mmio) != c.VK_SUCCESS) {
-        std.debug.print("Unable to map device memory to CPU memory\n", .{});
-        return;
-    } else {
-        @memcpy(@as([*]vulkan.Vertex, @ptrCast(@alignCast(vertex_mmio))), &vertices);
-    }
+    //var vertex_mmio: ?*anyopaque = undefined;
+    //if (c.vkMapMemory(instance.device, vertex_device_memory, 0, buffer_size, 0, &vertex_mmio) != c.VK_SUCCESS) {
+    //    std.debug.print("Unable to map device memory to CPU memory\n", .{});
+    //    return;
+    //} else {
+    //    @memcpy(@as([*]vulkan.Vertex, @ptrCast(@alignCast(vertex_mmio))), &vertices);
+    //}
     
     //const MAT4_IDENTITY = .{
     //    .{ 1.0, 0.0, 0.0, 0.0 },
@@ -126,8 +165,6 @@ pub fn main() !void {
     
     var object_transform = ObjectTransform{};
     
-    std.debug.print("object transform content: {any}\n", .{@as([*]u8, @ptrCast(@alignCast(&object_transform)))[0..@sizeOf(ObjectTransform)]});
-
     _ = &object_transform;
     
     //c.glm_perspective(3.14, 800.0/600.0, 0.001, 1000, @as([*c][4]f32, @ptrCast(@alignCast(&object_transform.projection))));
@@ -160,7 +197,7 @@ pub fn main() !void {
         //c.vkUnmapMemory(instance.device, ubo_device_memory[i]);
     //}
 
-    std.debug.print("vertex mmio {*}\n", .{vertex_mmio});
+    //std.debug.print("vertex mmio {*}\n", .{vertex_mmio});
     std.debug.print("ubo mmio {*}\n", .{ubo_mmio[0]});
     std.debug.print("ubo mmio {*}\n", .{ubo_mmio[1]});
 
@@ -199,25 +236,17 @@ pub fn main() !void {
         c.vkUpdateDescriptorSets(instance.device, 1, &descriptor_write, 0, null);
     }
 
-    var frame_count: u64 = 0;
-    var current_frame_index: u32 = 0;
-
-    var previous_frame_time: f64 = 0.0;
-
-    std.debug.print("sizeof of {}\n", .{@sizeOf(ObjectTransform)});
-
     @memset(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..@sizeOf(ObjectTransform)], 0);
     @memset(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[1])))[0..@sizeOf(ObjectTransform)], 0);
     
     @memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..@sizeOf(ObjectTransform)], @as([*]u8, @ptrCast(@alignCast(&object_transform)))[0..@sizeOf(ObjectTransform)]);
     
-    std.debug.print("object transform content: {any}\n", .{@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..@sizeOf(ObjectTransform)]});
-    std.debug.print("object transform content: {any}\n", .{@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[1])))[0..@sizeOf(ObjectTransform)]});
+   
+    // FRAME LOOP
 
-
-    //std.debug.print("object transform content: {any}\n", .{@as([*]f32, @ptrCast(@alignCast(&ubo_mmio[0])))[0..48]});
-    //@memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..192], @as([*]u8, @ptrCast(@alignCast(&temp)))[0..192]);
-    //std.debug.print("object transform content: {any}\n", .{@as([*]f32, @ptrCast(@alignCast(&ubo_mmio[0])))[0..48]});
+    var frame_count: u64 = 0;
+    var current_frame_index: u32 = 0;
+    var previous_frame_time: f64 = 0.0;
     
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
@@ -228,27 +257,18 @@ pub fn main() !void {
 
         std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms   \r", .{ w, xpos, ypos, (frame_delta * 1000.0)});
 
-        //temp[0].model[0][0] = std.math.sin(0.01 * @as(f32, @floatFromInt(frame_count % 4712)));
-
-    //std.debug.print("object transform content: {any}\n", .{@as([*]f32, @ptrCast(@alignCast(&ubo_mmio[1])))[0..48]});
-        //@memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[current_frame_index])))[0..192], @as([*]u8, @ptrCast(@alignCast(&temp)))[0..192]);
-
-        try instance.draw_frame(current_frame_index, vertex_buffers, vertices.len);
+        try instance.draw_frame(current_frame_index, &vertex_buffers, vertices.len);
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
     }
 
-    c.vkUnmapMemory(instance.device, vertex_device_memory);
-
     _ = c.vkDeviceWaitIdle(instance.device);
-    c.vkFreeMemory(instance.device, vertex_device_memory, null);
+    c.vmaDestroyBuffer(vma_allocator, vertex_buffer, alloc);
+    c.vmaDestroyAllocator(vma_allocator);
     for (0..MAX_CONCURRENT_FRAMES) |i| {
         c.vkDestroyBuffer(instance.device, ubo_buffers[i], null);
         c.vkFreeMemory(instance.device, ubo_device_memory[i], null);
-    }
-    for (vertex_buffers) |buffer| {
-        c.vkDestroyBuffer(instance.device, buffer, null);
     }
     instance.cleanup();
 }

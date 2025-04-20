@@ -12,6 +12,8 @@ bin-release/
 *.air
 *.ipa
 *.apk
+*.so
+*.o
 
 zig-out/
 
