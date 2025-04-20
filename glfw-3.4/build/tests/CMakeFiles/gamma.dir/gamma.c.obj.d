@@ -1,0 +1,37 @@
+tests/CMakeFiles/gamma.dir/gamma.c.obj: \
+ C:\Users\bon\Downloads\ceresvoxel\glfw-3.4\tests\gamma.c \
+ C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/deps/glad/gl.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/include/stdint.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/stdint.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/crtdefs.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/corecrt.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/_mingw.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/_mingw_mac.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/_mingw_secapi.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/vadefs.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/sdks/_mingw_ddk.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/include/stddef.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/stddef.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/stdio.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/corecrt_stdio_config.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/_mingw_off_t.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/swprintf.inl \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/sec_api/stdio_s.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/stdlib.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/corecrt_wstdlib.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/include/limits.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/include/syslimits.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/limits.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/sec_api/stdlib_s.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/malloc.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/include/mm_malloc.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/errno.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/string.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/sec_api/string_s.h \
+ C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/include/GLFW/glfw3.h \
+ C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/deps/nuklear.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/include/stdarg.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/stdarg.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/_mingw_stdarg.h \
+ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include/assert.h \
+ C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/deps/nuklear_glfw_gl2.h

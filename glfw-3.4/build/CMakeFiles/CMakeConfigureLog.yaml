@@ -1,0 +1,624 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineSystem.cmake:205 (message)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      The system is: Windows - 10.0.26100 - AMD64
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCCompiler.cmake:123 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/cc.exe 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "a.exe"
+      
+      The C compiler identification is GNU, found in:
+        C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/4.0.1/CompilerIdC/a.exe
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-pt425g"
+      binary: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-pt425g"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-pt425g'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe -f Makefile cmTC_9fe8a/fast
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_9fe8a.dir\\build.make CMakeFiles/cmTC_9fe8a.dir/build
+        mingw32-make[1]: Entering directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-pt425g'
+        Building C object CMakeFiles/cmTC_9fe8a.dir/CMakeCCompilerABI.c.obj
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe   -v -o CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.obj -c "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c"
+        Using built-in specs.
+        COLLECT_GCC=C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe
+        Target: x86_64-w64-mingw32
+        Configured with: ../../../src/gcc-14.2.0/configure --host=x86_64-w64-mingw32 --build=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --prefix=/mingw64 --with-sysroot=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64 --enable-host-shared --disable-multilib --enable-languages=c,c++,fortran,lto --enable-libstdcxx-time=yes --enable-threads=win32 --enable-libstdcxx-threads=yes --enable-libgomp --enable-libatomic --enable-lto --enable-graphite --enable-checking=release --enable-mingw-wildcard --enable-fully-dynamic-string --enable-version-specific-runtime-libs --enable-libstdcxx-filesystem-ts=yes --disable-libssp --disable-libstdcxx-pch --disable-libstdcxx-debug --enable-bootstrap --disable-rpath --disable-win32-registry --disable-nls --disable-werror --disable-symvers --with-gnu-as --with-gnu-ld --with-arch=nocona --with-tune=core2 --with-libiconv --with-system-zlib --with-gmp=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpfr=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpc=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-isl=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-pkgversion='x86_64-win32-seh-rev2, Built by MinGW-Builds project' --with-bugurl=https://github.com/niXman/mingw-builds LD_FOR_TARGET=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/ld.exe --with-boot-ldflags='-pipe -fno-ident -L/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/opt/lib -L/c/buildroot/prerequisites/x86_64-zlib-static/lib -L/c/buildroot/prerequisites/x86_64-w64-mingw32-static/lib  -Wl,--disable-dynamicbase -static-libstdc++ -static-libgcc'
+        Thread model: win32
+        Supported LTO compression algorithms: zlib
+        gcc version 14.2.0 (x86_64-win32-seh-rev2, Built by MinGW-Builds project) 
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=core2' '-march=nocona' '-dumpdir' 'CMakeFiles\\cmTC_9fe8a.dir\\'
+         C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/cc1.exe -quiet -v -iprefix C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/ -U_REENTRANT C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles\\cmTC_9fe8a.dir\\ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mtune=core2 -march=nocona -version -o C:\\Users\\bon\\AppData\\Local\\Temp\\ccRX1vQc.s
+        GNU C17 (x86_64-win32-seh-rev2, Built by MinGW-Builds project) version 14.2.0 (x86_64-w64-mingw32)
+        	compiled by GNU C version 14.2.0, GMP version 6.2.1, MPFR version 4.1.0, MPC version 1.2.1, isl version isl-0.25-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring duplicate directory "C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/../../lib/gcc/x86_64-w64-mingw32/14.2.0/include"
+        ignoring nonexistent directory "C:/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64D:/a/_temp/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../include"
+        ignoring duplicate directory "C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/../../lib/gcc/x86_64-w64-mingw32/14.2.0/include-fixed"
+        ignoring duplicate directory "C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/../../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/include"
+        ignoring nonexistent directory "C:/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/mingw/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/include
+         C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/include-fixed
+         C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/include
+        End of search list.
+        Compiler executable checksum: 1a82b45c9755e0859018a23d977168a2
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=core2' '-march=nocona' '-dumpdir' 'CMakeFiles\\cmTC_9fe8a.dir\\'
+         C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/as.exe -v -o CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.obj C:\\Users\\bon\\AppData\\Local\\Temp\\ccRX1vQc.s
+        GNU assembler version 2.44 (x86_64-w64-mingw32) using BFD version (GNU Binutils) 2.44
+        COMPILER_PATH=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/
+        LIBRARY_PATH=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../lib/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=core2' '-march=nocona' '-dumpdir' 'CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.'
+        Linking C executable cmTC_9fe8a.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_9fe8a.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_9fe8a.dir/objects.a
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\ar.exe qc CMakeFiles\\cmTC_9fe8a.dir/objects.a @CMakeFiles\\cmTC_9fe8a.dir\\objects1.rsp
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe  -v -Wl,-v -Wl,--whole-archive CMakeFiles\\cmTC_9fe8a.dir/objects.a -Wl,--no-whole-archive -o cmTC_9fe8a.exe -Wl,--out-implib,libcmTC_9fe8a.dll.a -Wl,--major-image-version,0,--minor-image-version,0
+        Using built-in specs.
+        COLLECT_GCC=C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe
+        COLLECT_LTO_WRAPPER=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/lto-wrapper.exe
+        Target: x86_64-w64-mingw32
+        Configured with: ../../../src/gcc-14.2.0/configure --host=x86_64-w64-mingw32 --build=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --prefix=/mingw64 --with-sysroot=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64 --enable-host-shared --disable-multilib --enable-languages=c,c++,fortran,lto --enable-libstdcxx-time=yes --enable-threads=win32 --enable-libstdcxx-threads=yes --enable-libgomp --enable-libatomic --enable-lto --enable-graphite --enable-checking=release --enable-mingw-wildcard --enable-fully-dynamic-string --enable-version-specific-runtime-libs --enable-libstdcxx-filesystem-ts=yes --disable-libssp --disable-libstdcxx-pch --disable-libstdcxx-debug --enable-bootstrap --disable-rpath --disable-win32-registry --disable-nls --disable-werror --disable-symvers --with-gnu-as --with-gnu-ld --with-arch=nocona --with-tune=core2 --with-libiconv --with-system-zlib --with-gmp=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpfr=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpc=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-isl=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-pkgversion='x86_64-win32-seh-rev2, Built by MinGW-Builds project' --with-bugurl=https://github.com/niXman/mingw-builds LD_FOR_TARGET=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/ld.exe --with-boot-ldflags='-pipe -fno-ident -L/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/opt/lib -L/c/buildroot/prerequisites/x86_64-zlib-static/lib -L/c/buildroot/prerequisites/x86_64-w64-mingw32-static/lib  -Wl,--disable-dynamicbase -static-libstdc++ -static-libgcc'
+        Thread model: win32
+        Supported LTO compression algorithms: zlib
+        gcc version 14.2.0 (x86_64-win32-seh-rev2, Built by MinGW-Builds project) 
+        COMPILER_PATH=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/
+        LIBRARY_PATH=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../lib/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../
+        COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_9fe8a.exe' '-mtune=core2' '-march=nocona' '-dumpdir' 'cmTC_9fe8a.'
+         C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/collect2.exe -plugin C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/liblto_plugin.dll -plugin-opt=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/lto-wrapper.exe -plugin-opt=-fresolution=C:\\Users\\bon\\AppData\\Local\\Temp\\ccES5jcc.res -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_eh -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-ladvapi32 -plugin-opt=-pass-through=-lshell32 -plugin-opt=-pass-through=-luser32 -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-liconv -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_eh -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 --sysroot=C:/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64 -m i386pep -Bdynamic -o cmTC_9fe8a.exe C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib/crt2.o C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtbegin.o -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0 -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../lib -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../.. -v --whole-archive CMakeFiles\\cmTC_9fe8a.dir/objects.a --no-whole-archive --out-implib libcmTC_9fe8a.dll.a --major-image-version 0 --minor-image-version 0 -lmingw32 -lgcc -lgcc_eh -lmingwex -lmsvcrt -lkernel32 -ladvapi32 -lshell32 -luser32 -lkernel32 -liconv -lmingw32 -lgcc -lgcc_eh -lmingwex -lmsvcrt -lkernel32 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtend.o
+        collect2 version 14.2.0
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe -plugin C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/liblto_plugin.dll -plugin-opt=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/lto-wrapper.exe -plugin-opt=-fresolution=C:\\Users\\bon\\AppData\\Local\\Temp\\ccES5jcc.res -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_eh -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-ladvapi32 -plugin-opt=-pass-through=-lshell32 -plugin-opt=-pass-through=-luser32 -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-liconv -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_eh -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 --sysroot=C:/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64 -m i386pep -Bdynamic -o cmTC_9fe8a.exe C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib/crt2.o C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtbegin.o -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0 -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../lib -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../.. -v --whole-archive CMakeFiles\\cmTC_9fe8a.dir/objects.a --no-whole-archive --out-implib libcmTC_9fe8a.dll.a --major-image-version 0 --minor-image-version 0 -lmingw32 -lgcc -lgcc_eh -lmingwex -lmsvcrt -lkernel32 -ladvapi32 -lshell32 -luser32 -lkernel32 -liconv -lmingw32 -lgcc -lgcc_eh -lmingwex -lmsvcrt -lkernel32 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtend.o
+        GNU ld (GNU Binutils) 2.44
+        COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_9fe8a.exe' '-mtune=core2' '-march=nocona' '-dumpdir' 'cmTC_9fe8a.'
+        mingw32-make[1]: Leaving directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-pt425g'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:191 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed C implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/include]
+          add: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/include-fixed]
+          add: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/include]
+        end of search list found
+        collapse include dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/include] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/include]
+        collapse include dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/include-fixed] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/include-fixed]
+        collapse include dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/include] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include]
+        implicit include dirs: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/include;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/include-fixed;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:227 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)))("|,| |$)]
+        ignore line: [Change Dir: 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-pt425g']
+        ignore line: []
+        ignore line: [Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe -f Makefile cmTC_9fe8a/fast]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_9fe8a.dir\\build.make CMakeFiles/cmTC_9fe8a.dir/build]
+        ignore line: [mingw32-make[1]: Entering directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-pt425g']
+        ignore line: [Building C object CMakeFiles/cmTC_9fe8a.dir/CMakeCCompilerABI.c.obj]
+        ignore line: [C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe   -v -o CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.obj -c "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c"]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe]
+        ignore line: [Target: x86_64-w64-mingw32]
+        ignore line: [Configured with: ../../../src/gcc-14.2.0/configure --host=x86_64-w64-mingw32 --build=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --prefix=/mingw64 --with-sysroot=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64 --enable-host-shared --disable-multilib --enable-languages=c,c++,fortran,lto --enable-libstdcxx-time=yes --enable-threads=win32 --enable-libstdcxx-threads=yes --enable-libgomp --enable-libatomic --enable-lto --enable-graphite --enable-checking=release --enable-mingw-wildcard --enable-fully-dynamic-string --enable-version-specific-runtime-libs --enable-libstdcxx-filesystem-ts=yes --disable-libssp --disable-libstdcxx-pch --disable-libstdcxx-debug --enable-bootstrap --disable-rpath --disable-win32-registry --disable-nls --disable-werror --disable-symvers --with-gnu-as --with-gnu-ld --with-arch=nocona --with-tune=core2 --with-libiconv --with-system-zlib --with-gmp=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpfr=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpc=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-isl=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-pkgversion='x86_64-win32-seh-rev2, Built by MinGW-Builds project' --with-bugurl=https://github.com/niXman/mingw-builds LD_FOR_TARGET=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/ld.exe --with-boot-ldflags='-pipe -fno-ident -L/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/opt/lib -L/c/buildroot/prerequisites/x86_64-zlib-static/lib -L/c/buildroot/prerequisites/x86_64-w64-mingw32-static/lib  -Wl,--disable-dynamicbase -static-libstdc++ -static-libgcc']
+        ignore line: [Thread model: win32]
+        ignore line: [Supported LTO compression algorithms: zlib]
+        ignore line: [gcc version 14.2.0 (x86_64-win32-seh-rev2  Built by MinGW-Builds project) ]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=core2' '-march=nocona' '-dumpdir' 'CMakeFiles\\cmTC_9fe8a.dir\\']
+        ignore line: [ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/cc1.exe -quiet -v -iprefix C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/ -U_REENTRANT C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles\\cmTC_9fe8a.dir\\ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mtune=core2 -march=nocona -version -o C:\\Users\\bon\\AppData\\Local\\Temp\\ccRX1vQc.s]
+        ignore line: [GNU C17 (x86_64-win32-seh-rev2  Built by MinGW-Builds project) version 14.2.0 (x86_64-w64-mingw32)]
+        ignore line: [	compiled by GNU C version 14.2.0  GMP version 6.2.1  MPFR version 4.1.0  MPC version 1.2.1  isl version isl-0.25-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [ignoring duplicate directory "C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/../../lib/gcc/x86_64-w64-mingw32/14.2.0/include"]
+        ignore line: [ignoring nonexistent directory "C:/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64D:/a/_temp/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../include"]
+        ignore line: [ignoring duplicate directory "C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/../../lib/gcc/x86_64-w64-mingw32/14.2.0/include-fixed"]
+        ignore line: [ignoring duplicate directory "C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/../../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/include"]
+        ignore line: [ignoring nonexistent directory "C:/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/mingw/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/include]
+        ignore line: [ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/include-fixed]
+        ignore line: [ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/include]
+        ignore line: [End of search list.]
+        ignore line: [Compiler executable checksum: 1a82b45c9755e0859018a23d977168a2]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=core2' '-march=nocona' '-dumpdir' 'CMakeFiles\\cmTC_9fe8a.dir\\']
+        ignore line: [ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/as.exe -v -o CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.obj C:\\Users\\bon\\AppData\\Local\\Temp\\ccRX1vQc.s]
+        ignore line: [GNU assembler version 2.44 (x86_64-w64-mingw32) using BFD version (GNU Binutils) 2.44]
+        ignore line: [COMPILER_PATH=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/]
+        ignore line: [LIBRARY_PATH=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../lib/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=core2' '-march=nocona' '-dumpdir' 'CMakeFiles\\cmTC_9fe8a.dir\\CMakeCCompilerABI.c.']
+        ignore line: [Linking C executable cmTC_9fe8a.exe]
+        ignore line: ["C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_9fe8a.dir\\link.txt --verbose=1]
+        ignore line: ["C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_9fe8a.dir/objects.a]
+        ignore line: [C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\ar.exe qc CMakeFiles\\cmTC_9fe8a.dir/objects.a @CMakeFiles\\cmTC_9fe8a.dir\\objects1.rsp]
+        ignore line: [C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe  -v -Wl -v -Wl --whole-archive CMakeFiles\\cmTC_9fe8a.dir/objects.a -Wl --no-whole-archive -o cmTC_9fe8a.exe -Wl --out-implib libcmTC_9fe8a.dll.a -Wl --major-image-version 0 --minor-image-version 0]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe]
+        ignore line: [COLLECT_LTO_WRAPPER=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/lto-wrapper.exe]
+        ignore line: [Target: x86_64-w64-mingw32]
+        ignore line: [Configured with: ../../../src/gcc-14.2.0/configure --host=x86_64-w64-mingw32 --build=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --prefix=/mingw64 --with-sysroot=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64 --enable-host-shared --disable-multilib --enable-languages=c,c++,fortran,lto --enable-libstdcxx-time=yes --enable-threads=win32 --enable-libstdcxx-threads=yes --enable-libgomp --enable-libatomic --enable-lto --enable-graphite --enable-checking=release --enable-mingw-wildcard --enable-fully-dynamic-string --enable-version-specific-runtime-libs --enable-libstdcxx-filesystem-ts=yes --disable-libssp --disable-libstdcxx-pch --disable-libstdcxx-debug --enable-bootstrap --disable-rpath --disable-win32-registry --disable-nls --disable-werror --disable-symvers --with-gnu-as --with-gnu-ld --with-arch=nocona --with-tune=core2 --with-libiconv --with-system-zlib --with-gmp=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpfr=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpc=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-isl=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-pkgversion='x86_64-win32-seh-rev2, Built by MinGW-Builds project' --with-bugurl=https://github.com/niXman/mingw-builds LD_FOR_TARGET=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/ld.exe --with-boot-ldflags='-pipe -fno-ident -L/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/opt/lib -L/c/buildroot/prerequisites/x86_64-zlib-static/lib -L/c/buildroot/prerequisites/x86_64-w64-mingw32-static/lib  -Wl,--disable-dynamicbase -static-libstdc++ -static-libgcc']
+        ignore line: [Thread model: win32]
+        ignore line: [Supported LTO compression algorithms: zlib]
+        ignore line: [gcc version 14.2.0 (x86_64-win32-seh-rev2  Built by MinGW-Builds project) ]
+        ignore line: [COMPILER_PATH=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/]
+        ignore line: [LIBRARY_PATH=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../lib/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/]
+        ignore line: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_9fe8a.exe' '-mtune=core2' '-march=nocona' '-dumpdir' 'cmTC_9fe8a.']
+        link line: [ C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/collect2.exe -plugin C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/liblto_plugin.dll -plugin-opt=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/lto-wrapper.exe -plugin-opt=-fresolution=C:\\Users\\bon\\AppData\\Local\\Temp\\ccES5jcc.res -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_eh -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-ladvapi32 -plugin-opt=-pass-through=-lshell32 -plugin-opt=-pass-through=-luser32 -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-liconv -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_eh -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 --sysroot=C:/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64 -m i386pep -Bdynamic -o cmTC_9fe8a.exe C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib/crt2.o C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtbegin.o -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0 -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../lib -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib -LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../.. -v --whole-archive CMakeFiles\\cmTC_9fe8a.dir/objects.a --no-whole-archive --out-implib libcmTC_9fe8a.dll.a --major-image-version 0 --minor-image-version 0 -lmingw32 -lgcc -lgcc_eh -lmingwex -lmsvcrt -lkernel32 -ladvapi32 -lshell32 -luser32 -lkernel32 -liconv -lmingw32 -lgcc -lgcc_eh -lmingwex -lmsvcrt -lkernel32 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtend.o]
+          arg [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/collect2.exe] ==> ignore
+          arg [-plugin] ==> ignore
+          arg [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/liblto_plugin.dll] ==> ignore
+          arg [-plugin-opt=C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../libexec/gcc/x86_64-w64-mingw32/14.2.0/lto-wrapper.exe] ==> ignore
+          arg [-plugin-opt=-fresolution=C:\\Users\\bon\\AppData\\Local\\Temp\\ccES5jcc.res] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmingw32] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_eh] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmingwex] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmsvcrt] ==> ignore
+          arg [-plugin-opt=-pass-through=-lkernel32] ==> ignore
+          arg [-plugin-opt=-pass-through=-ladvapi32] ==> ignore
+          arg [-plugin-opt=-pass-through=-lshell32] ==> ignore
+          arg [-plugin-opt=-pass-through=-luser32] ==> ignore
+          arg [-plugin-opt=-pass-through=-lkernel32] ==> ignore
+          arg [-plugin-opt=-pass-through=-liconv] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmingw32] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_eh] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmingwex] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmsvcrt] ==> ignore
+          arg [-plugin-opt=-pass-through=-lkernel32] ==> ignore
+          arg [--sysroot=C:/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64] ==> ignore
+          arg [-m] ==> ignore
+          arg [i386pep] ==> ignore
+          arg [-Bdynamic] ==> search dynamic
+          arg [-o] ==> ignore
+          arg [cmTC_9fe8a.exe] ==> ignore
+          arg [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib/crt2.o] ==> obj [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib/crt2.o]
+          arg [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtbegin.o] ==> obj [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtbegin.o]
+          arg [-LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0] ==> dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0]
+          arg [-LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc] ==> dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc]
+          arg [-LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib] ==> dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib]
+          arg [-LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../lib] ==> dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../lib]
+          arg [-LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib] ==> dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib]
+          arg [-LC:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../..] ==> dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../..]
+          arg [-v] ==> ignore
+          arg [--whole-archive] ==> ignore
+          arg [CMakeFiles\\cmTC_9fe8a.dir/objects.a] ==> ignore
+          arg [--no-whole-archive] ==> ignore
+          arg [--out-implib] ==> ignore
+          arg [libcmTC_9fe8a.dll.a] ==> ignore
+          arg [--major-image-version] ==> ignore
+          arg [0] ==> ignore
+          arg [--minor-image-version] ==> ignore
+          arg [0] ==> ignore
+          arg [-lmingw32] ==> lib [mingw32]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-lgcc_eh] ==> lib [gcc_eh]
+          arg [-lmingwex] ==> lib [mingwex]
+          arg [-lmsvcrt] ==> lib [msvcrt]
+          arg [-lkernel32] ==> lib [kernel32]
+          arg [-ladvapi32] ==> lib [advapi32]
+          arg [-lshell32] ==> lib [shell32]
+          arg [-luser32] ==> lib [user32]
+          arg [-lkernel32] ==> lib [kernel32]
+          arg [-liconv] ==> lib [iconv]
+          arg [-lmingw32] ==> lib [mingw32]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-lgcc_eh] ==> lib [gcc_eh]
+          arg [-lmingwex] ==> lib [mingwex]
+          arg [-lmsvcrt] ==> lib [msvcrt]
+          arg [-lkernel32] ==> lib [kernel32]
+          arg [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtend.o] ==> obj [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtend.o]
+        linker tool for 'C': ../src/gcc-14.2.0/configure --host=x86_64-w64-mingw32 --build=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --prefix=/mingw64 --with-sysroot=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64 --enable-host-shared --disable-multilib --enable-languages=c,c++,fortran,lto --enable-libstdcxx-time=yes --enable-threads=win32 --enable-libstdcxx-threads=yes --enable-libgomp --enable-libatomic --enable-lto --enable-graphite --enable-checking=release --enable-mingw-wildcard --enable-fully-dynamic-string --enable-version-specific-runtime-libs --enable-libstdcxx-filesystem-ts=yes --disable-libssp --disable-libstdcxx-pch --disable-libstdcxx-debug --enable-bootstrap --disable-rpath --disable-win32-registry --disable-nls --disable-werror --disable-symvers --with-gnu-as --with-gnu-ld --with-arch=nocona --with-tune=core2 --with-libiconv --with-system-zlib --with-gmp=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpfr=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpc=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-isl=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-pkgversion='x86_64-win32-seh-rev2, Built by MinGW-Builds project' --with-bugurl=https:/github.com/niXman/mingw-builds LD_FOR_TARGET=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/ld.exe
+        remove lib [gcc_eh]
+        remove lib [msvcrt]
+        remove lib [gcc_eh]
+        remove lib [msvcrt]
+        collapse obj [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib/crt2.o] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/lib/crt2.o]
+        collapse obj [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtbegin.o] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/crtbegin.o]
+        collapse obj [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/crtend.o] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/crtend.o]
+        collapse library dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0]
+        collapse library dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc]
+        collapse library dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib/../lib] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/lib]
+        collapse library dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../lib] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib]
+        collapse library dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/lib] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/lib]
+        collapse library dir [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../..] ==> [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib]
+        implicit libs: [mingw32;gcc;mingwex;kernel32;advapi32;shell32;user32;kernel32;iconv;mingw32;gcc;mingwex;kernel32]
+        implicit objs: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/lib/crt2.o;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/crtbegin.o;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0/crtend.o]
+        implicit dirs: [C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc/x86_64-w64-mingw32/14.2.0;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib/gcc;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/x86_64-w64-mingw32/lib;C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CMakeDetermineLinkerId.cmake:36 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:264 (cmake_determine_linker_id)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the C compiler's linker: "../src/gcc-14.2.0/configure --host=x86_64-w64-mingw32 --build=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --prefix=/mingw64 --with-sysroot=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64 --enable-host-shared --disable-multilib --enable-languages=c,c++,fortran,lto --enable-libstdcxx-time=yes --enable-threads=win32 --enable-libstdcxx-threads=yes --enable-libgomp --enable-libatomic --enable-lto --enable-graphite --enable-checking=release --enable-mingw-wildcard --enable-fully-dynamic-string --enable-version-specific-runtime-libs --enable-libstdcxx-filesystem-ts=yes --disable-libssp --disable-libstdcxx-pch --disable-libstdcxx-debug --enable-bootstrap --disable-rpath --disable-win32-registry --disable-nls --disable-werror --disable-symvers --with-gnu-as --with-gnu-ld --with-arch=nocona --with-tune=core2 --with-libiconv --with-system-zlib --with-gmp=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpfr=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpc=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-isl=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-pkgversion='x86_64-win32-seh-rev2, Built by MinGW-Builds project' --with-bugurl=https:/github.com/niXman/mingw-builds LD_FOR_TARGET=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/ld.exe" "-v"
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CMakeDetermineLinkerId.cmake:36 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:264 (cmake_determine_linker_id)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the C compiler's linker: "../src/gcc-14.2.0/configure --host=x86_64-w64-mingw32 --build=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --prefix=/mingw64 --with-sysroot=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64 --enable-host-shared --disable-multilib --enable-languages=c,c++,fortran,lto --enable-libstdcxx-time=yes --enable-threads=win32 --enable-libstdcxx-threads=yes --enable-libgomp --enable-libatomic --enable-lto --enable-graphite --enable-checking=release --enable-mingw-wildcard --enable-fully-dynamic-string --enable-version-specific-runtime-libs --enable-libstdcxx-filesystem-ts=yes --disable-libssp --disable-libstdcxx-pch --disable-libstdcxx-debug --enable-bootstrap --disable-rpath --disable-win32-registry --disable-nls --disable-werror --disable-symvers --with-gnu-as --with-gnu-ld --with-arch=nocona --with-tune=core2 --with-libiconv --with-system-zlib --with-gmp=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpfr=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpc=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-isl=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-pkgversion='x86_64-win32-seh-rev2, Built by MinGW-Builds project' --with-bugurl=https:/github.com/niXman/mingw-builds LD_FOR_TARGET=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/ld.exe" "-V"
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CMakeDetermineLinkerId.cmake:36 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:264 (cmake_determine_linker_id)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the C compiler's linker: "../src/gcc-14.2.0/configure --host=x86_64-w64-mingw32 --build=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --prefix=/mingw64 --with-sysroot=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64 --enable-host-shared --disable-multilib --enable-languages=c,c++,fortran,lto --enable-libstdcxx-time=yes --enable-threads=win32 --enable-libstdcxx-threads=yes --enable-libgomp --enable-libatomic --enable-lto --enable-graphite --enable-checking=release --enable-mingw-wildcard --enable-fully-dynamic-string --enable-version-specific-runtime-libs --enable-libstdcxx-filesystem-ts=yes --disable-libssp --disable-libstdcxx-pch --disable-libstdcxx-debug --enable-bootstrap --disable-rpath --disable-win32-registry --disable-nls --disable-werror --disable-symvers --with-gnu-as --with-gnu-ld --with-arch=nocona --with-tune=core2 --with-libiconv --with-system-zlib --with-gmp=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpfr=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-mpc=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-isl=/c/buildroot/prerequisites/x86_64-w64-mingw32-static --with-pkgversion='x86_64-win32-seh-rev2, Built by MinGW-Builds project' --with-bugurl=https:/github.com/niXman/mingw-builds LD_FOR_TARGET=/c/buildroot/x86_64-1420-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/ld.exe" "--version"
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CheckCSourceCompiles.cmake:58 (cmake_check_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/FindThreads.cmake:97 (check_c_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/FindThreads.cmake:163 (_threads_check_libc)"
+      - "CMakeLists.txt:60 (find_package)"
+    checks:
+      - "Performing Test CMAKE_HAVE_LIBC_PTHREAD"
+    directories:
+      source: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-g9exq5"
+      binary: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-g9exq5"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/CMake/modules"
+    buildResult:
+      variable: "CMAKE_HAVE_LIBC_PTHREAD"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-g9exq5'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe -f Makefile cmTC_ef414/fast
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_ef414.dir\\build.make CMakeFiles/cmTC_ef414.dir/build
+        mingw32-make[1]: Entering directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-g9exq5'
+        Building C object CMakeFiles/cmTC_ef414.dir/src.c.obj
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe -DCMAKE_HAVE_LIBC_PTHREAD   -o CMakeFiles\\cmTC_ef414.dir\\src.c.obj -c C:\\Users\\bon\\Downloads\\ceresvoxel\\glfw-3.4\\build\\CMakeFiles\\CMakeScratch\\TryCompile-g9exq5\\src.c
+        Linking C executable cmTC_ef414.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_ef414.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_ef414.dir/objects.a
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\ar.exe qc CMakeFiles\\cmTC_ef414.dir/objects.a @CMakeFiles\\cmTC_ef414.dir\\objects1.rsp
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe -Wl,--whole-archive CMakeFiles\\cmTC_ef414.dir/objects.a -Wl,--no-whole-archive -o cmTC_ef414.exe -Wl,--out-implib,libcmTC_ef414.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_ef414.dir\\linkLibs.rsp
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe: CMakeFiles\\cmTC_ef414.dir/objects.a(src.c.obj):src.c:(.text+0x35): undefined reference to `pthread_create'
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe: CMakeFiles\\cmTC_ef414.dir/objects.a(src.c.obj):src.c:(.text+0x41): undefined reference to `pthread_detach'
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe: CMakeFiles\\cmTC_ef414.dir/objects.a(src.c.obj):src.c:(.text+0x4d): undefined reference to `pthread_cancel'
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe: CMakeFiles\\cmTC_ef414.dir/objects.a(src.c.obj):src.c:(.text+0x5e): undefined reference to `pthread_join'
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe: CMakeFiles\\cmTC_ef414.dir/objects.a(src.c.obj):src.c:(.text+0x68): undefined reference to `pthread_exit'
+        collect2.exe: error: ld returned 1 exit status
+        mingw32-make[1]: *** [CMakeFiles\\cmTC_ef414.dir\\build.make:103: cmTC_ef414.exe] Error 1
+        mingw32-make[1]: Leaving directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-g9exq5'
+        mingw32-make: *** [Makefile:133: cmTC_ef414/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CheckLibraryExists.cmake:112 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/FindThreads.cmake:112 (check_library_exists)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/FindThreads.cmake:175 (_threads_check_lib)"
+      - "CMakeLists.txt:60 (find_package)"
+    checks:
+      - "Looking for pthread_create in pthreads"
+    directories:
+      source: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-b2izmt"
+      binary: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-b2izmt"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/CMake/modules"
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREADS_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-b2izmt'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe -f Makefile cmTC_e1fab/fast
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_e1fab.dir\\build.make CMakeFiles/cmTC_e1fab.dir/build
+        mingw32-make[1]: Entering directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-b2izmt'
+        Building C object CMakeFiles/cmTC_e1fab.dir/CheckFunctionExists.c.obj
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe   -DCHECK_FUNCTION_EXISTS=pthread_create -o CMakeFiles\\cmTC_e1fab.dir\\CheckFunctionExists.c.obj -c C:\\Users\\bon\\Downloads\\ceresvoxel\\glfw-3.4\\build\\CMakeFiles\\CMakeScratch\\TryCompile-b2izmt\\CheckFunctionExists.c
+        Linking C executable cmTC_e1fab.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_e1fab.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_e1fab.dir/objects.a
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\ar.exe qc CMakeFiles\\cmTC_e1fab.dir/objects.a @CMakeFiles\\cmTC_e1fab.dir\\objects1.rsp
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe  -DCHECK_FUNCTION_EXISTS=pthread_create -Wl,--whole-archive CMakeFiles\\cmTC_e1fab.dir/objects.a -Wl,--no-whole-archive -o cmTC_e1fab.exe -Wl,--out-implib,libcmTC_e1fab.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_e1fab.dir\\linkLibs.rsp
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe: cannot find -lpthreads: No such file or directory
+        collect2.exe: error: ld returned 1 exit status
+        mingw32-make[1]: *** [CMakeFiles\\cmTC_e1fab.dir\\build.make:103: cmTC_e1fab.exe] Error 1
+        mingw32-make[1]: Leaving directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-b2izmt'
+        mingw32-make: *** [Makefile:133: cmTC_e1fab/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CheckLibraryExists.cmake:112 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/FindThreads.cmake:112 (check_library_exists)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/FindThreads.cmake:176 (_threads_check_lib)"
+      - "CMakeLists.txt:60 (find_package)"
+    checks:
+      - "Looking for pthread_create in pthread"
+    directories:
+      source: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-m5c41z"
+      binary: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-m5c41z"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/CMake/modules"
+    buildResult:
+      variable: "CMAKE_HAVE_PTHREAD_CREATE"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-m5c41z'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe -f Makefile cmTC_a0ffd/fast
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_a0ffd.dir\\build.make CMakeFiles/cmTC_a0ffd.dir/build
+        mingw32-make[1]: Entering directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-m5c41z'
+        Building C object CMakeFiles/cmTC_a0ffd.dir/CheckFunctionExists.c.obj
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe   -DCHECK_FUNCTION_EXISTS=pthread_create -o CMakeFiles\\cmTC_a0ffd.dir\\CheckFunctionExists.c.obj -c C:\\Users\\bon\\Downloads\\ceresvoxel\\glfw-3.4\\build\\CMakeFiles\\CMakeScratch\\TryCompile-m5c41z\\CheckFunctionExists.c
+        Linking C executable cmTC_a0ffd.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_a0ffd.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_a0ffd.dir/objects.a
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\ar.exe qc CMakeFiles\\cmTC_a0ffd.dir/objects.a @CMakeFiles\\cmTC_a0ffd.dir\\objects1.rsp
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe  -DCHECK_FUNCTION_EXISTS=pthread_create -Wl,--whole-archive CMakeFiles\\cmTC_a0ffd.dir/objects.a -Wl,--no-whole-archive -o cmTC_a0ffd.exe -Wl,--out-implib,libcmTC_a0ffd.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_a0ffd.dir\\linkLibs.rsp
+        mingw32-make[1]: Leaving directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-m5c41z'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CheckIncludeFile.cmake:99 (try_compile)"
+      - "src/CMakeLists.txt:274 (check_include_file)"
+    checks:
+      - "Looking for dinput.h"
+    directories:
+      source: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-zc426w"
+      binary: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-zc426w"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/CMake/modules"
+    buildResult:
+      variable: "DINPUT_H_FOUND"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-zc426w'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe -f Makefile cmTC_6c894/fast
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_6c894.dir\\build.make CMakeFiles/cmTC_6c894.dir/build
+        mingw32-make[1]: Entering directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-zc426w'
+        Building C object CMakeFiles/cmTC_6c894.dir/CheckIncludeFile.c.obj
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe    -o CMakeFiles\\cmTC_6c894.dir\\CheckIncludeFile.c.obj -c C:\\Users\\bon\\Downloads\\ceresvoxel\\glfw-3.4\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zc426w\\CheckIncludeFile.c
+        Linking C executable cmTC_6c894.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_6c894.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_6c894.dir/objects.a
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\ar.exe qc CMakeFiles\\cmTC_6c894.dir/objects.a @CMakeFiles\\cmTC_6c894.dir\\objects1.rsp
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe -Wl,--whole-archive CMakeFiles\\cmTC_6c894.dir/objects.a -Wl,--no-whole-archive -o cmTC_6c894.exe -Wl,--out-implib,libcmTC_6c894.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_6c894.dir\\linkLibs.rsp
+        mingw32-make[1]: Leaving directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-zc426w'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CheckIncludeFile.cmake:99 (try_compile)"
+      - "src/CMakeLists.txt:275 (check_include_file)"
+    checks:
+      - "Looking for xinput.h"
+    directories:
+      source: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-5n9awv"
+      binary: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-5n9awv"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/CMake/modules"
+    buildResult:
+      variable: "XINPUT_H_FOUND"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-5n9awv'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe -f Makefile cmTC_e0b55/fast
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_e0b55.dir\\build.make CMakeFiles/cmTC_e0b55.dir/build
+        mingw32-make[1]: Entering directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-5n9awv'
+        Building C object CMakeFiles/cmTC_e0b55.dir/CheckIncludeFile.c.obj
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe    -o CMakeFiles\\cmTC_e0b55.dir\\CheckIncludeFile.c.obj -c C:\\Users\\bon\\Downloads\\ceresvoxel\\glfw-3.4\\build\\CMakeFiles\\CMakeScratch\\TryCompile-5n9awv\\CheckIncludeFile.c
+        Linking C executable cmTC_e0b55.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_e0b55.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_e0b55.dir/objects.a
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\ar.exe qc CMakeFiles\\cmTC_e0b55.dir/objects.a @CMakeFiles\\cmTC_e0b55.dir\\objects1.rsp
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe -Wl,--whole-archive CMakeFiles\\cmTC_e0b55.dir/objects.a -Wl,--no-whole-archive -o cmTC_e0b55.exe -Wl,--out-implib,libcmTC_e0b55.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_e0b55.dir\\linkLibs.rsp
+        mingw32-make[1]: Leaving directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-5n9awv'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CheckCCompilerFlag.cmake:56 (cmake_check_compiler_flag)"
+      - "src/CMakeLists.txt:318 (check_c_compiler_flag)"
+    checks:
+      - "Performing Test _GLFW_HAS_DEP"
+    directories:
+      source: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-y0lwd1"
+      binary: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-y0lwd1"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/CMake/modules"
+    buildResult:
+      variable: "_GLFW_HAS_DEP"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-y0lwd1'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe -f Makefile cmTC_51e96/fast
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_51e96.dir\\build.make CMakeFiles/cmTC_51e96.dir/build
+        mingw32-make[1]: Entering directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-y0lwd1'
+        Building C object CMakeFiles/cmTC_51e96.dir/src.c.obj
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe -D_GLFW_HAS_DEP  -Wl,--nxcompat -o CMakeFiles\\cmTC_51e96.dir\\src.c.obj -c C:\\Users\\bon\\Downloads\\ceresvoxel\\glfw-3.4\\build\\CMakeFiles\\CMakeScratch\\TryCompile-y0lwd1\\src.c
+        Linking C executable cmTC_51e96.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_51e96.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_51e96.dir/objects.a
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\ar.exe qc CMakeFiles\\cmTC_51e96.dir/objects.a @CMakeFiles\\cmTC_51e96.dir\\objects1.rsp
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe  -Wl,--nxcompat -Wl,--whole-archive CMakeFiles\\cmTC_51e96.dir/objects.a -Wl,--no-whole-archive -o cmTC_51e96.exe -Wl,--out-implib,libcmTC_51e96.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_51e96.dir\\linkLibs.rsp
+        mingw32-make[1]: Leaving directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-y0lwd1'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CheckCCompilerFlag.cmake:56 (cmake_check_compiler_flag)"
+      - "src/CMakeLists.txt:325 (check_c_compiler_flag)"
+    checks:
+      - "Performing Test _GLFW_HAS_ASLR"
+    directories:
+      source: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-rys1d5"
+      binary: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-rys1d5"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/CMake/modules"
+    buildResult:
+      variable: "_GLFW_HAS_ASLR"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-rys1d5'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe -f Makefile cmTC_249de/fast
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_249de.dir\\build.make CMakeFiles/cmTC_249de.dir/build
+        mingw32-make[1]: Entering directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-rys1d5'
+        Building C object CMakeFiles/cmTC_249de.dir/src.c.obj
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe -D_GLFW_HAS_ASLR  -Wl,--dynamicbase -o CMakeFiles\\cmTC_249de.dir\\src.c.obj -c C:\\Users\\bon\\Downloads\\ceresvoxel\\glfw-3.4\\build\\CMakeFiles\\CMakeScratch\\TryCompile-rys1d5\\src.c
+        Linking C executable cmTC_249de.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_249de.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_249de.dir/objects.a
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\ar.exe qc CMakeFiles\\cmTC_249de.dir/objects.a @CMakeFiles\\cmTC_249de.dir\\objects1.rsp
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe  -Wl,--dynamicbase -Wl,--whole-archive CMakeFiles\\cmTC_249de.dir/objects.a -Wl,--no-whole-archive -o cmTC_249de.exe -Wl,--out-implib,libcmTC_249de.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_249de.dir\\linkLibs.rsp
+        mingw32-make[1]: Leaving directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-rys1d5'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CheckCCompilerFlag.cmake:56 (cmake_check_compiler_flag)"
+      - "src/CMakeLists.txt:332 (check_c_compiler_flag)"
+    checks:
+      - "Performing Test _GLFW_HAS_64ASLR"
+    directories:
+      source: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-50b3h3"
+      binary: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-50b3h3"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/CMake/modules"
+    buildResult:
+      variable: "_GLFW_HAS_64ASLR"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-50b3h3'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe -f Makefile cmTC_afbb3/fast
+        C:/Users/bon/Downloads/x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_afbb3.dir\\build.make CMakeFiles/cmTC_afbb3.dir/build
+        mingw32-make[1]: Entering directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-50b3h3'
+        Building C object CMakeFiles/cmTC_afbb3.dir/src.c.obj
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe -D_GLFW_HAS_64ASLR  -Wl,--high-entropy-va -o CMakeFiles\\cmTC_afbb3.dir\\src.c.obj -c C:\\Users\\bon\\Downloads\\ceresvoxel\\glfw-3.4\\build\\CMakeFiles\\CMakeScratch\\TryCompile-50b3h3\\src.c
+        Linking C executable cmTC_afbb3.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_afbb3.dir\\link.txt --verbose=1
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_afbb3.dir/objects.a
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\ar.exe qc CMakeFiles\\cmTC_afbb3.dir/objects.a @CMakeFiles\\cmTC_afbb3.dir\\objects1.rsp
+        C:\\Users\\bon\\Downloads\\x86_64-14.2.0-release-win32-seh-msvcrt-rt_v12-rev2\\mingw64\\bin\\cc.exe  -Wl,--high-entropy-va -Wl,--whole-archive CMakeFiles\\cmTC_afbb3.dir/objects.a -Wl,--no-whole-archive -o cmTC_afbb3.exe -Wl,--out-implib,libcmTC_afbb3.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\\cmTC_afbb3.dir\\linkLibs.rsp
+        mingw32-make[1]: Leaving directory 'C:/Users/bon/Downloads/ceresvoxel/glfw-3.4/build/CMakeFiles/CMakeScratch/TryCompile-50b3h3'
+        
+      exitCode: 0
+...

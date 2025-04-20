@@ -139,6 +139,9 @@ pub fn main() !void {
     var ubo_device_memory: [MAX_CONCURRENT_FRAMES]c.VkDeviceMemory = undefined;
     var ubo_mmio: [MAX_CONCURRENT_FRAMES]?*anyopaque = .{null, null};
 
+
+    _ = try instance.createBuffer(@sizeOf(ObjectTransform), c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ubo_buffers[0], &ubo_device_memory[0]);
+
     //for (0..MAX_CONCURRENT_FRAMES) |i| {
         const size0 = try instance.createBuffer(@sizeOf(ObjectTransform), c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ubo_buffers[0], &ubo_device_memory[0]);
 
@@ -161,7 +164,7 @@ pub fn main() !void {
     std.debug.print("ubo mmio {*}\n", .{ubo_mmio[0]});
     std.debug.print("ubo mmio {*}\n", .{ubo_mmio[1]});
 
-    const layouts = [2]c.VkDescriptorSetLayout{instance.descriptor_set_layout, instance.descriptor_set_layout};
+    const layouts : [2]c.VkDescriptorSetLayout = .{instance.descriptor_set_layout, instance.descriptor_set_layout};
 
     const alloc_info = c.VkDescriptorSetAllocateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,

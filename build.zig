@@ -26,17 +26,37 @@ pub fn build(b: *std.Build) void {
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
-    exe.linkSystemLibrary("glfw");
-    // TODO add a line for changing to vulkan-1 on Windows
-    exe.linkSystemLibrary("vulkan");
-    //exe.linkSystemLibrary("pthread");
+    exe.addIncludePath(b.path("VulkanMemoryAllocator-3.2.1/include"));
 
+    exe.addIncludePath(b.path("glfw-3.4/include"));
+    exe.addLibraryPath(b.path("glfw-3.4/build/src"));
+    
+    if (target.result.os.tag == .windows)
+        exe.linkSystemLibrary("glfw3");
+    // Make sure to build glfw as a dll because it doesn't like to
+    // work otherwise
+    if (target.result.os.tag == .linux)
+        exe.linkSystemLibrary("glfw");
+    
     exe.addIncludePath(b.path("cglm-0.9.6/include"));
     exe.addLibraryPath(b.path("cglm-0.9.6/build"));
     if (target.result.os.tag == .linux)
         exe.linkSystemLibrary("cglm");
     if (target.result.os.tag == .windows)
         exe.linkSystemLibrary("libcglm-0");
+    
+    // Should be built against the vulkan system library, building it yourself is
+    // not really recomended
+    if (target.result.os.tag == .linux)
+        exe.linkSystemLibrary("vulkan");
+    if (target.result.os.tag == .windows)
+    {
+        // Absolute paths are nono for zig, but we can cheese it with
+        // a directory link so here you go
+        exe.addIncludePath(b.path("vulkan_include"));
+        exe.addLibraryPath(b.path("vulkan_lib"));
+        exe.linkSystemLibrary("vulkan-1");
+    }
 
     b.installArtifact(exe);
 

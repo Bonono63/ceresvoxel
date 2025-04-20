@@ -1,0 +1,6 @@
+C:/Users/bon/Downloads/ceresvoxel/VulkanMemoryAllocator-3.2.1/build/CMakeFiles/edit_cache.dir
+C:/Users/bon/Downloads/ceresvoxel/VulkanMemoryAllocator-3.2.1/build/CMakeFiles/rebuild_cache.dir
+C:/Users/bon/Downloads/ceresvoxel/VulkanMemoryAllocator-3.2.1/build/CMakeFiles/list_install_components.dir
+C:/Users/bon/Downloads/ceresvoxel/VulkanMemoryAllocator-3.2.1/build/CMakeFiles/install.dir
+C:/Users/bon/Downloads/ceresvoxel/VulkanMemoryAllocator-3.2.1/build/CMakeFiles/install/local.dir
+C:/Users/bon/Downloads/ceresvoxel/VulkanMemoryAllocator-3.2.1/build/CMakeFiles/install/strip.dir
