@@ -229,7 +229,7 @@ pub fn main() !void {
     var window_height : i32 = 0;
     var window_width : i32 = 0;
 
-    var t : f32 = 0.0;
+//    var t : f32 = 0.0;
     
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
@@ -242,24 +242,41 @@ pub fn main() !void {
         const aspect_ratio : f32 = @as(f32, @floatFromInt(window_width))/@as(f32, @floatFromInt(window_height));
         _ = &aspect_ratio;
 
-        if (inputs.s)
-        {
-            player_state.pos[0] -= 1.0 * frame_delta;
-        }
         if (inputs.w)
         {
             player_state.pos[0] += 1.0 * frame_delta;
         }
-
-        std.debug.print("\t{} {} {d:.3} {d:.3}ms   \r", .{ window_width, window_height, aspect_ratio, (frame_delta * 1000.0)});
-
-        t = (t + 0.001);
-        if (t >= 4.0)
+        if (inputs.s)
         {
-            t = 0.0;
+            player_state.pos[0] -= 1.0 * frame_delta;
+        }
+        if (inputs.a)
+        {
+            player_state.pos[1] -= 1.0 * frame_delta;
+        }
+        if (inputs.d)
+        {
+            player_state.pos[1] += 1.0 * frame_delta;
         }
 
-        object_transform.projection = zm.perspectiveFovLh(3.14/t, aspect_ratio, 0.001, 1000.0);
+        std.debug.print("\t{d:.1} {d:.1} {d:.1} {} {} {d:.3} {d:.3}ms   \r", .{
+            player_state.pos[0], 
+            player_state.pos[1],
+            player_state.pos[2],
+            window_width,
+            window_height,
+            aspect_ratio,
+            frame_delta * 1000.0,
+        });
+
+        //t = (t + 0.001);
+        //if (t >= 4.0)
+        //{
+        //    t = 0.0;
+        //}
+
+        object_transform.view = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 1.0}, .{0.0,0.0,1.0, 1.0}, .{0.0,1.0,0.0, 0.0});
+        object_transform.projection = zm.perspectiveFovLh(3.14/4.0, aspect_ratio, 0.001, 1000.0);
 
         _ = c.vmaCopyMemoryToAllocation(vma_allocator, &object_transform, ubo_alloc[current_frame_index], 0, @sizeOf(ObjectTransform));
 
