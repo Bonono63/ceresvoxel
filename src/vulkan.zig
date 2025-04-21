@@ -1,5 +1,6 @@
 const std = @import("std");
 const c = @import("clibs.zig");
+const zm = @import("zmath");
 
 const vert_source = @embedFile("shaders/simple.vert.spv");
 const frag_source = @embedFile("shaders/simple.frag.spv");
@@ -72,8 +73,8 @@ const swapchain_support = struct {
 };
 
 pub const Vertex = struct {
-    pos: c.vec2,
-    color: c.vec3,
+    pos: @Vector(2, f32),
+    color: @Vector(3, f32),
 };
 
 //pub const Mesh = struct {
@@ -947,41 +948,41 @@ pub const Instance = struct {
         try create_framebuffers(self);
     }
 
-    pub fn createBuffer(self: *Instance, size: u32, usage_flags: u32, property_flags: u32, buffer: *c.VkBuffer, device_memory: *c.VkDeviceMemory) VkAbstractionError!u64 {
-        const buffer_info = c.VkBufferCreateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size = size,
-            .usage = usage_flags,
-            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-        };
+    //pub fn createBuffer(self: *Instance, size: u32, usage_flags: u32, property_flags: u32, buffer: *c.VkBuffer, device_memory: *c.VkDeviceMemory) VkAbstractionError!u64 {
+    //    const buffer_info = c.VkBufferCreateInfo{
+    //        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+    //        .size = size,
+    //        .usage = usage_flags,
+    //        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+    //    };
 
-        if (c.vkCreateBuffer(self.device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
-            // Techinically VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR can also be returned,
-            // but if the program gets this far that shouldn't be the return error.
-            return VkAbstractionError.OutOfMemory;
-        }
+    //    if (c.vkCreateBuffer(self.device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
+    //        // Techinically VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR can also be returned,
+    //        // but if the program gets this far that shouldn't be the return error.
+    //        return VkAbstractionError.OutOfMemory;
+    //    }
 
-        var mem_requirements: c.VkMemoryRequirements = undefined;
-        c.vkGetBufferMemoryRequirements(self.device, buffer.*, &mem_requirements);
+    //    var mem_requirements: c.VkMemoryRequirements = undefined;
+    //    c.vkGetBufferMemoryRequirements(self.device, buffer.*, &mem_requirements);
 
-        const memory_type: u32 = try memory_type_selection(self, mem_requirements.memoryTypeBits, property_flags);
+    //    const memory_type: u32 = try memory_type_selection(self, mem_requirements.memoryTypeBits, property_flags);
 
-        const buffer_allocation_info: c.VkMemoryAllocateInfo = .{
-            .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-            .allocationSize = mem_requirements.size,
-            .memoryTypeIndex = memory_type,
-        };
+    //    const buffer_allocation_info: c.VkMemoryAllocateInfo = .{
+    //        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+    //        .allocationSize = mem_requirements.size,
+    //        .memoryTypeIndex = memory_type,
+    //    };
 
-        if (c.vkAllocateMemory(self.device, &buffer_allocation_info, null, device_memory) != c.VK_SUCCESS) {
-            return VkAbstractionError.DeviceBufferAllocationFailure;
-        }
+    //    if (c.vkAllocateMemory(self.device, &buffer_allocation_info, null, device_memory) != c.VK_SUCCESS) {
+    //        return VkAbstractionError.DeviceBufferAllocationFailure;
+    //    }
 
-        if (c.vkBindBufferMemory(self.device, buffer.*, device_memory.*, 0) != c.VK_SUCCESS) {
-            return VkAbstractionError.DeviceBufferBindFailure;
-        }
+    //    if (c.vkBindBufferMemory(self.device, buffer.*, device_memory.*, 0) != c.VK_SUCCESS) {
+    //        return VkAbstractionError.DeviceBufferBindFailure;
+    //    }
 
-        return mem_requirements.size;
-    }
+    //    return mem_requirements.size;
+    //}
 
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called

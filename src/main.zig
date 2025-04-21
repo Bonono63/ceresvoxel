@@ -2,6 +2,7 @@
 const std = @import("std");
 const c = @import("clibs.zig");
 const vulkan = @import("vulkan.zig");
+const zm = @import("zmath");
 
 const ENGINE_NAME = "CeresVoxel";
 
@@ -74,6 +75,7 @@ pub fn main() !void {
     _ = c.glfwSetWindowUserPointer(instance.window, &instance);
     _ = c.glfwSetFramebufferSizeCallback(instance.window, window_resize_callback);
 
+    // VMA INIT
     const vulkan_functions = c.VmaVulkanFunctions{
         .vkGetInstanceProcAddr = &c.vkGetInstanceProcAddr,
         .vkGetDeviceProcAddr = &c.vkGetDeviceProcAddr,
@@ -94,6 +96,7 @@ pub fn main() !void {
     if (vma_allocator_success != c.VK_SUCCESS)
         std.debug.print("Unable to create vma allocator {}\n", .{vma_allocator_success});
 
+    // RENDER INIT
     const vertices: [6]vulkan.Vertex = .{
         .{ .pos = .{ -0.5, -0.5 }, .color = .{ 1.0, 1.0, 1.0 } },
         .{ .pos = .{ 0.5, -0.5 }, .color = .{ 0.0, 1.0, 0.0 } },
@@ -104,8 +107,6 @@ pub fn main() !void {
         .{ .pos = .{ -0.5, -0.5 }, .color = .{ 1.0, 1.0, 1.0 } },
     };
 
-    //var vertex_device_memory: c.VkDeviceMemory = undefined;
-
     var vertex_buffers = try instance.allocator.*.alloc(c.VkBuffer, 1);
     defer instance.allocator.*.free(vertex_buffers);
 
@@ -113,35 +114,25 @@ pub fn main() !void {
 
     const vertices_size = vertices.len * @sizeOf(vulkan.Vertex);
 
-    var buffer_create_info = c.VkBufferCreateInfo{
+    var vertex_buffer_create_info = c.VkBufferCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = vertices_size,
         .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
         //.usage = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
     }; 
 
-    const alloc_create_info = c.VmaAllocationCreateInfo{
+    const vertex_alloc_create_info = c.VmaAllocationCreateInfo{
         .usage = c.VMA_MEMORY_USAGE_AUTO,
         .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
     };
 
-    var alloc : c.VmaAllocation = undefined;
-    _ = c.vmaCreateBuffer(vma_allocator, &buffer_create_info, &alloc_create_info, &vertex_buffer, &alloc, null);
+    var vertex_alloc : c.VmaAllocation = undefined;
+    _ = c.vmaCreateBuffer(vma_allocator, &vertex_buffer_create_info, &vertex_alloc_create_info, &vertex_buffer, &vertex_alloc, null);
 
-    _ = c.vmaCopyMemoryToAllocation(vma_allocator, &vertices, alloc, 0, vertices_size);
+    _ = c.vmaCopyMemoryToAllocation(vma_allocator, &vertices, vertex_alloc, 0, vertices_size);
 
     vertex_buffers[0] = vertex_buffer;
 
-    //const buffer_size: u64 = try instance.createBuffer(vertices.len * @sizeOf(vulkan.Vertex), c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &vertex_buffers[0], &vertex_device_memory);
-
-    // We copy the data over once?
-    //var vertex_mmio: ?*anyopaque = undefined;
-    //if (c.vkMapMemory(instance.device, vertex_device_memory, 0, buffer_size, 0, &vertex_mmio) != c.VK_SUCCESS) {
-    //    std.debug.print("Unable to map device memory to CPU memory\n", .{});
-    //    return;
-    //} else {
-    //    @memcpy(@as([*]vulkan.Vertex, @ptrCast(@alignCast(vertex_mmio))), &vertices);
-    //}
     
     //const MAT4_IDENTITY = .{
     //    .{ 1.0, 0.0, 0.0, 0.0 },
@@ -150,56 +141,36 @@ pub fn main() !void {
     //    .{ 0.0, 0.0, 0.0, 1.0 },
     //};
 
-    const MAT4_IDENTITY = .{
-        .{ 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA },
-        .{ 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA },
-        .{ 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA },
-        .{ 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA, 0xAAAAAAAA },
-    };
-    
     const ObjectTransform = struct {
-        model: c.mat4 = MAT4_IDENTITY,
-        view: c.mat4 = MAT4_IDENTITY,
-        projection: c.mat4 = MAT4_IDENTITY,
+        model: zm.Mat = zm.identity(),
+        view: zm.Mat = zm.identity(),
+        projection: zm.Mat = zm.identity(),
     };
     
     var object_transform = ObjectTransform{};
     
     _ = &object_transform;
     
-    //c.glm_perspective(3.14, 800.0/600.0, 0.001, 1000, @as([*c][4]f32, @ptrCast(@alignCast(&object_transform.projection))));
-    
-    //var temp: [1]ObjectTransform = .{object_transform};
+    var ubo_buffers : [MAX_CONCURRENT_FRAMES]c.VkBuffer = undefined;
 
-    var ubo_buffers: [MAX_CONCURRENT_FRAMES]c.VkBuffer = undefined;
+    const ubo_buffer_create_info = c.VkBufferCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = @sizeOf(ObjectTransform),
+        .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+    };
 
-    var ubo_device_memory: [MAX_CONCURRENT_FRAMES]c.VkDeviceMemory = undefined;
-    var ubo_mmio: [MAX_CONCURRENT_FRAMES]?*anyopaque = .{null, null};
+    const ubo_alloc_create_info = c.VmaAllocationCreateInfo{
+        .usage = c.VMA_MEMORY_USAGE_AUTO,
+        .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+    };
 
+    var ubo_alloc : [MAX_CONCURRENT_FRAMES]c.VmaAllocation = undefined;
+    for (0..MAX_CONCURRENT_FRAMES) |i|
+    {
+        _ = c.vmaCreateBuffer(vma_allocator, &ubo_buffer_create_info, &ubo_alloc_create_info, &ubo_buffers[i], &ubo_alloc[i], null);
 
-    _ = try instance.createBuffer(@sizeOf(ObjectTransform), c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ubo_buffers[0], &ubo_device_memory[0]);
-
-    //for (0..MAX_CONCURRENT_FRAMES) |i| {
-        const size0 = try instance.createBuffer(@sizeOf(ObjectTransform), c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ubo_buffers[0], &ubo_device_memory[0]);
-
-        if (c.vkMapMemory(instance.device, ubo_device_memory[0], 0, size0, 0, &ubo_mmio[0]) != c.VK_SUCCESS) {
-            std.debug.print("Unable to map device memory to CPU memory\n", .{});
-        } 
-        @memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..@sizeOf(ObjectTransform)], @as([*]u8, @ptrCast(@alignCast(&object_transform)))[0..@sizeOf(ObjectTransform)]);
-
-
-        const size1 = try instance.createBuffer(@sizeOf(ObjectTransform), c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &ubo_buffers[1], &ubo_device_memory[1]);
-
-        if (c.vkMapMemory(instance.device, ubo_device_memory[1], 0, size1, 0, &ubo_mmio[1]) != c.VK_SUCCESS) {
-            std.debug.print("Unable to map device memory to CPU memory\n", .{});
-        } 
-        @memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[1])))[0..@sizeOf(ObjectTransform)], @as([*]u8, @ptrCast(@alignCast(&object_transform)))[0..@sizeOf(ObjectTransform)]);
-        //c.vkUnmapMemory(instance.device, ubo_device_memory[i]);
-    //}
-
-    //std.debug.print("vertex mmio {*}\n", .{vertex_mmio});
-    std.debug.print("ubo mmio {*}\n", .{ubo_mmio[0]});
-    std.debug.print("ubo mmio {*}\n", .{ubo_mmio[1]});
+        _ = c.vmaCopyMemoryToAllocation(vma_allocator, &object_transform, ubo_alloc[i], 0, @sizeOf(ObjectTransform));
+    }
 
     const layouts : [2]c.VkDescriptorSetLayout = .{instance.descriptor_set_layout, instance.descriptor_set_layout};
 
@@ -236,12 +207,6 @@ pub fn main() !void {
         c.vkUpdateDescriptorSets(instance.device, 1, &descriptor_write, 0, null);
     }
 
-    @memset(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..@sizeOf(ObjectTransform)], 0);
-    @memset(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[1])))[0..@sizeOf(ObjectTransform)], 0);
-    
-    @memcpy(@as([*]u8, @ptrCast(@alignCast(&ubo_mmio[0])))[0..@sizeOf(ObjectTransform)], @as([*]u8, @ptrCast(@alignCast(&object_transform)))[0..@sizeOf(ObjectTransform)]);
-    
-   
     // FRAME LOOP
 
     var frame_count: u64 = 0;
@@ -257,6 +222,8 @@ pub fn main() !void {
 
         std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms   \r", .{ w, xpos, ypos, (frame_delta * 1000.0)});
 
+        _ = c.vmaCopyMemoryToAllocation(vma_allocator, &object_transform, ubo_alloc[current_frame_index], 0, @sizeOf(ObjectTransform));
+
         try instance.draw_frame(current_frame_index, &vertex_buffers, vertices.len);
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
@@ -264,12 +231,11 @@ pub fn main() !void {
     }
 
     _ = c.vkDeviceWaitIdle(instance.device);
-    c.vmaDestroyBuffer(vma_allocator, vertex_buffer, alloc);
-    c.vmaDestroyAllocator(vma_allocator);
+    c.vmaDestroyBuffer(vma_allocator, vertex_buffer, vertex_alloc);
     for (0..MAX_CONCURRENT_FRAMES) |i| {
-        c.vkDestroyBuffer(instance.device, ubo_buffers[i], null);
-        c.vkFreeMemory(instance.device, ubo_device_memory[i], null);
+        c.vmaDestroyBuffer(vma_allocator, ubo_buffers[i], ubo_alloc[i]);
     }
+    c.vmaDestroyAllocator(vma_allocator);
     instance.cleanup();
 }
 
