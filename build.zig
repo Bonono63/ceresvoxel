@@ -44,13 +44,6 @@ pub fn build(b: *std.Build) void {
    
     const zmath = b.dependency("zmath", .{});
     exe.root_module.addImport("zmath", zmath.module("root"));
-
-    //exe.addIncludePath(b.path("cglm-0.9.6/include"));
-    //exe.addLibraryPath(b.path("cglm-0.9.6/build"));
-    //if (target.result.os.tag == .linux)
-    //    exe.linkSystemLibrary("cglm");
-    //if (target.result.os.tag == .windows)
-    //    exe.linkSystemLibrary("libcglm-0");
     
     // Should be built against the vulkan system library, building it yourself is
     // not really recomended
