@@ -8,7 +8,25 @@ const ENGINE_NAME = "CeresVoxel";
 
 var xpos: f64 = 0.0;
 var ypos: f64 = 0.0;
-var w: bool = false;
+var dx: f64 = 0.0;
+var dy: f64 = 0.0;
+
+const Inputs = packed struct {
+    w : bool = false,
+    a : bool = false,
+    s : bool = false,
+    d : bool = false,
+    space : bool = false,
+    shift : bool = false,
+};
+
+var inputs = Inputs{};
+
+const PlayerState = struct {
+    pos : @Vector(3, f32) = .{ 0.0, 0.0, 0.0 },
+};
+
+var player_state = PlayerState{};
 
 const MAX_CONCURRENT_FRAMES = 2;
 
@@ -75,6 +93,9 @@ pub fn main() !void {
     _ = c.glfwSetWindowUserPointer(instance.window, &instance);
     _ = c.glfwSetFramebufferSizeCallback(instance.window, window_resize_callback);
 
+    c.glfwSetInputMode(instance.window, c.GLFW_CURSOR, c.GLFW_CURSOR_DISABLED);
+    c.glfwSetWindowSizeLimits(instance.window, 240, 135, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
+
     // VMA INIT
     const vulkan_functions = c.VmaVulkanFunctions{
         .vkGetInstanceProcAddr = &c.vkGetInstanceProcAddr,
@@ -132,14 +153,6 @@ pub fn main() !void {
     _ = c.vmaCopyMemoryToAllocation(vma_allocator, &vertices, vertex_alloc, 0, vertices_size);
 
     vertex_buffers[0] = vertex_buffer;
-
-    
-    //const MAT4_IDENTITY = .{
-    //    .{ 1.0, 0.0, 0.0, 0.0 },
-    //    .{ 0.0, 1.0, 0.0, 0.0 },
-    //    .{ 0.0, 0.0, 1.0, 0.0 },
-    //    .{ 0.0, 0.0, 0.0, 1.0 },
-    //};
 
     const ObjectTransform = struct {
         model: zm.Mat = zm.identity(),
@@ -211,16 +224,42 @@ pub fn main() !void {
 
     var frame_count: u64 = 0;
     var current_frame_index: u32 = 0;
-    var previous_frame_time: f64 = 0.0;
+    var previous_frame_time: f32 = 0.0;
+
+    var window_height : i32 = 0;
+    var window_width : i32 = 0;
+
+    var t : f32 = 0.0;
     
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
 
-        const current_time = c.glfwGetTime();
-        const frame_delta: f64 = current_time - previous_frame_time;
+        const current_time : f32 = @floatCast(c.glfwGetTime());
+        const frame_delta: f32 = current_time - previous_frame_time;
         previous_frame_time = current_time;
 
-        std.debug.print("\tw: {:5} x: {d:.2} y: {d:.2} {d:.3}ms   \r", .{ w, xpos, ypos, (frame_delta * 1000.0)});
+        c.glfwGetWindowSize(instance.window, &window_width, &window_height);
+        const aspect_ratio : f32 = @as(f32, @floatFromInt(window_width))/@as(f32, @floatFromInt(window_height));
+        _ = &aspect_ratio;
+
+        if (inputs.s)
+        {
+            player_state.pos[0] -= 1.0 * frame_delta;
+        }
+        if (inputs.w)
+        {
+            player_state.pos[0] += 1.0 * frame_delta;
+        }
+
+        std.debug.print("\t{} {} {d:.3} {d:.3}ms   \r", .{ window_width, window_height, aspect_ratio, (frame_delta * 1000.0)});
+
+        t = (t + 0.001);
+        if (t >= 4.0)
+        {
+            t = 0.0;
+        }
+
+        object_transform.projection = zm.perspectiveFovLh(3.14/t, aspect_ratio, 0.001, 1000.0);
 
         _ = c.vmaCopyMemoryToAllocation(vma_allocator, &object_transform, ubo_alloc[current_frame_index], 0, @sizeOf(ObjectTransform));
 
@@ -228,6 +267,9 @@ pub fn main() !void {
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
+        
+        dx = 0;
+        dy = 0;
     }
 
     _ = c.vkDeviceWaitIdle(instance.device);
@@ -250,10 +292,34 @@ pub fn key_callback(window: ?*c.GLFWwindow, key: i32, scancode: i32, action: i32
         },
         c.GLFW_KEY_W => {
             if (action == c.GLFW_PRESS) {
-                w = true;
+                inputs.w = true;
             }
             if (action == c.GLFW_RELEASE) {
-                w = false;
+                inputs.w = false;
+            }
+        },
+        c.GLFW_KEY_A => {
+            if (action == c.GLFW_PRESS) {
+                inputs.a = true;
+            }
+            if (action == c.GLFW_RELEASE) {
+                inputs.a = false;
+            }
+        },
+        c.GLFW_KEY_S => {
+            if (action == c.GLFW_PRESS) {
+                inputs.s = true;
+            }
+            if (action == c.GLFW_RELEASE) {
+                inputs.s = false;
+            }
+        },
+        c.GLFW_KEY_D => {
+            if (action == c.GLFW_PRESS) {
+                inputs.d = true;
+            }
+            if (action == c.GLFW_RELEASE) {
+                inputs.d = false;
             }
         },
         else => {},
@@ -262,6 +328,9 @@ pub fn key_callback(window: ?*c.GLFWwindow, key: i32, scancode: i32, action: i32
 
 pub fn cursor_pos_callback(window: ?*c.GLFWwindow, _xpos: f64, _ypos: f64) callconv(.C) void {
     _ = &window;
+    dx = _xpos - xpos;
+    dy = _ypos - ypos;
+
     xpos = _xpos;
     ypos = _ypos;
 }

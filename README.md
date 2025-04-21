@@ -14,6 +14,7 @@ TODO:
     Use a staging buffer for vertex data
     Fix resizing error reported by validation layer
     Fix Nvidia proprietary driver leak during render runtime
+    Move Renderer to a seperate thread and have gameplay run seperately from logic
 
 ## Compilation
 
