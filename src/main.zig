@@ -24,6 +24,7 @@ var inputs = Inputs{};
 
 const PlayerState = struct {
     pos : @Vector(3, f32) = .{ 0.0, 0.0, 0.0 },
+    look : @Vector(4, f32) = .{ 0.0, 0.0, 1.0, 1.0},
 };
 
 var player_state = PlayerState{};
@@ -275,7 +276,7 @@ pub fn main() !void {
         //    t = 0.0;
         //}
 
-        object_transform.view = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 1.0}, .{0.0,0.0,1.0, 1.0}, .{0.0,1.0,0.0, 0.0});
+        object_transform.view = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 1.0}, player_state.look, .{0.0,1.0,0.0, 0.0});
         object_transform.projection = zm.perspectiveFovLh(3.14/4.0, aspect_ratio, 0.001, 1000.0);
 
         _ = c.vmaCopyMemoryToAllocation(vma_allocator, &object_transform, ubo_alloc[current_frame_index], 0, @sizeOf(ObjectTransform));
@@ -350,6 +351,8 @@ pub fn cursor_pos_callback(window: ?*c.GLFWwindow, _xpos: f64, _ypos: f64) callc
 
     xpos = _xpos;
     ypos = _ypos;
+
+    
 }
 
 pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {
