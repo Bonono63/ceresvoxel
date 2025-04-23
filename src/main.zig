@@ -18,13 +18,17 @@ const Inputs = packed struct {
     d : bool = false,
     space : bool = false,
     shift : bool = false,
+    control : bool = false,
+    mouse_capture : bool = true
 };
 
 var inputs = Inputs{};
 
 const PlayerState = struct {
-    pos : @Vector(3, f32) = .{ 0.0, 0.0, 0.0 },
-    look : @Vector(4, f32) = .{ 0.0, 0.0, 1.0, 1.0},
+    pos : @Vector(3, f32) = .{ 0.0, 0.0, -1.0 },
+    yaw : f32 = 0.0,
+    pitch : f32 = 0.0,
+    look : zm.Vec = .{ 1.0, 0.0, 0.0, 1.0 },
 };
 
 var player_state = PlayerState{};
@@ -94,7 +98,6 @@ pub fn main() !void {
     _ = c.glfwSetWindowUserPointer(instance.window, &instance);
     _ = c.glfwSetFramebufferSizeCallback(instance.window, window_resize_callback);
 
-    c.glfwSetInputMode(instance.window, c.GLFW_CURSOR, c.GLFW_CURSOR_DISABLED);
     c.glfwSetWindowSizeLimits(instance.window, 240, 135, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
 
     // VMA INIT
@@ -120,13 +123,13 @@ pub fn main() !void {
 
     // RENDER INIT
     const vertices: [6]vulkan.Vertex = .{
-        .{ .pos = .{ -0.5, -0.5 }, .color = .{ 1.0, 1.0, 1.0 } },
-        .{ .pos = .{ 0.5, -0.5 }, .color = .{ 0.0, 1.0, 0.0 } },
-        .{ .pos = .{ 0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
+        .{ .pos = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 1.0, 1.0 } },
+        .{ .pos = .{ 0.5, -0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
+        .{ .pos = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 } },
 
-        .{ .pos = .{ 0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
-        .{ .pos = .{ -0.5, 0.5 }, .color = .{ 1.0, 0.0, 0.0 } },
-        .{ .pos = .{ -0.5, -0.5 }, .color = .{ 1.0, 1.0, 1.0 } },
+        .{ .pos = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 } },
+        .{ .pos = .{ -0.5, 0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
+        .{ .pos = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 1.0, 1.0 } },
     };
 
     var vertex_buffers = try instance.allocator.*.alloc(c.VkBuffer, 1);
@@ -241,43 +244,75 @@ pub fn main() !void {
 
         c.glfwGetWindowSize(instance.window, &window_width, &window_height);
         const aspect_ratio : f32 = @as(f32, @floatFromInt(window_width))/@as(f32, @floatFromInt(window_height));
-        _ = &aspect_ratio;
 
-        if (inputs.w)
+        if (inputs.mouse_capture)
         {
-            player_state.pos[0] += 1.0 * frame_delta;
+            c.glfwSetInputMode(instance.window, c.GLFW_CURSOR, c.GLFW_CURSOR_DISABLED);
         }
-        if (inputs.s)
+        else
         {
-            player_state.pos[0] -= 1.0 * frame_delta;
+            c.glfwSetInputMode(instance.window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
+        }
+
+        player_state.look[0] = player_state.look[0] + @as(f32, @floatCast(std.math.cos(player_state.yaw)));
+        player_state.look[1] = player_state.look[1] + @as(f32, @floatCast(std.math.sin(player_state.pitch)));
+        player_state.look[2] = player_state.look[2] + @as(f32, @floatCast(std.math.sin(player_state.yaw)));
+        player_state.look = zm.normalize3(player_state.look);
+
+        object_transform.view = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 1.0}, player_state.look, .{ 0.0, 1.0, 0.0, 1.0});
+        object_transform.projection = zm.perspectiveFovLh(1.0, aspect_ratio, 0.001, 1000.0);
+        
+        var speed : f32 = 1.0;
+        if (inputs.control)
+        {
+            speed = 5.0;
+        }
+
+        // TODO Make this the center of gravitational wells and such
+        const up : zm.Vec = .{ 0.0, 1.0, 0.0, 1.0 };
+        const right = zm.cross3(player_state.look, up);
+        const forward = zm.cross3(right, up);
+        if (inputs.space)
+        {
+            player_state.pos -= .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
+        }
+        if (inputs.shift)
+        {
+            player_state.pos += .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
         }
         if (inputs.a)
         {
-            player_state.pos[1] -= 1.0 * frame_delta;
+            player_state.pos += .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
         }
         if (inputs.d)
         {
-            player_state.pos[1] += 1.0 * frame_delta;
+            player_state.pos -= .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
+        }
+        if (inputs.w)
+        {
+            player_state.pos -= .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
+        }
+        if (inputs.s)
+        {
+            player_state.pos += .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
         }
 
-        std.debug.print("\t{d:.1} {d:.1} {d:.1} {} {} {d:.3} {d:.3}ms   \r", .{
+        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} yaw:{d:.1} pitch:{d:.1} look:{d:.1} {d:.1} dx:{d:.1} dy:{d:.1} {} {} {d:.3} {d:.3}ms   \r", .{
+            if (inputs.mouse_capture) "on " else "off",
             player_state.pos[0], 
             player_state.pos[1],
             player_state.pos[2],
+            player_state.yaw,
+            player_state.pitch,
+            player_state.look[0],
+            player_state.look[2],
+            dx,
+            dy,
             window_width,
             window_height,
             aspect_ratio,
             frame_delta * 1000.0,
         });
-
-        //t = (t + 0.001);
-        //if (t >= 4.0)
-        //{
-        //    t = 0.0;
-        //}
-
-        object_transform.view = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 1.0}, player_state.look, .{0.0,1.0,0.0, 0.0});
-        object_transform.projection = zm.perspectiveFovLh(3.14/4.0, aspect_ratio, 0.001, 1000.0);
 
         _ = c.vmaCopyMemoryToAllocation(vma_allocator, &object_transform, ubo_alloc[current_frame_index], 0, @sizeOf(ObjectTransform));
 
@@ -285,9 +320,6 @@ pub fn main() !void {
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
-        
-        dx = 0;
-        dy = 0;
     }
 
     _ = c.vkDeviceWaitIdle(instance.device);
@@ -307,6 +339,30 @@ pub fn key_callback(window: ?*c.GLFWwindow, key: i32, scancode: i32, action: i32
     switch (key) {
         c.GLFW_KEY_ESCAPE => {
             c.glfwSetWindowShouldClose(window, c.GLFW_TRUE);
+        },
+        c.GLFW_KEY_LEFT_CONTROL => {
+            if (action == c.GLFW_PRESS) {
+                inputs.control = true;
+            }
+            if (action == c.GLFW_RELEASE) {
+                inputs.control = false;
+            }
+        },
+        c.GLFW_KEY_SPACE => {
+            if (action == c.GLFW_PRESS) {
+                inputs.space = true;
+            }
+            if (action == c.GLFW_RELEASE) {
+                inputs.space = false;
+            }
+        },
+        c.GLFW_KEY_LEFT_SHIFT => {
+            if (action == c.GLFW_PRESS) {
+                inputs.shift = true;
+            }
+            if (action == c.GLFW_RELEASE) {
+                inputs.shift = false;
+            }
         },
         c.GLFW_KEY_W => {
             if (action == c.GLFW_PRESS) {
@@ -340,11 +396,24 @@ pub fn key_callback(window: ?*c.GLFWwindow, key: i32, scancode: i32, action: i32
                 inputs.d = false;
             }
         },
+        c.GLFW_KEY_T => {
+            if (action == c.GLFW_RELEASE) {
+                if (inputs.mouse_capture == true)
+                {
+                    inputs.mouse_capture = false;
+                }
+                else
+                {
+                    inputs.mouse_capture = true;
+                }
+            }
+        },
         else => {},
     }
 }
 
 pub fn cursor_pos_callback(window: ?*c.GLFWwindow, _xpos: f64, _ypos: f64) callconv(.C) void {
+    const MOUSE_SENSITIVITY : f64 = 0.1;
     _ = &window;
     dx = _xpos - xpos;
     dy = _ypos - ypos;
@@ -352,7 +421,11 @@ pub fn cursor_pos_callback(window: ?*c.GLFWwindow, _xpos: f64, _ypos: f64) callc
     xpos = _xpos;
     ypos = _ypos;
 
-    
+    if (inputs.mouse_capture)
+    {
+        player_state.yaw -= @as(f32, @floatCast(dx * std.math.pi / 180.0 * MOUSE_SENSITIVITY));
+        player_state.pitch += @as(f32, @floatCast(dy * std.math.pi / 180.0 * MOUSE_SENSITIVITY));
+    }
 }
 
 pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {

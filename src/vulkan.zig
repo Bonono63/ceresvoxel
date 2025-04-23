@@ -73,15 +73,9 @@ const swapchain_support = struct {
 };
 
 pub const Vertex = struct {
-    pos: @Vector(2, f32),
+    pos: @Vector(3, f32),
     color: @Vector(3, f32),
 };
-
-//pub const Mesh = struct {
-//    vertices: []Vertex = undefined,
-//    binding_description: []c.VkVertexInputBindingDescription = undefined,
-//    attribute_description: []c.VkVertexInputAttributeDescription = undefined,
-//};
 
 // The vulkan/render state
 pub const Instance = struct {
@@ -536,8 +530,8 @@ pub const Instance = struct {
         var attribute_description: []c.VkVertexInputAttributeDescription = undefined;
         attribute_description = try self.allocator.*.alloc(c.VkVertexInputAttributeDescription, 2);
         defer self.allocator.*.free(attribute_description);
-        attribute_description[0] = .{ .binding = 0, .location = 0, .format = c.VK_FORMAT_R32G32_SFLOAT, .offset = 0 };
-        attribute_description[1] = .{ .binding = 0, .location = 1, .format = c.VK_FORMAT_R32G32B32_SFLOAT, .offset = 8 };
+        attribute_description[0] = .{ .binding = 0, .location = 0, .format = c.VK_FORMAT_R32G32B32_SFLOAT, .offset = 0 };
+        attribute_description[1] = .{ .binding = 0, .location = 1, .format = c.VK_FORMAT_R32G32B32_SFLOAT, .offset = @sizeOf(@Vector(3, f32)) };
 
         const vertex_input_info = c.VkPipelineVertexInputStateCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
