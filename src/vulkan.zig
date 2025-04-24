@@ -785,9 +785,6 @@ pub const Instance = struct {
 
         c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.graphics_pipeline);
 
-        const offsets: [1]c.VkDeviceSize = .{0};
-        c.vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers.*.ptr, &offsets);
-
         const viewport = c.VkViewport{
             .x = 0.0,
             .y = 0.0,
@@ -805,6 +802,9 @@ pub const Instance = struct {
         };
 
         c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+        
+        const offsets: [1]c.VkDeviceSize = .{0};
+        c.vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers.*.ptr, &offsets);
 
         c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 

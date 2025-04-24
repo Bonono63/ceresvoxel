@@ -3,6 +3,7 @@ const std = @import("std");
 const c = @import("clibs.zig");
 const vulkan = @import("vulkan.zig");
 const zm = @import("zmath");
+const meshers = @import("mesh_generation.zig");
 
 const ENGINE_NAME = "CeresVoxel";
 
@@ -121,23 +122,38 @@ pub fn main() !void {
     if (vma_allocator_success != c.VK_SUCCESS)
         std.debug.print("Unable to create vma allocator {}\n", .{vma_allocator_success});
 
-    // RENDER INIT
-    const vertices: [6]vulkan.Vertex = .{
-        .{ .pos = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 1.0, 1.0 } },
-        .{ .pos = .{ 0.5, -0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
-        .{ .pos = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 } },
+    const random = std.crypto.random; 
 
-        .{ .pos = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 } },
-        .{ .pos = .{ -0.5, 0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
-        .{ .pos = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 1.0, 1.0 } },
-    };
+    var chunk_data : [32768]u8 = undefined;
+    for (0..32768) |i|
+    {
+        const val = random.int(u1);
+        if (val == 0)
+        {
+            chunk_data[i] = val;
+        }
+    }
+
+    const vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &chunk_data);
+    defer vertices.deinit();
+
+    // RENDER INIT
+    //const vertices: [6]vulkan.Vertex = .{
+    //    .{ .pos = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 1.0, 1.0 } },
+    //    .{ .pos = .{ 0.5, -0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
+    //    .{ .pos = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 } },
+
+    //    .{ .pos = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 } },
+    //    .{ .pos = .{ -0.5, 0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
+    //    .{ .pos = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 1.0, 1.0 } },
+    //};
 
     var vertex_buffers = try instance.allocator.*.alloc(c.VkBuffer, 1);
     defer instance.allocator.*.free(vertex_buffers);
 
     var vertex_buffer : c.VkBuffer = undefined;
 
-    const vertices_size = vertices.len * @sizeOf(vulkan.Vertex);
+    const vertices_size = vertices.items.len * @sizeOf(vulkan.Vertex);
 
     var vertex_buffer_create_info = c.VkBufferCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -154,7 +170,7 @@ pub fn main() !void {
     var vertex_alloc : c.VmaAllocation = undefined;
     _ = c.vmaCreateBuffer(vma_allocator, &vertex_buffer_create_info, &vertex_alloc_create_info, &vertex_buffer, &vertex_alloc, null);
 
-    _ = c.vmaCopyMemoryToAllocation(vma_allocator, &vertices, vertex_alloc, 0, vertices_size);
+    _ = c.vmaCopyMemoryToAllocation(vma_allocator, vertices.items.ptr, vertex_alloc, 0, vertices_size);
 
     vertex_buffers[0] = vertex_buffer;
 
@@ -297,7 +313,7 @@ pub fn main() !void {
             player_state.pos += .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
         }
 
-        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} yaw:{d:.1} pitch:{d:.1} look:{d:.1} {d:.1} dx:{d:.1} dy:{d:.1} {} {} {d:.3} {d:.3}ms   \r", .{
+        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} yaw:{d:.1} pitch:{d:.1} look:{d:.1} {d:.1} {} {} {d:.3} {d:.3}ms   \r", .{
             if (inputs.mouse_capture) "on " else "off",
             player_state.pos[0], 
             player_state.pos[1],
@@ -306,8 +322,6 @@ pub fn main() !void {
             player_state.pitch,
             player_state.look[0],
             player_state.look[2],
-            dx,
-            dy,
             window_width,
             window_height,
             aspect_ratio,
@@ -316,7 +330,7 @@ pub fn main() !void {
 
         _ = c.vmaCopyMemoryToAllocation(vma_allocator, &object_transform, ubo_alloc[current_frame_index], 0, @sizeOf(ObjectTransform));
 
-        try instance.draw_frame(current_frame_index, &vertex_buffers, vertices.len);
+        try instance.draw_frame(current_frame_index, &vertex_buffers, @intCast(vertices.items.len));
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
