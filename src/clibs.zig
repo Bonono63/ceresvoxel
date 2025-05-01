@@ -1,5 +1,7 @@
 pub usingnamespace @cImport({
     @cInclude("stdlib.h");
+    //@cDefine("STB_IMAGE_IMPLEMENTATION", {});
+    @cInclude("stb_image.h");
     //@cDefine("VMA_STATIC_VULKAN_FUNCTIONS", .{0,});
     //@cDefine("VMA_DYNAMIC_VULKAN_FUNCTIONS", .{1,});
     //@cDefine("VMA_IMPLEMENTATION", {});

@@ -128,6 +128,7 @@ pub const Instance = struct {
     image_completion_semaphores: []c.VkSemaphore = undefined,
     in_flight_fences: []c.VkFence = undefined,
 
+    //depth_image;
 
     // TODO move the GLFW code out and make this a vulkan only function
     /// Creates our Vulkan instance and GLFW window

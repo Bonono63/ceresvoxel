@@ -209,14 +209,14 @@ pub fn main() !void {
 
     const layouts : [2]c.VkDescriptorSetLayout = .{instance.descriptor_set_layout, instance.descriptor_set_layout};
 
-    const alloc_info = c.VkDescriptorSetAllocateInfo{
+    const descriptor_alloc_info = c.VkDescriptorSetAllocateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = instance.descriptor_pool,
         .descriptorSetCount = MAX_CONCURRENT_FRAMES,
         .pSetLayouts = &layouts,
     };
 
-    if (c.vkAllocateDescriptorSets(instance.device, &alloc_info, instance.descriptor_sets.ptr) != c.VK_SUCCESS) {
+    if (c.vkAllocateDescriptorSets(instance.device, &descriptor_alloc_info, instance.descriptor_sets.ptr) != c.VK_SUCCESS) {
         std.debug.print("Unable to allocate Descriptor Sets\n", .{});
     }
     
@@ -241,6 +241,180 @@ pub fn main() !void {
 
         c.vkUpdateDescriptorSets(instance.device, 1, &descriptor_write, 0, null);
     }
+
+    var tex_width : i32 = undefined;
+    var tex_height : i32 = undefined;
+    var tex_channels : i32 = undefined;
+    const pixels : ?*c.stbi_uc = c.stbi_load("fortnite.jpg", &tex_width, &tex_height, &tex_channels, c.STBI_rgb_alpha);
+
+    var image : c.VkImage = undefined;
+    var image_alloc : c.VmaAllocation = undefined;
+
+    if (pixels == null)
+    {
+        std.debug.print("Unable to find image file\n", .{});
+        return;
+    }
+    else
+    {
+        const image_size : u64 = @intCast(tex_width * tex_height * 4);
+        //Create staging buffer
+        
+        var staging_buffer : c.VkBuffer = undefined;
+
+        const staging_buffer_info = c.VkBufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = image_size,
+            .usage = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        };
+
+        const staging_alloc_create_info = c.VmaAllocationCreateInfo{
+            .usage = c.VMA_MEMORY_USAGE_AUTO,
+            .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | c.VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        };
+
+        var staging_alloc : c.VmaAllocation = undefined;
+        var staging_alloc_info : c.VmaAllocationInfo = undefined;
+
+        _ = c.vmaCreateBuffer(vma_allocator, &staging_buffer_info, &staging_alloc_create_info, &staging_buffer, &staging_alloc, &staging_alloc_info);
+
+        _ = c.vmaCopyMemoryToAllocation(vma_allocator, pixels, staging_alloc, 0, image_size);
+        c.stbi_image_free(pixels);
+
+        // Create image and transfer data to allocation
+
+        const image_info = c.VkImageCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = c.VK_IMAGE_TYPE_2D,
+            .extent = .{ .width = @intCast(tex_width), .height = @intCast(tex_height), .depth = 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .format = c.VK_FORMAT_R8G8B8A8_SRGB,
+            .tiling = c.VK_IMAGE_TILING_OPTIMAL,
+            .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+            .usage = c.VK_IMAGE_USAGE_SAMPLED_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            .samples = c.VK_SAMPLE_COUNT_1_BIT,
+            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        };
+        std.debug.print("width: {} height: {}\n", .{image_info.extent.width, image_info.extent.height});
+
+        const alloc_info = c.VmaAllocationCreateInfo{
+            .usage = c.VMA_MEMORY_USAGE_AUTO,
+            .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,//c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,//, //| ,
+            .priority = 1.0,
+        };
+
+        const image_creation = c.vmaCreateImage(vma_allocator, &image_info, &alloc_info, &image, &image_alloc, null);
+        if (image_creation != c.VK_SUCCESS)
+        {
+            std.debug.print("Image creation failure: {}\n", .{image_creation});
+            return;
+        }
+
+        
+        const command_buffer_alloc_info = c.VkCommandBufferAllocateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandPool = instance.command_pool,
+            .commandBufferCount = 1,
+        };
+        var command_buffer : c.VkCommandBuffer = undefined;
+        const command_buffer_alloc_success = c.vkAllocateCommandBuffers(instance.device, &command_buffer_alloc_info, &command_buffer);
+        if (command_buffer_alloc_success != c.VK_SUCCESS)
+        {
+            std.debug.print("Unable to Allocate command buffer for image staging: {}\n", .{command_buffer_alloc_success});
+            return;
+        }
+
+        // Copy and proper layout from staging buffer to gpu
+        const begin_info = c.VkCommandBufferBeginInfo{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        };
+
+        const begin_cmd_buffer = c.vkBeginCommandBuffer(command_buffer, &begin_info);
+        if (begin_cmd_buffer != c.VK_SUCCESS)
+        {
+            return;
+        }
+        
+        // Translate to optimal tranfer layout
+        const image_subresource_range = c.VkImageSubresourceRange{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        };
+
+        const transfer_barrier = c.VkImageMemoryBarrier{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .oldLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .image = image,
+            .subresourceRange = image_subresource_range,
+            .srcAccessMask = 0,
+            .dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+        };
+
+        c.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 1, &transfer_barrier);
+        
+        // copy from staging buffer to image gpu destination
+        const image_subresource = c.VkImageSubresourceLayers{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        };
+        
+        const region = c.VkBufferImageCopy{
+            .bufferOffset = 0,
+            .bufferRowLength = 0,
+            .bufferImageHeight = 0,
+            .imageSubresource = image_subresource,
+            .imageOffset = .{ .x = 0, .y = 0, .z = 0 },
+            .imageExtent = .{ .width = @intCast(tex_width), .height = @intCast(tex_height), .depth = 1 },
+        };
+
+        c.vkCmdCopyBufferToImage(command_buffer, staging_buffer, image, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+        // Optimal shader layout translation
+        const shader_read_barrier = c.VkImageMemoryBarrier{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .image = image,
+            .subresourceRange = image_subresource_range,
+            .srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = c.VK_ACCESS_SHADER_READ_BIT,
+        };
+
+        c.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TRANSFER_BIT, c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, null, 0, null, 1, &shader_read_barrier);
+
+        _ = c.vkEndCommandBuffer(command_buffer);
+
+        const submit_info = c.VkSubmitInfo{
+            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &command_buffer,
+        };
+
+        _ = c.vkQueueSubmit(instance.present_queue, 1, &submit_info, null);
+        _ = c.vkQueueWaitIdle(instance.present_queue);
+
+        c.vkFreeCommandBuffers(instance.device, instance.command_pool, 1, &command_buffer);
+
+        c.vmaDestroyBuffer(vma_allocator, staging_buffer, staging_alloc);
+    }
+
+    //const image_size : c.VkDeviceSize = @intCast(tex_width * tex_height * 4);
+
+    //_ = &image_size;
+    _ = &pixels;
+
 
     // FRAME LOOP
 
@@ -343,6 +517,7 @@ pub fn main() !void {
     for (0..MAX_CONCURRENT_FRAMES) |i| {
         c.vmaDestroyBuffer(vma_allocator, ubo_buffers[i], ubo_alloc[i]);
     }
+    c.vmaDestroyImage(vma_allocator, image, image_alloc);
     c.vmaDestroyAllocator(vma_allocator);
     instance.cleanup();
 }
