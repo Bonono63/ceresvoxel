@@ -16,6 +16,7 @@ TODO:
     Fix Nvidia proprietary driver leak during render runtime
     Move Renderer to a seperate thread and have gameplay run seperately from logic
     add staging buffer abstraction so we can do the transfer commands all in one command buffer.
+    Abstract image creation
 
 ## Compilation
 

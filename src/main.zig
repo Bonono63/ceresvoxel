@@ -139,16 +139,8 @@ pub fn main() !void {
     defer vertices.deinit();
 
     std.debug.print("chunk mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0 });
+    
     // RENDER INIT
-    //const vertices: [6]vulkan.Vertex = .{
-    //    .{ .pos = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 1.0, 1.0 } },
-    //    .{ .pos = .{ 0.5, -0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
-    //    .{ .pos = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 } },
-
-    //    .{ .pos = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 } },
-    //    .{ .pos = .{ -0.5, 0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
-    //    .{ .pos = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 1.0, 1.0 } },
-    //};
 
     var vertex_buffers = try instance.allocator.*.alloc(c.VkBuffer, 1);
     defer instance.allocator.*.free(vertex_buffers);
@@ -409,12 +401,6 @@ pub fn main() !void {
 
         c.vmaDestroyBuffer(vma_allocator, staging_buffer, staging_alloc);
     }
-
-    //const image_size : c.VkDeviceSize = @intCast(tex_width * tex_height * 4);
-
-    //_ = &image_size;
-    _ = &pixels;
-
 
     // FRAME LOOP
 
