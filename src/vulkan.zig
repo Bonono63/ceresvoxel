@@ -50,6 +50,8 @@ pub const VkAbstractionError = error{
     DeviceBufferBindFailure,
     DescriptorPoolCreationFailed,
     SuitableDeviceMemoryTypeSelectionFailure,
+    DepthFormatAvailablityFailure,
+    DepthResourceCreationFailure,
 };
 
 // These parameters are the minimum required for what we want to do
@@ -77,6 +79,25 @@ pub const Vertex = struct {
     color: @Vector(3, f32),
 };
 
+/// image_views size should be of size MAX_CONCURRENT_FRAMES
+/// Current implementation also assumes 2D texture
+/// Defaults to 2D image view type
+/// Defaults to RGBA SRGB format
+pub const ImageInfo = struct{
+    data: *c.stbi_uc = undefined,
+    width: i32 = undefined,
+    height: i32 = undefined,
+    depth: i32 = undefined,
+    channels: i32 = undefined,
+    format: c.VkFormat = c.VK_FORMAT_R8G8B8A8_SRGB,
+    view_type: c.VkImageViewType = c.VK_IMAGE_VIEW_TYPE_2D,
+    image: c.VkImage = undefined,
+    alloc: c.VmaAllocation = undefined,
+    subresource_range: c.VkImageSubresourceRange = undefined,
+    views: []c.VkImageView = undefined,
+    samplers: []c.VkSampler = undefined,
+};
+
 // The vulkan/render state
 pub const Instance = struct {
     REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
@@ -84,11 +105,14 @@ pub const Instance = struct {
 
     allocator: *const std.mem.Allocator,
 
+    vma_allocator: c.VmaAllocator = undefined,
+
     vk_instance: c.VkInstance = undefined,
     window: *c.GLFWwindow = undefined,
     surface: c.VkSurfaceKHR = undefined,
 
     physical_device: c.VkPhysicalDevice = undefined,
+    physical_device_properties: c.VkPhysicalDeviceProperties = undefined,
     mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined,
 
     device: c.VkDevice = undefined,
@@ -114,12 +138,11 @@ pub const Instance = struct {
     graphics_pipeline: c.VkPipeline = undefined,
     frame_buffers: []c.VkFramebuffer = undefined,
 
+    vertex_buffers: []c.VkBuffer = undefined,
+    vertex_allocs: []c.VmaAllocation = undefined,
     ubo_buffers: []c.VkBuffer = undefined,
 
-    vertex_buffer_MMIOs: []?*anyopaque = undefined,
-    ubo_buffer_MMIOs: []?*anyopaque = undefined,
-
-    device_memory_allocations: std.ArrayList(c.VkDeviceMemory) = undefined,
+    images: []ImageInfo = undefined,
 
     command_pool: c.VkCommandPool = undefined,
     command_buffers: []c.VkCommandBuffer = undefined,
@@ -128,7 +151,10 @@ pub const Instance = struct {
     image_completion_semaphores: []c.VkSemaphore = undefined,
     in_flight_fences: []c.VkFence = undefined,
 
-    //depth_image;
+    depth_format: c.VkFormat = undefined,
+    depth_image: c.VkImage = undefined,
+    depth_image_alloc: c.VmaAllocation = undefined,
+    depth_image_view: c.VkImageView = undefined,
 
     // TODO move the GLFW code out and make this a vulkan only function
     /// Creates our Vulkan instance and GLFW window
@@ -245,6 +271,7 @@ pub const Instance = struct {
 
         var device_properties: c.VkPhysicalDeviceProperties = undefined;
         c.vkGetPhysicalDeviceProperties(self.physical_device, &device_properties);
+        self.physical_device_properties = device_properties;
 
         std.debug.print("[Info] API version: {any}\n[Info] Driver version: {any}\n[Info] Device name: {s}\n", .{ device_properties.apiVersion, device_properties.driverVersion, device_properties.deviceName });
 
@@ -282,7 +309,9 @@ pub const Instance = struct {
         };
 
         // TODO add a way to specify device features
-        const device_features: c.VkPhysicalDeviceFeatures = undefined;
+        const device_features = c.VkPhysicalDeviceFeatures{
+            .samplerAnisotropy = c.VK_TRUE
+        };
 
         const create_info = c.VkDeviceCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -434,15 +463,24 @@ pub const Instance = struct {
     }
 
     pub fn create_descriptor_pool(self : *Instance) VkAbstractionError!void {
-        const pool_size = c.VkDescriptorPoolSize{
+        const DESCRIPTOR_COUNT : u32 = 2;
+
+        const ubo_pool_size = c.VkDescriptorPoolSize{
             .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .descriptorCount = self.MAX_CONCURRENT_FRAMES,
         };
+        
+        const image_pool_size = c.VkDescriptorPoolSize{
+            .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = self.MAX_CONCURRENT_FRAMES,
+        };
+
+        const pool_sizes : [DESCRIPTOR_COUNT]c.VkDescriptorPoolSize = .{ubo_pool_size, image_pool_size};
 
         const pool_info = c.VkDescriptorPoolCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-            .poolSizeCount = 1,
-            .pPoolSizes = &pool_size,
+            .poolSizeCount = pool_sizes.len,
+            .pPoolSizes = &pool_sizes,
             .maxSets = self.MAX_CONCURRENT_FRAMES,
         };
         
@@ -456,25 +494,32 @@ pub const Instance = struct {
 
     pub fn create_descriptor_set_layouts(self : *Instance) VkAbstractionError!void
     {
-        //var layout_bindings : []c.VkDescriptorSetLayoutBinding = try self.allocator.*.alloc(c.VkDescriptorSetLayoutBinding, 2);
-        //defer self.allocator.*.free(layout_bindings);
+        const DESCRIPTOR_COUNT : u32 = 2;
 
         // A description of the bindings and their contents
         // Essentially we need one of these per uniform buffer
-        const layout_binding = c.VkDescriptorSetLayoutBinding{
+        const ubo_layout_binding = c.VkDescriptorSetLayoutBinding{
             .binding = 0,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .descriptorCount = 1,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
             .pImmutableSamplers = null,
         };
 
-        //layout_bindings[0] = layout_binding;
+        const image_layout_binding = c.VkDescriptorSetLayoutBinding{
+            .binding = 1,
+            .descriptorCount = 1,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+            .pImmutableSamplers = null,
+        };
+
+        const layout_bindings: [DESCRIPTOR_COUNT]c.VkDescriptorSetLayoutBinding = .{ubo_layout_binding, image_layout_binding};
 
         const layout_info = c.VkDescriptorSetLayoutCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = 1,//@intCast(layout_bindings.len),
-            .pBindings = &layout_binding,//layout_bindings.ptr,
+            .bindingCount = DESCRIPTOR_COUNT,
+            .pBindings = &layout_bindings,
         };
 
         const descriptor_set_success = c.vkCreateDescriptorSetLayout(self.device, &layout_info, null, &self.descriptor_set_layout);
@@ -636,27 +681,46 @@ pub const Instance = struct {
             .attachment = 0,
             .layout = c.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         };
+        
+        const depth_attachment = c.VkAttachmentDescription{
+            .format = self.depth_format,
+            .samples = c.VK_SAMPLE_COUNT_1_BIT,
+            .loadOp = c.VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .stencilLoadOp = c.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .stencilStoreOp = c.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+            .finalLayout = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        };
+
+        const depth_attachment_ref = c.VkAttachmentReference{
+            .attachment = 1,
+            .layout = c.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        };
 
         const subpass = c.VkSubpassDescription{
             .pipelineBindPoint = c.VK_PIPELINE_BIND_POINT_GRAPHICS,
             .colorAttachmentCount = 1,
             .pColorAttachments = &color_attachment_ref,
+            .pDepthStencilAttachment = &depth_attachment_ref,
         };
+
+        const attachments: [2]c.VkAttachmentDescription = .{ color_attachment, depth_attachment };
 
         // Ensure the renderpass is waiting for our frames to complete
         const subpass_dependency = c.VkSubpassDependency{
             .srcSubpass = c.VK_SUBPASS_EXTERNAL,
             .dstSubpass = 0,
-            .srcStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
             .srcAccessMask = 0,
-            .dstStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .dstAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+            .dstAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | c.VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
         };
 
         const renderpass_create_info = c.VkRenderPassCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-            .attachmentCount = 1,
-            .pAttachments = &color_attachment,
+            .attachmentCount = attachments.len,
+            .pAttachments = &attachments,
             .subpassCount = 1,
             .pSubpasses = &subpass,
             .dependencyCount = 1,
@@ -668,6 +732,19 @@ pub const Instance = struct {
             return VkAbstractionError.FailedCreatingRenderPass;
         }
 
+        const depth_stencil_state_info = c.VkPipelineDepthStencilStateCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+            .depthTestEnable = c.VK_TRUE,
+            .depthWriteEnable = c.VK_TRUE,
+            .depthCompareOp = c.VK_COMPARE_OP_LESS,
+            .depthBoundsTestEnable = c.VK_FALSE,
+            .minDepthBounds = 0.0,
+            .maxDepthBounds = 1.0,
+            .stencilTestEnable = c.VK_FALSE,
+            //.front = .{},
+            //.back = .{},
+        };
+
         const pipeline_create_info = c.VkGraphicsPipelineCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
             .stageCount = @intCast(shader_stages.items.len),
@@ -677,7 +754,7 @@ pub const Instance = struct {
             .pViewportState = &viewport_create_info,
             .pRasterizationState = &rasterization_create_info,
             .pMultisampleState = &multisampling_create_info,
-            .pDepthStencilState = null,
+            .pDepthStencilState = &depth_stencil_state_info,
             .pColorBlendState = &color_blending_create_info,
             .pDynamicState = &dynamic_state_create_info,
             .layout = self.pipeline_layout,
@@ -715,11 +792,14 @@ pub const Instance = struct {
         self.frame_buffers = try self.allocator.*.alloc(c.VkFramebuffer, self.swapchain_image_views.len);
 
         for (self.swapchain_image_views, 0..self.swapchain_image_views.len) |image_view, i| {
+
+            const attachments: [2]c.VkImageView = .{ image_view, self.depth_image_view };
+
             const framebuffer_create_info = c.VkFramebufferCreateInfo{
                 .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                 .renderPass = self.renderpass,
-                .attachmentCount = 1,
-                .pAttachments = &image_view,
+                .attachmentCount = attachments.len,
+                .pAttachments = &attachments,
                 .width = self.swapchain_extent.width,
                 .height = self.swapchain_extent.height,
                 .layers = 1,
@@ -768,7 +848,9 @@ pub const Instance = struct {
             return VkAbstractionError.BeginRenderPassFailed;
         }
 
-        const clear_color: c.VkClearValue = undefined;
+        var clear_colors: [2]c.VkClearValue = undefined;
+        clear_colors[0].color = .{.{0.0, 0.0, 0.0, 0.0}};
+        //const clear_colors: [2]c.VkClearValue = .{undefined, undefined};
 
         const render_pass_info = c.VkRenderPassBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -778,8 +860,8 @@ pub const Instance = struct {
                 .offset = .{ .x = 0, .y = 0 },
                 .extent = self.swapchain_extent,
             },
-            .clearValueCount = 1,
-            .pClearValues = &clear_color,
+            .clearValueCount = clear_colors.len,
+            .pClearValues = &clear_colors,
         };
 
         c.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
@@ -911,6 +993,82 @@ pub const Instance = struct {
         }
     }
 
+    /// Image format does not matter
+    pub fn create_depth_resources(self: *Instance) VkAbstractionError!void
+    {
+        const candidates: [3]c.VkFormat = .{c.VK_FORMAT_D32_SFLOAT, c.VK_FORMAT_D32_SFLOAT_S8_UINT, c.VK_FORMAT_D24_UNORM_S8_UINT};
+        const format = try self.depth_texture_format(&candidates, c.VK_IMAGE_TILING_OPTIMAL, c.VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        self.depth_format = format;
+
+        const image_create_info = c.VkImageCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = c.VK_IMAGE_TYPE_2D,
+            .extent = .{ .width = self.swapchain_extent.width, .height = self.swapchain_extent.height, .depth = 1 },
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .format = format,
+            .tiling = c.VK_IMAGE_TILING_OPTIMAL,
+            .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+            .usage = c.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            .samples = c.VK_SAMPLE_COUNT_1_BIT,
+            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        };
+
+        const alloc_info = c.VmaAllocationCreateInfo{
+            .usage = c.VMA_MEMORY_USAGE_AUTO,
+            .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+            .priority = 1.0,
+        };
+
+        const subresource_range = c.VkImageSubresourceRange{
+            .aspectMask = c.VK_IMAGE_ASPECT_DEPTH_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        };
+
+        const depth_image_creation_success = c.vmaCreateImage(self.vma_allocator, &image_create_info, &alloc_info, &self.depth_image, &self.depth_image_alloc, null);
+        if (depth_image_creation_success != c.VK_SUCCESS)
+        {
+            return VkAbstractionError.DepthResourceCreationFailure;
+        }
+
+        const view_info = c.VkImageViewCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = self.depth_image,
+            .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
+            .format = format,
+            .subresourceRange = subresource_range,
+        };
+
+        const success = c.vkCreateImageView(self.device, &view_info, null, &self.depth_image_view);
+        if (success != c.VK_SUCCESS)
+        {
+            std.debug.print("Failed to create texture image view: {}\n", .{success}); return;
+        }
+    }
+
+    fn depth_texture_format(self: *Instance, candidates: []const c.VkFormat, tiling: c.VkImageTiling, features: c.VkFormatFeatureFlags) VkAbstractionError!c.VkFormat
+    {
+        for (candidates) |format|
+        {
+            var properties : c.VkFormatProperties = undefined;
+            c.vkGetPhysicalDeviceFormatProperties(self.physical_device, format, &properties);
+    
+            if (tiling == c.VK_IMAGE_TILING_LINEAR and (properties.linearTilingFeatures & features) == features)
+            {
+                return format;
+            }
+            else if (tiling == c.VK_IMAGE_TILING_OPTIMAL and (properties.optimalTilingFeatures & features) == features)
+            {
+                return format;
+            }
+        }
+    
+        return VkAbstractionError.DepthFormatAvailablityFailure;
+    }
+
     fn cleanup_swapchain(self: *Instance) void {
         for (self.frame_buffers) |i| {
             c.vkDestroyFramebuffer(self.device, i, null);
@@ -936,52 +1094,28 @@ pub const Instance = struct {
 
         _ = c.vkDeviceWaitIdle(self.device);
 
+        cleanup_depth_resources(self);
         cleanup_swapchain(self);
 
         try create_swapchain(self);
         try create_swapchain_image_views(self);
+        try create_depth_resources(self);
         try create_framebuffers(self);
     }
 
-    //pub fn createBuffer(self: *Instance, size: u32, usage_flags: u32, property_flags: u32, buffer: *c.VkBuffer, device_memory: *c.VkDeviceMemory) VkAbstractionError!u64 {
-    //    const buffer_info = c.VkBufferCreateInfo{
-    //        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-    //        .size = size,
-    //        .usage = usage_flags,
-    //        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-    //    };
-
-    //    if (c.vkCreateBuffer(self.device, &buffer_info, null, buffer) != c.VK_SUCCESS) {
-    //        // Techinically VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR can also be returned,
-    //        // but if the program gets this far that shouldn't be the return error.
-    //        return VkAbstractionError.OutOfMemory;
-    //    }
-
-    //    var mem_requirements: c.VkMemoryRequirements = undefined;
-    //    c.vkGetBufferMemoryRequirements(self.device, buffer.*, &mem_requirements);
-
-    //    const memory_type: u32 = try memory_type_selection(self, mem_requirements.memoryTypeBits, property_flags);
-
-    //    const buffer_allocation_info: c.VkMemoryAllocateInfo = .{
-    //        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-    //        .allocationSize = mem_requirements.size,
-    //        .memoryTypeIndex = memory_type,
-    //    };
-
-    //    if (c.vkAllocateMemory(self.device, &buffer_allocation_info, null, device_memory) != c.VK_SUCCESS) {
-    //        return VkAbstractionError.DeviceBufferAllocationFailure;
-    //    }
-
-    //    if (c.vkBindBufferMemory(self.device, buffer.*, device_memory.*, 0) != c.VK_SUCCESS) {
-    //        return VkAbstractionError.DeviceBufferBindFailure;
-    //    }
-
-    //    return mem_requirements.size;
-    //}
+    pub fn cleanup_depth_resources(self: *Instance) void
+    {
+        c.vkDestroyImageView(self.device, self.depth_image_view, null);
+        c.vmaDestroyImage(self.vma_allocator, self.depth_image, self.depth_image_alloc);
+    }
 
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called
     pub fn cleanup(self: *Instance) void {
+        for (0..self.vertex_buffers.len) |i| {
+            c.vmaDestroyBuffer(self.vma_allocator, self.vertex_buffers[i], self.vertex_allocs[i]);
+        }
+
         for (0..self.MAX_CONCURRENT_FRAMES) |i| {
             c.vkDestroySemaphore(self.device, self.image_available_semaphores[i], null);
             c.vkDestroySemaphore(self.device, self.image_completion_semaphores[i], null);
@@ -992,6 +1126,7 @@ pub const Instance = struct {
 
         c.vkDestroyCommandPool(self.device, self.command_pool, null);
 
+        cleanup_depth_resources(self);
         cleanup_swapchain(self);
 
         c.vkDestroyPipeline(self.device, self.graphics_pipeline, null);
@@ -1008,6 +1143,7 @@ pub const Instance = struct {
         }
 
         c.vkDestroySurfaceKHR(self.vk_instance, self.surface, null);
+        c.vmaDestroyAllocator(self.vma_allocator);
         c.vkDestroyDevice(self.device, null);
         c.vkDestroyInstance(self.vk_instance, null);
         c.glfwDestroyWindow(self.window);
@@ -1026,6 +1162,220 @@ pub fn memory_type_selection(self: *Instance, typeFilter : u32, properties: u32)
     }
     std.debug.print("Unable to find adequate memory type on device with flags: {}\n", .{properties});
     return VkAbstractionError.SuitableDeviceMemoryTypeSelectionFailure;
+}
+
+/// Image format must be assigned before this function
+pub fn create_2d_texture(self: *Instance, image_info: *ImageInfo) VkAbstractionError!void
+{
+        const image_size : u64 = @intCast(image_info.width * image_info.height * 4);
+        //Create staging buffer
+        
+        var staging_buffer : c.VkBuffer = undefined;
+
+        const staging_buffer_info = c.VkBufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = image_size,
+            .usage = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        };
+
+        const staging_alloc_create_info = c.VmaAllocationCreateInfo{
+            .usage = c.VMA_MEMORY_USAGE_AUTO,
+            .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | c.VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        };
+
+        var staging_alloc : c.VmaAllocation = undefined;
+        var staging_alloc_info : c.VmaAllocationInfo = undefined;
+
+        _ = c.vmaCreateBuffer(self.vma_allocator, &staging_buffer_info, &staging_alloc_create_info, &staging_buffer, &staging_alloc, &staging_alloc_info);
+
+        _ = c.vmaCopyMemoryToAllocation(self.vma_allocator, image_info.data, staging_alloc, 0, image_size);
+        c.stbi_image_free(image_info.data);
+
+        // Create image and transfer data to allocation
+
+        const image_create_info = c.VkImageCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = c.VK_IMAGE_TYPE_2D,
+            .extent = .{ .width = @intCast(image_info.width), .height = @intCast(image_info.height), .depth = 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .format = c.VK_FORMAT_R8G8B8A8_SRGB,
+            .tiling = c.VK_IMAGE_TILING_OPTIMAL,
+            .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+            .usage = c.VK_IMAGE_USAGE_SAMPLED_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            .samples = c.VK_SAMPLE_COUNT_1_BIT,
+            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        };
+        std.debug.print("width: {} height: {}\n", .{image_create_info.extent.width, image_create_info.extent.height});
+
+        const alloc_info = c.VmaAllocationCreateInfo{
+            .usage = c.VMA_MEMORY_USAGE_AUTO,
+            .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,//c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,//, //| ,
+            .priority = 1.0,
+        };
+
+        const image_creation = c.vmaCreateImage(self.vma_allocator, &image_create_info, &alloc_info, &image_info.image, &image_info.alloc, null);
+        if (image_creation != c.VK_SUCCESS)
+        {
+            std.debug.print("Image creation failure: {}\n", .{image_creation});
+            return;
+        }
+        
+        const command_buffer_alloc_info = c.VkCommandBufferAllocateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandPool = self.command_pool,
+            .commandBufferCount = 1,
+        };
+        var command_buffer : c.VkCommandBuffer = undefined;
+        const command_buffer_alloc_success = c.vkAllocateCommandBuffers(self.device, &command_buffer_alloc_info, &command_buffer);
+        if (command_buffer_alloc_success != c.VK_SUCCESS)
+        {
+            std.debug.print("Unable to Allocate command buffer for image staging: {}\n", .{command_buffer_alloc_success});
+            return;
+        }
+
+        // Copy and proper layout from staging buffer to gpu
+        const begin_info = c.VkCommandBufferBeginInfo{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        };
+
+        const begin_cmd_buffer = c.vkBeginCommandBuffer(command_buffer, &begin_info);
+        if (begin_cmd_buffer != c.VK_SUCCESS)
+        {
+            return;
+        }
+        
+        // Translate to optimal tranfer layout
+
+        const transfer_barrier = c.VkImageMemoryBarrier{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .oldLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .image = image_info.image,
+            .subresourceRange = image_info.subresource_range,
+            .srcAccessMask = 0,
+            .dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+        };
+
+        c.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 1, &transfer_barrier);
+        
+        // copy from staging buffer to image gpu destination
+        const image_subresource = c.VkImageSubresourceLayers{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        };
+        
+        const region = c.VkBufferImageCopy{
+            .bufferOffset = 0,
+            .bufferRowLength = 0,
+            .bufferImageHeight = 0,
+            .imageSubresource = image_subresource,
+            .imageOffset = .{ .x = 0, .y = 0, .z = 0 },
+            .imageExtent = .{ .width = @intCast(image_info.width), .height = @intCast(image_info.height), .depth = 1 },
+        };
+
+        c.vkCmdCopyBufferToImage(command_buffer, staging_buffer, image_info.image, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+        // Optimal shader layout translation
+        const shader_read_barrier = c.VkImageMemoryBarrier{
+            .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .image = image_info.image,
+            .subresourceRange = image_info.subresource_range,
+            .srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = c.VK_ACCESS_SHADER_READ_BIT,
+        };
+
+        c.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TRANSFER_BIT, c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, null, 0, null, 1, &shader_read_barrier);
+
+        _ = c.vkEndCommandBuffer(command_buffer);
+
+        const submit_info = c.VkSubmitInfo{
+            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &command_buffer,
+        };
+
+        _ = c.vkQueueSubmit(self.present_queue, 1, &submit_info, null);
+        _ = c.vkQueueWaitIdle(self.present_queue);
+
+        c.vkFreeCommandBuffers(self.device, self.command_pool, 1, &command_buffer);
+
+        c.vmaDestroyBuffer(self.vma_allocator, staging_buffer, staging_alloc);
+}
+
+/// Required fields are, image, viewType, format, and the subresource_range
+pub fn create_image_view(device: c.VkDevice, image_info: *const ImageInfo) VkAbstractionError!void
+{
+    const view_info = c.VkImageViewCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = image_info.*.image,
+        .viewType = image_info.*.view_type,
+        .format = image_info.*.format,
+        .subresourceRange = image_info.*.subresource_range,
+    };
+
+    for (0..image_info.views.len) |i| {
+        const success = c.vkCreateImageView(device, &view_info, null, &image_info.views[i]);
+        if (success != c.VK_SUCCESS)
+        {
+            std.debug.print("Failed to create texture image view: {}\n", .{success}); return;
+        }
+    }
+}
+
+pub fn create_samplers(instance: *Instance, image_info: *ImageInfo, filter: c.VkFilter, repeat_mode: c.VkSamplerAddressMode) VkAbstractionError!void
+{
+    const sampler_info = c.VkSamplerCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = filter,//c.VK_FILTER_LINEAR
+        .minFilter = filter,
+        .addressModeU = repeat_mode,//VK_SAMPLER_ADDRESS_MODE_REPEAT
+        .addressModeV = repeat_mode,
+        .addressModeW = repeat_mode,
+        .anisotropyEnable = c.VK_TRUE,
+        .maxAnisotropy = instance.physical_device_properties.limits.maxSamplerAnisotropy,
+        .borderColor = c.VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        .unnormalizedCoordinates = c.VK_FALSE,
+        .compareEnable = c.VK_FALSE,
+        .compareOp = c.VK_COMPARE_OP_ALWAYS,
+        .mipmapMode = c.VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .mipLodBias = 0.0,
+        .minLod = 0.0,
+        .maxLod = 0.0,
+    };
+    
+    for (0..image_info.samplers.len) |i| {
+        const success = c.vkCreateSampler(instance.device, &sampler_info, null, &image_info.samplers[i]);
+        if (success != c.VK_SUCCESS)
+        {
+            std.debug.print("Failed to create texture sampler: {}\n", .{success});
+            return;
+        }
+    }
+}
+
+pub fn image_cleanup(self: *Instance, info: *ImageInfo) void
+{
+    for (0..info.views.len) |i|
+    {
+        c.vkDestroyImageView(self.device, info.views[i], null);
+    }
+
+    for (0..info.samplers.len) |i|
+    {
+        c.vkDestroySampler(self.device, info.samplers[i], null);
+    }
+
+    c.vmaDestroyImage(self.vma_allocator, info.image, info.alloc);
 }
 
 /// Creates a 4 byte aligned buffer of any given file, intended for reading SPIR-V binary files

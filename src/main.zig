@@ -27,9 +27,9 @@ var inputs = Inputs{};
 
 const PlayerState = struct {
     pos : @Vector(3, f32) = .{ 0.0, 0.0, -1.0 },
-    yaw : f32 = 0.0,
+    yaw : f32 = std.math.pi/2.0,
     pitch : f32 = 0.0,
-    look : zm.Vec = .{ 1.0, 0.0, 0.0, 1.0 },
+    look : zm.Vec = .{ 0.0, 0.0, 0.0, 1.0 },
 };
 
 var player_state = PlayerState{};
@@ -76,6 +76,12 @@ pub fn main() !void {
 
     try vulkan.glfw_initialization();
     try instance.window_setup(ENGINE_NAME, ENGINE_NAME);
+
+    const vulkan_functions = c.VmaVulkanFunctions{
+        .vkGetInstanceProcAddr = &c.vkGetInstanceProcAddr,
+        .vkGetDeviceProcAddr = &c.vkGetDeviceProcAddr,
+    };
+
     try instance.create_surface();
     try instance.pick_physical_device();
     c.vkGetPhysicalDeviceMemoryProperties(instance.physical_device, &instance.mem_properties);
@@ -85,6 +91,25 @@ pub fn main() !void {
     try instance.create_descriptor_pool();
 
     try instance.create_descriptor_set_layouts();
+
+    const vma_allocator_create_info = c.VmaAllocatorCreateInfo{
+        .flags = c.VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
+        .vulkanApiVersion = c.VK_API_VERSION_1_2,
+        .physicalDevice = instance.physical_device,
+        .device = instance.device,
+        .instance = instance.vk_instance,
+        .pVulkanFunctions = &vulkan_functions,
+    };
+    
+    //var vma_allocator : c.VmaAllocator = undefined;
+    const vma_allocator_success = c.vmaCreateAllocator(&vma_allocator_create_info, &instance.vma_allocator);
+
+    if (vma_allocator_success != c.VK_SUCCESS)
+    {
+        std.debug.print("Unable to create vma allocator {}\n", .{vma_allocator_success});
+    }
+
+    try instance.create_depth_resources();
 
     try instance.create_graphics_pipeline();
     try instance.create_framebuffers();
@@ -100,27 +125,6 @@ pub fn main() !void {
     _ = c.glfwSetFramebufferSizeCallback(instance.window, window_resize_callback);
 
     c.glfwSetWindowSizeLimits(instance.window, 240, 135, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
-
-    // VMA INIT
-    const vulkan_functions = c.VmaVulkanFunctions{
-        .vkGetInstanceProcAddr = &c.vkGetInstanceProcAddr,
-        .vkGetDeviceProcAddr = &c.vkGetDeviceProcAddr,
-    };
-
-    const vma_allocator_create_info = c.VmaAllocatorCreateInfo{
-        .flags = c.VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
-        .vulkanApiVersion = c.VK_API_VERSION_1_2,
-        .physicalDevice = instance.physical_device,
-        .device = instance.device,
-        .instance = instance.vk_instance,
-        .pVulkanFunctions = &vulkan_functions,
-    };
-    
-    var vma_allocator : c.VmaAllocator = undefined;
-    const vma_allocator_success = c.vmaCreateAllocator(&vma_allocator_create_info, &vma_allocator);
-
-    if (vma_allocator_success != c.VK_SUCCESS)
-        std.debug.print("Unable to create vma allocator {}\n", .{vma_allocator_success});
 
     const random = std.crypto.random; 
 
@@ -142,8 +146,10 @@ pub fn main() !void {
     
     // RENDER INIT
 
-    var vertex_buffers = try instance.allocator.*.alloc(c.VkBuffer, 1);
-    defer instance.allocator.*.free(vertex_buffers);
+    instance.vertex_buffers = try instance.allocator.*.alloc(c.VkBuffer, 1);
+    defer instance.allocator.*.free(instance.vertex_buffers);
+    instance.vertex_allocs = try instance.allocator.*.alloc(c.VmaAllocation, 1);
+    defer instance.allocator.*.free(instance.vertex_allocs);
 
     var vertex_buffer : c.VkBuffer = undefined;
 
@@ -153,7 +159,6 @@ pub fn main() !void {
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = vertices_size,
         .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
-        //.usage = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
     }; 
 
     const vertex_alloc_create_info = c.VmaAllocationCreateInfo{
@@ -161,12 +166,11 @@ pub fn main() !void {
         .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
     };
 
-    var vertex_alloc : c.VmaAllocation = undefined;
-    _ = c.vmaCreateBuffer(vma_allocator, &vertex_buffer_create_info, &vertex_alloc_create_info, &vertex_buffer, &vertex_alloc, null);
+    _ = c.vmaCreateBuffer(instance.vma_allocator, &vertex_buffer_create_info, &vertex_alloc_create_info, &vertex_buffer, &instance.vertex_allocs[0], null);
 
-    _ = c.vmaCopyMemoryToAllocation(vma_allocator, vertices.items.ptr, vertex_alloc, 0, vertices_size);
+    _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, vertices.items.ptr, instance.vertex_allocs[0], 0, vertices_size);
 
-    vertex_buffers[0] = vertex_buffer;
+    instance.vertex_buffers[0] = vertex_buffer;
 
     const ObjectTransform = struct {
         model: zm.Mat = zm.identity(),
@@ -194,10 +198,47 @@ pub fn main() !void {
     var ubo_alloc : [MAX_CONCURRENT_FRAMES]c.VmaAllocation = undefined;
     for (0..MAX_CONCURRENT_FRAMES) |i|
     {
-        _ = c.vmaCreateBuffer(vma_allocator, &ubo_buffer_create_info, &ubo_alloc_create_info, &ubo_buffers[i], &ubo_alloc[i], null);
+        _ = c.vmaCreateBuffer(instance.vma_allocator, &ubo_buffer_create_info, &ubo_alloc_create_info, &ubo_buffers[i], &ubo_alloc[i], null);
 
-        _ = c.vmaCopyMemoryToAllocation(vma_allocator, &object_transform, ubo_alloc[i], 0, @sizeOf(ObjectTransform));
+        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, ubo_alloc[i], 0, @sizeOf(ObjectTransform));
     }
+
+    var image_info0 = vulkan.ImageInfo{
+        .depth = 1,
+        .subresource_range = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .views = try instance.allocator.*.alloc(c.VkImageView, MAX_CONCURRENT_FRAMES),
+        .samplers = try instance.allocator.*.alloc(c.VkSampler, MAX_CONCURRENT_FRAMES),
+    };
+    defer instance.allocator.*.free(image_info0.views);
+    defer instance.allocator.*.free(image_info0.samplers);
+   
+    // TODO turn this into a one line conditional
+    const image_data = c.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.STBI_rgb_alpha);
+    if (image_data == null){
+        std.debug.print("Unable to find image file \n", .{});
+        return;
+    }
+    else
+    {
+        image_info0.data = image_data;
+    }
+
+    try vulkan.create_2d_texture(&instance, &image_info0);
+
+    try vulkan.create_image_view(instance.device, &image_info0);
+    try vulkan.create_samplers(&instance, &image_info0, c.VK_FILTER_LINEAR, c.VK_SAMPLER_ADDRESS_MODE_REPEAT);
+
+    // Depth Image
+    
+    
+
+    // Descriptor Sets
 
     const layouts : [2]c.VkDescriptorSetLayout = .{instance.descriptor_set_layout, instance.descriptor_set_layout};
 
@@ -219,7 +260,13 @@ pub fn main() !void {
             .range = @sizeOf(ObjectTransform),
         };
 
-        const descriptor_write = c.VkWriteDescriptorSet{
+        const image_info = c.VkDescriptorImageInfo{
+            .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = image_info0.views[i],
+            .sampler = image_info0.samplers[i],
+        };
+
+        const ubo_descriptor_write = c.VkWriteDescriptorSet{
             .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = instance.descriptor_sets[i],
             .dstBinding = 0,
@@ -230,176 +277,22 @@ pub fn main() !void {
             .pImageInfo = null,
             .pTexelBufferView = null,
         };
-
-        c.vkUpdateDescriptorSets(instance.device, 1, &descriptor_write, 0, null);
-    }
-
-    var tex_width : i32 = undefined;
-    var tex_height : i32 = undefined;
-    var tex_channels : i32 = undefined;
-    const pixels : ?*c.stbi_uc = c.stbi_load("fortnite.jpg", &tex_width, &tex_height, &tex_channels, c.STBI_rgb_alpha);
-
-    var image : c.VkImage = undefined;
-    var image_alloc : c.VmaAllocation = undefined;
-
-    if (pixels == null)
-    {
-        std.debug.print("Unable to find image file\n", .{});
-        return;
-    }
-    else
-    {
-        const image_size : u64 = @intCast(tex_width * tex_height * 4);
-        //Create staging buffer
         
-        var staging_buffer : c.VkBuffer = undefined;
-
-        const staging_buffer_info = c.VkBufferCreateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size = image_size,
-            .usage = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        const image_descriptor_write = c.VkWriteDescriptorSet{
+            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = instance.descriptor_sets[i],
+            .dstBinding = 1,
+            .dstArrayElement = 0,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .pBufferInfo = null,
+            .pImageInfo = &image_info,
+            .pTexelBufferView = null,
         };
 
-        const staging_alloc_create_info = c.VmaAllocationCreateInfo{
-            .usage = c.VMA_MEMORY_USAGE_AUTO,
-            .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | c.VMA_ALLOCATION_CREATE_MAPPED_BIT,
-        };
+        const descriptor_writes: [2]c.VkWriteDescriptorSet = .{ubo_descriptor_write, image_descriptor_write};
 
-        var staging_alloc : c.VmaAllocation = undefined;
-        var staging_alloc_info : c.VmaAllocationInfo = undefined;
-
-        _ = c.vmaCreateBuffer(vma_allocator, &staging_buffer_info, &staging_alloc_create_info, &staging_buffer, &staging_alloc, &staging_alloc_info);
-
-        _ = c.vmaCopyMemoryToAllocation(vma_allocator, pixels, staging_alloc, 0, image_size);
-        c.stbi_image_free(pixels);
-
-        // Create image and transfer data to allocation
-
-        const image_info = c.VkImageCreateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .imageType = c.VK_IMAGE_TYPE_2D,
-            .extent = .{ .width = @intCast(tex_width), .height = @intCast(tex_height), .depth = 1},
-            .mipLevels = 1,
-            .arrayLayers = 1,
-            .format = c.VK_FORMAT_R8G8B8A8_SRGB,
-            .tiling = c.VK_IMAGE_TILING_OPTIMAL,
-            .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
-            .usage = c.VK_IMAGE_USAGE_SAMPLED_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            .samples = c.VK_SAMPLE_COUNT_1_BIT,
-            .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-        };
-        std.debug.print("width: {} height: {}\n", .{image_info.extent.width, image_info.extent.height});
-
-        const alloc_info = c.VmaAllocationCreateInfo{
-            .usage = c.VMA_MEMORY_USAGE_AUTO,
-            .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,//c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,//, //| ,
-            .priority = 1.0,
-        };
-
-        const image_creation = c.vmaCreateImage(vma_allocator, &image_info, &alloc_info, &image, &image_alloc, null);
-        if (image_creation != c.VK_SUCCESS)
-        {
-            std.debug.print("Image creation failure: {}\n", .{image_creation});
-            return;
-        }
-
-        
-        const command_buffer_alloc_info = c.VkCommandBufferAllocateInfo{
-            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandPool = instance.command_pool,
-            .commandBufferCount = 1,
-        };
-        var command_buffer : c.VkCommandBuffer = undefined;
-        const command_buffer_alloc_success = c.vkAllocateCommandBuffers(instance.device, &command_buffer_alloc_info, &command_buffer);
-        if (command_buffer_alloc_success != c.VK_SUCCESS)
-        {
-            std.debug.print("Unable to Allocate command buffer for image staging: {}\n", .{command_buffer_alloc_success});
-            return;
-        }
-
-        // Copy and proper layout from staging buffer to gpu
-        const begin_info = c.VkCommandBufferBeginInfo{
-            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        };
-
-        const begin_cmd_buffer = c.vkBeginCommandBuffer(command_buffer, &begin_info);
-        if (begin_cmd_buffer != c.VK_SUCCESS)
-        {
-            return;
-        }
-        
-        // Translate to optimal tranfer layout
-        const image_subresource_range = c.VkImageSubresourceRange{
-            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        };
-
-        const transfer_barrier = c.VkImageMemoryBarrier{
-            .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .oldLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
-            .newLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
-            .image = image,
-            .subresourceRange = image_subresource_range,
-            .srcAccessMask = 0,
-            .dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
-        };
-
-        c.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 1, &transfer_barrier);
-        
-        // copy from staging buffer to image gpu destination
-        const image_subresource = c.VkImageSubresourceLayers{
-            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
-            .mipLevel = 0,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        };
-        
-        const region = c.VkBufferImageCopy{
-            .bufferOffset = 0,
-            .bufferRowLength = 0,
-            .bufferImageHeight = 0,
-            .imageSubresource = image_subresource,
-            .imageOffset = .{ .x = 0, .y = 0, .z = 0 },
-            .imageExtent = .{ .width = @intCast(tex_width), .height = @intCast(tex_height), .depth = 1 },
-        };
-
-        c.vkCmdCopyBufferToImage(command_buffer, staging_buffer, image, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-        // Optimal shader layout translation
-        const shader_read_barrier = c.VkImageMemoryBarrier{
-            .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .oldLayout = c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .newLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
-            .image = image,
-            .subresourceRange = image_subresource_range,
-            .srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
-            .dstAccessMask = c.VK_ACCESS_SHADER_READ_BIT,
-        };
-
-        c.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TRANSFER_BIT, c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, null, 0, null, 1, &shader_read_barrier);
-
-        _ = c.vkEndCommandBuffer(command_buffer);
-
-        const submit_info = c.VkSubmitInfo{
-            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &command_buffer,
-        };
-
-        _ = c.vkQueueSubmit(instance.present_queue, 1, &submit_info, null);
-        _ = c.vkQueueWaitIdle(instance.present_queue);
-
-        c.vkFreeCommandBuffers(instance.device, instance.command_pool, 1, &command_buffer);
-
-        c.vmaDestroyBuffer(vma_allocator, staging_buffer, staging_alloc);
+        c.vkUpdateDescriptorSets(instance.device, descriptor_writes.len, &descriptor_writes, 0, null);
     }
 
     // FRAME LOOP
@@ -410,8 +303,6 @@ pub fn main() !void {
 
     var window_height : i32 = 0;
     var window_width : i32 = 0;
-
-//    var t : f32 = 0.0;
     
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
@@ -438,7 +329,7 @@ pub fn main() !void {
         player_state.look = zm.normalize3(player_state.look);
 
         object_transform.view = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 1.0}, player_state.look, .{ 0.0, 1.0, 0.0, 1.0});
-        object_transform.projection = zm.perspectiveFovLh(1.0, aspect_ratio, 0.001, 1000.0);
+        object_transform.projection = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
         
         var speed : f32 = 1.0;
         if (inputs.control)
@@ -475,36 +366,32 @@ pub fn main() !void {
             player_state.pos += .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
         }
 
-        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} yaw:{d:.1} pitch:{d:.1} look:{d:.1} {d:.1} {} {} {d:.3} {d:.3}ms   \r", .{
+        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {d:.3}ms \r", .{
             if (inputs.mouse_capture) "on " else "off",
             player_state.pos[0], 
             player_state.pos[1],
             player_state.pos[2],
             player_state.yaw,
             player_state.pitch,
-            player_state.look[0],
-            player_state.look[2],
-            window_width,
-            window_height,
-            aspect_ratio,
             frame_delta * 1000.0,
         });
 
-        _ = c.vmaCopyMemoryToAllocation(vma_allocator, &object_transform, ubo_alloc[current_frame_index], 0, @sizeOf(ObjectTransform));
+        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, ubo_alloc[current_frame_index], 0, @sizeOf(ObjectTransform));
 
-        try instance.draw_frame(current_frame_index, &vertex_buffers, @intCast(vertices.items.len));
+        try instance.draw_frame(current_frame_index, &instance.vertex_buffers, @intCast(vertices.items.len));
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
     }
 
+    // CLEANUP
+
     _ = c.vkDeviceWaitIdle(instance.device);
-    c.vmaDestroyBuffer(vma_allocator, vertex_buffer, vertex_alloc);
+
+    vulkan.image_cleanup(&instance, &image_info0);
     for (0..MAX_CONCURRENT_FRAMES) |i| {
-        c.vmaDestroyBuffer(vma_allocator, ubo_buffers[i], ubo_alloc[i]);
+        c.vmaDestroyBuffer(instance.vma_allocator, ubo_buffers[i], ubo_alloc[i]);
     }
-    c.vmaDestroyImage(vma_allocator, image, image_alloc);
-    c.vmaDestroyAllocator(vma_allocator);
     instance.cleanup();
 }
 
