@@ -338,24 +338,24 @@ pub fn main() !void {
         }
 
         // TODO Make this the center of gravitational wells and such
-        const up : zm.Vec = .{ 0.0, 1.0, 0.0, 1.0 };
+        const up : zm.Vec = .{ 0.0, -1.0, 0.0, 1.0 };
         const right = zm.cross3(player_state.look, up);
         const forward = zm.cross3(right, up);
         if (inputs.space)
         {
-            player_state.pos -= .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
+            player_state.pos += .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
         }
         if (inputs.shift)
         {
-            player_state.pos += .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
+            player_state.pos -= .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
         }
         if (inputs.a)
         {
-            player_state.pos += .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
+            player_state.pos -= .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
         }
         if (inputs.d)
         {
-            player_state.pos -= .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
+            player_state.pos += .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
         }
         if (inputs.w)
         {

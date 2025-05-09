@@ -849,7 +849,8 @@ pub const Instance = struct {
         }
 
         var clear_colors: [2]c.VkClearValue = undefined;
-        clear_colors[0].color = .{.{0.0, 0.0, 0.0, 0.0}};
+        clear_colors[0].color.float32 = .{0.0, 0.0, 0.0, 0.0};
+        clear_colors[1].depthStencil = .{ .depth = 1.0, .stencil = 0 };
         //const clear_colors: [2]c.VkClearValue = .{undefined, undefined};
 
         const render_pass_info = c.VkRenderPassBeginInfo{
