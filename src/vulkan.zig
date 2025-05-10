@@ -1110,6 +1110,103 @@ pub const Instance = struct {
         c.vmaDestroyImage(self.vma_allocator, self.depth_image, self.depth_image_alloc);
     }
 
+    pub fn copy_data_via_staging_buffer(self: *Instance, final_buffer: *c.VkBuffer, size: u32, data: *anyopaque) VkAbstractionError!void
+    {
+        var staging_buffer : c.VkBuffer = undefined;
+
+        const staging_buffer_info = c.VkBufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = size,
+            .usage = c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        };
+
+        const staging_alloc_create_info = c.VmaAllocationCreateInfo{
+            .usage = c.VMA_MEMORY_USAGE_AUTO,
+            .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | c.VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        };
+
+        var staging_alloc : c.VmaAllocation = undefined;
+        var staging_alloc_info : c.VmaAllocationInfo = undefined;
+
+        _ = c.vmaCreateBuffer(self.vma_allocator, &staging_buffer_info, &staging_alloc_create_info, &staging_buffer, &staging_alloc, &staging_alloc_info);
+
+        _ = c.vmaCopyMemoryToAllocation(self.vma_allocator, data, staging_alloc, 0, size);
+        
+        const command_buffer_alloc_info = c.VkCommandBufferAllocateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandPool = self.command_pool,
+            .commandBufferCount = 1,
+        };
+        var command_buffer : c.VkCommandBuffer = undefined;
+        const command_buffer_alloc_success = c.vkAllocateCommandBuffers(self.device, &command_buffer_alloc_info, &command_buffer);
+        if (command_buffer_alloc_success != c.VK_SUCCESS)
+        {
+            std.debug.print("Unable to Allocate command buffer for image staging: {}\n", .{command_buffer_alloc_success});
+            return;
+        }
+
+        // Copy and proper layout from staging buffer to gpu
+        const begin_info = c.VkCommandBufferBeginInfo{
+            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        };
+
+        const begin_cmd_buffer = c.vkBeginCommandBuffer(command_buffer, &begin_info);
+        if (begin_cmd_buffer != c.VK_SUCCESS)
+        {
+            return;
+        }
+
+        const transfer_barrier = c.VkBufferMemoryBarrier{
+            .sType = c.VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .buffer = final_buffer.*,
+            .size = size,
+            .srcAccessMask = 0,
+            .dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+        };
+
+        c.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 1, &transfer_barrier, 0, null);
+        
+        const region = c.VkBufferCopy{
+            .srcOffset = 0,
+            .dstOffset = 0,
+            .size = size,
+        };
+
+        c.vkCmdCopyBuffer(command_buffer, staging_buffer, final_buffer.*, 1, &region);
+        // Optimal shader layout translation
+        const buffer_read_barrier = c.VkBufferMemoryBarrier{
+            .sType = c.VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+            .srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = c.VK_ACCESS_SHADER_READ_BIT,
+            .buffer = final_buffer.*,
+            .offset = 0,
+            .size = size,
+        };
+
+        c.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TRANSFER_BIT, c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, null, 1, &buffer_read_barrier, 0, null);
+
+        _ = c.vkEndCommandBuffer(command_buffer);
+
+        const submit_info = c.VkSubmitInfo{
+            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &command_buffer,
+        };
+
+        _ = c.vkQueueSubmit(self.present_queue, 1, &submit_info, null);
+        _ = c.vkQueueWaitIdle(self.present_queue);
+
+        c.vkFreeCommandBuffers(self.device, self.command_pool, 1, &command_buffer);
+
+        c.vmaDestroyBuffer(self.vma_allocator, staging_buffer, staging_alloc);
+    }
+
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called
     pub fn cleanup(self: *Instance) void {
@@ -1190,7 +1287,6 @@ pub fn create_2d_texture(self: *Instance, image_info: *ImageInfo) VkAbstractionE
         _ = c.vmaCreateBuffer(self.vma_allocator, &staging_buffer_info, &staging_alloc_create_info, &staging_buffer, &staging_alloc, &staging_alloc_info);
 
         _ = c.vmaCopyMemoryToAllocation(self.vma_allocator, image_info.data, staging_alloc, 0, image_size);
-        c.stbi_image_free(image_info.data);
 
         // Create image and transfer data to allocation
 

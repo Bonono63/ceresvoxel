@@ -26,10 +26,16 @@ const Inputs = packed struct {
 var inputs = Inputs{};
 
 const PlayerState = struct {
-    pos : @Vector(3, f32) = .{ 0.0, 0.0, -1.0 },
-    yaw : f32 = std.math.pi/2.0,
-    pitch : f32 = 0.0,
-    look : zm.Vec = .{ 0.0, 0.0, 0.0, 1.0 },
+    pos: @Vector(3, f32) = .{ 0.0, 0.0, -1.0 },
+    yaw: f32 = std.math.pi/2.0,
+    pitch: f32 = 0.0,
+    rot: zm.Quat = zm.qidentity(),
+    up: zm.Vec = .{ 0.0, 1.0, 0.0, 1.0},
+    look: zm.Vec = .{ 0.0, 0.0, 1.0, 1.0 },
+};
+
+const PhysicsEntity = struct {
+    pos: @Vector(3, f32) = .{0.0,0.0,0.0},
 };
 
 var player_state = PlayerState{};
@@ -132,10 +138,7 @@ pub fn main() !void {
     for (0..32768) |i|
     {
         const val = random.int(u1);
-        if (val == 0)
-        {
-            chunk_data[i] = val;
-        }
+        chunk_data[i] = val;
     }
 
     const chunk_mesh_start_time : f64 = c.glfwGetTime();
@@ -158,17 +161,19 @@ pub fn main() !void {
     var vertex_buffer_create_info = c.VkBufferCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = vertices_size,
-        .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+        .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
     }; 
 
     const vertex_alloc_create_info = c.VmaAllocationCreateInfo{
         .usage = c.VMA_MEMORY_USAGE_AUTO,
-        .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+        .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
     };
 
     _ = c.vmaCreateBuffer(instance.vma_allocator, &vertex_buffer_create_info, &vertex_alloc_create_info, &vertex_buffer, &instance.vertex_allocs[0], null);
 
-    _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, vertices.items.ptr, instance.vertex_allocs[0], 0, vertices_size);
+    //_ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, vertices.items.ptr, instance.vertex_allocs[0], 0, vertices_size);
+
+    try instance.copy_data_via_staging_buffer(&vertex_buffer, @intCast(vertices_size), @as(*anyopaque, vertices.items.ptr));
 
     instance.vertex_buffers[0] = vertex_buffer;
 
@@ -230,6 +235,7 @@ pub fn main() !void {
     }
 
     try vulkan.create_2d_texture(&instance, &image_info0);
+    c.stbi_image_free(image_info0.data);
 
     try vulkan.create_image_view(instance.device, &image_info0);
     try vulkan.create_samplers(&instance, &image_info0, c.VK_FILTER_LINEAR, c.VK_SAMPLER_ADDRESS_MODE_REPEAT);
@@ -323,12 +329,18 @@ pub fn main() !void {
             c.glfwSetInputMode(instance.window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
         }
 
-        player_state.look[0] = player_state.look[0] + @as(f32, @floatCast(std.math.cos(player_state.yaw)));
-        player_state.look[1] = player_state.look[1] + @as(f32, @floatCast(std.math.sin(player_state.pitch)));
-        player_state.look[2] = player_state.look[2] + @as(f32, @floatCast(std.math.sin(player_state.yaw)));
+        player_state.look[0] = @as(f32, @floatCast(std.math.cos(player_state.yaw) * std.math.cos(player_state.pitch)));
+        player_state.look[1] = @as(f32, @floatCast(std.math.sin(player_state.pitch)));
+        player_state.look[2] = @as(f32, @floatCast(std.math.sin(player_state.yaw) * std.math.cos(player_state.pitch)));
         player_state.look = zm.normalize3(player_state.look);
+        const look = player_state.look;
+        const test_gravity: @Vector(3, f32) = .{0.0,3.0,0.0};
+        const gravity_dir_vec = player_state.pos - test_gravity;
+        const up : zm.Vec = zm.normalize3(.{-gravity_dir_vec[0],-gravity_dir_vec[1],-gravity_dir_vec[2], 1.0});
+        const right = zm.cross3(look, up);
+        const forward = zm.cross3(right, up);
 
-        object_transform.view = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 1.0}, player_state.look, .{ 0.0, 1.0, 0.0, 1.0});
+        object_transform.view = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 1.0}, look, up);
         object_transform.projection = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
         
         var speed : f32 = 1.0;
@@ -338,24 +350,21 @@ pub fn main() !void {
         }
 
         // TODO Make this the center of gravitational wells and such
-        const up : zm.Vec = .{ 0.0, -1.0, 0.0, 1.0 };
-        const right = zm.cross3(player_state.look, up);
-        const forward = zm.cross3(right, up);
         if (inputs.space)
-        {
-            player_state.pos += .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
-        }
-        if (inputs.shift)
         {
             player_state.pos -= .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
         }
+        if (inputs.shift)
+        {
+            player_state.pos += .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
+        }
         if (inputs.a)
         {
-            player_state.pos -= .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
+            player_state.pos += .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
         }
         if (inputs.d)
         {
-            player_state.pos += .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
+            player_state.pos -= .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
         }
         if (inputs.w)
         {
@@ -366,13 +375,14 @@ pub fn main() !void {
             player_state.pos += .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
         }
 
-        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {d:.3}ms \r", .{
+        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {} {d:.3}ms \r", .{
             if (inputs.mouse_capture) "on " else "off",
             player_state.pos[0], 
             player_state.pos[1],
             player_state.pos[2],
             player_state.yaw,
             player_state.pitch,
+            look,
             frame_delta * 1000.0,
         });
 
@@ -490,6 +500,9 @@ pub fn cursor_pos_callback(window: ?*c.GLFWwindow, _xpos: f64, _ypos: f64) callc
         player_state.yaw -= @as(f32, @floatCast(dx * std.math.pi / 180.0 * MOUSE_SENSITIVITY));
         player_state.pitch += @as(f32, @floatCast(dy * std.math.pi / 180.0 * MOUSE_SENSITIVITY));
     }
+
+    //player_state.yaw = zm.clamp(player_state.yaw, -std.math.pi, std.math.pi);
+    //player_state.pitch = zm.clamp(player_state.pitch, -std.math.pi, std.math.pi);
 }
 
 pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {
