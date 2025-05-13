@@ -42,6 +42,16 @@ var player_state = PlayerState{};
 
 const MAX_CONCURRENT_FRAMES = 2;
 
+const block_selection_cube: [6]vulkan.Vertex = .{
+    .{.pos = .{-0.5,-0.5,0.0}, .color = .{0.0,0.0,1.0} },
+    .{.pos = .{1.0,0.0,0.0}, .color = .{0.0,0.0,1.0} },
+    .{.pos = .{1.0,1.0,0.0}, .color = .{0.0,0.0,1.0} },
+    .{.pos = .{1.0,1.0,0.0}, .color = .{0.0,0.0,1.0} },
+    .{.pos = .{0.0,1.0,0.0}, .color = .{0.0,0.0,1.0} },
+    .{.pos = .{0.0,0.0,0.0}, .color = .{0.0,0.0,1.0} },
+};
+
+
 pub fn main() !void {
     // ZIG INIT
     std.debug.print("[Info] Runtime Safety: {}\n", .{std.debug.runtime_safety});
@@ -66,6 +76,21 @@ pub fn main() !void {
 
     instance.shader_modules = std.ArrayList(c.VkShaderModule).init(instance.allocator.*);
     defer instance.shader_modules.deinit();
+    
+    instance.vertex_buffers = std.ArrayList(c.VkBuffer).init(instance.allocator.*);
+    defer instance.vertex_buffers.deinit();
+    instance.vertex_allocs = std.ArrayList(c.VmaAllocation).init(instance.allocator.*);
+    defer instance.vertex_allocs.deinit();
+    instance.vertex_offsets = std.ArrayList(c.VkDeviceSize).init(instance.allocator.*);
+    defer instance.vertex_offsets.deinit();
+    instance.vertex_counts = std.ArrayList(u32).init(instance.allocator.*);
+    defer instance.vertex_counts.deinit();
+
+    instance.ubo_buffers = std.ArrayList(c.VkBuffer).init(instance.allocator.*);
+    defer instance.ubo_buffers.deinit();
+    instance.ubo_allocs = std.ArrayList(c.VmaAllocation).init(instance.allocator.*);
+    defer instance.ubo_allocs.deinit();
+
 
     instance.command_buffers = try instance.allocator.*.alloc(c.VkCommandBuffer, instance.MAX_CONCURRENT_FRAMES);
     defer instance.allocator.*.free(instance.command_buffers);
@@ -107,7 +132,6 @@ pub fn main() !void {
         .pVulkanFunctions = &vulkan_functions,
     };
     
-    //var vma_allocator : c.VmaAllocator = undefined;
     const vma_allocator_success = c.vmaCreateAllocator(&vma_allocator_create_info, &instance.vma_allocator);
 
     if (vma_allocator_success != c.VK_SUCCESS)
@@ -142,40 +166,15 @@ pub fn main() !void {
     }
 
     const chunk_mesh_start_time : f64 = c.glfwGetTime();
-    const vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &chunk_data);
-    defer vertices.deinit();
+    const chunk_vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &chunk_data);
+    defer chunk_vertices.deinit();
 
     std.debug.print("chunk mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0 });
     
+    try instance.create_vertex_buffer(@intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
+    try instance.create_vertex_buffer(@intCast(block_selection_cube.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
+
     // RENDER INIT
-
-    instance.vertex_buffers = try instance.allocator.*.alloc(c.VkBuffer, 1);
-    defer instance.allocator.*.free(instance.vertex_buffers);
-    instance.vertex_allocs = try instance.allocator.*.alloc(c.VmaAllocation, 1);
-    defer instance.allocator.*.free(instance.vertex_allocs);
-
-    var vertex_buffer : c.VkBuffer = undefined;
-
-    const vertices_size = vertices.items.len * @sizeOf(vulkan.Vertex);
-
-    var vertex_buffer_create_info = c.VkBufferCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = vertices_size,
-        .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-    }; 
-
-    const vertex_alloc_create_info = c.VmaAllocationCreateInfo{
-        .usage = c.VMA_MEMORY_USAGE_AUTO,
-        .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-    };
-
-    _ = c.vmaCreateBuffer(instance.vma_allocator, &vertex_buffer_create_info, &vertex_alloc_create_info, &vertex_buffer, &instance.vertex_allocs[0], null);
-
-    //_ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, vertices.items.ptr, instance.vertex_allocs[0], 0, vertices_size);
-
-    try instance.copy_data_via_staging_buffer(&vertex_buffer, @intCast(vertices_size), @as(*anyopaque, vertices.items.ptr));
-
-    instance.vertex_buffers[0] = vertex_buffer;
 
     const ObjectTransform = struct {
         model: zm.Mat = zm.identity(),
@@ -185,11 +184,7 @@ pub fn main() !void {
     
     var object_transform = ObjectTransform{};
     
-    _ = &object_transform;
-    
-    var ubo_buffers : [MAX_CONCURRENT_FRAMES]c.VkBuffer = undefined;
-
-    const ubo_buffer_create_info = c.VkBufferCreateInfo{
+    const create_info = c.VkBufferCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = @sizeOf(ObjectTransform),
         .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -200,13 +195,19 @@ pub fn main() !void {
         .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
     };
 
-    var ubo_alloc : [MAX_CONCURRENT_FRAMES]c.VmaAllocation = undefined;
-    for (0..MAX_CONCURRENT_FRAMES) |i|
+    for (0..instance.vertex_buffers.items.len*MAX_CONCURRENT_FRAMES) |i|
     {
-        _ = c.vmaCreateBuffer(instance.vma_allocator, &ubo_buffer_create_info, &ubo_alloc_create_info, &ubo_buffers[i], &ubo_alloc[i], null);
-
-        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, ubo_alloc[i], 0, @sizeOf(ObjectTransform));
+        _ = &i;
+         
+        var buffer: c.VkBuffer = undefined;
+        var alloc: c.VmaAllocation = undefined;
+        _ = c.vmaCreateBuffer(instance.vma_allocator, &create_info, &ubo_alloc_create_info, &buffer, &alloc, null);
+        
+        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, alloc, 0, @sizeOf(ObjectTransform));
+        try instance.ubo_allocs.append(alloc);
+        try instance.ubo_buffers.append(buffer);
     }
+
 
     var image_info0 = vulkan.ImageInfo{
         .depth = 1,
@@ -240,10 +241,6 @@ pub fn main() !void {
     try vulkan.create_image_view(instance.device, &image_info0);
     try vulkan.create_samplers(&instance, &image_info0, c.VK_FILTER_LINEAR, c.VK_SAMPLER_ADDRESS_MODE_REPEAT);
 
-    // Depth Image
-    
-    
-
     // Descriptor Sets
 
     const layouts : [2]c.VkDescriptorSetLayout = .{instance.descriptor_set_layout, instance.descriptor_set_layout};
@@ -261,7 +258,13 @@ pub fn main() !void {
     
     for (0..MAX_CONCURRENT_FRAMES) |i| {
         const buffer_info = c.VkDescriptorBufferInfo{
-            .buffer = ubo_buffers[i],
+            .buffer = instance.ubo_buffers.items[i],
+            .offset = 0,
+            .range = @sizeOf(ObjectTransform),
+        };
+        
+        const selector_buffer_info = c.VkDescriptorBufferInfo{
+            .buffer = instance.ubo_buffers.items[i+MAX_CONCURRENT_FRAMES],
             .offset = 0,
             .range = @sizeOf(ObjectTransform),
         };
@@ -284,10 +287,22 @@ pub fn main() !void {
             .pTexelBufferView = null,
         };
         
-        const image_descriptor_write = c.VkWriteDescriptorSet{
+        const selector_descriptor_write = c.VkWriteDescriptorSet{
             .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = instance.descriptor_sets[i],
             .dstBinding = 1,
+            .dstArrayElement = 0,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .pBufferInfo = &selector_buffer_info,
+            .pImageInfo = null,
+            .pTexelBufferView = null,
+        };
+        
+        const image_descriptor_write = c.VkWriteDescriptorSet{
+            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = instance.descriptor_sets[i],
+            .dstBinding = 2,
             .dstArrayElement = 0,
             .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .descriptorCount = 1,
@@ -296,7 +311,7 @@ pub fn main() !void {
             .pTexelBufferView = null,
         };
 
-        const descriptor_writes: [2]c.VkWriteDescriptorSet = .{ubo_descriptor_write, image_descriptor_write};
+        const descriptor_writes: [3]c.VkWriteDescriptorSet = .{ubo_descriptor_write, selector_descriptor_write, image_descriptor_write};
 
         c.vkUpdateDescriptorSets(instance.device, descriptor_writes.len, &descriptor_writes, 0, null);
     }
@@ -309,7 +324,7 @@ pub fn main() !void {
 
     var window_height : i32 = 0;
     var window_width : i32 = 0;
-    
+   
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
 
@@ -334,9 +349,10 @@ pub fn main() !void {
         player_state.look[2] = @as(f32, @floatCast(std.math.sin(player_state.yaw) * std.math.cos(player_state.pitch)));
         player_state.look = zm.normalize3(player_state.look);
         const look = player_state.look;
-        const test_gravity: @Vector(3, f32) = .{0.0,3.0,0.0};
-        const gravity_dir_vec = player_state.pos - test_gravity;
-        const up : zm.Vec = zm.normalize3(.{-gravity_dir_vec[0],-gravity_dir_vec[1],-gravity_dir_vec[2], 1.0});
+        //const test_gravity: @Vector(3, f32) = .{0.0,3.0,0.0};
+        //const gravity_dir_vec = player_state.pos - test_gravity;
+        //const up : zm.Vec = zm.normalize3(.{-gravity_dir_vec[0],-gravity_dir_vec[1],-gravity_dir_vec[2], 1.0});
+        const up : zm.Vec = .{0.0,1.0,0.0,1.0};
         const right = zm.cross3(look, up);
         const forward = zm.cross3(right, up);
 
@@ -386,9 +402,9 @@ pub fn main() !void {
             frame_delta * 1000.0,
         });
 
-        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, ubo_alloc[current_frame_index], 0, @sizeOf(ObjectTransform));
+        //_ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, ubo_alloc[current_frame_index], 0, @sizeOf(ObjectTransform));
 
-        try instance.draw_frame(current_frame_index, &instance.vertex_buffers, @intCast(vertices.items.len));
+        try instance.draw_frame(current_frame_index);
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
@@ -399,9 +415,6 @@ pub fn main() !void {
     _ = c.vkDeviceWaitIdle(instance.device);
 
     vulkan.image_cleanup(&instance, &image_info0);
-    for (0..MAX_CONCURRENT_FRAMES) |i| {
-        c.vmaDestroyBuffer(instance.vma_allocator, ubo_buffers[i], ubo_alloc[i]);
-    }
     instance.cleanup();
 }
 

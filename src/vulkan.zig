@@ -52,6 +52,7 @@ pub const VkAbstractionError = error{
     SuitableDeviceMemoryTypeSelectionFailure,
     DepthFormatAvailablityFailure,
     DepthResourceCreationFailure,
+    VertexBufferCreationFailure,
 };
 
 // These parameters are the minimum required for what we want to do
@@ -138,9 +139,13 @@ pub const Instance = struct {
     graphics_pipeline: c.VkPipeline = undefined,
     frame_buffers: []c.VkFramebuffer = undefined,
 
-    vertex_buffers: []c.VkBuffer = undefined,
-    vertex_allocs: []c.VmaAllocation = undefined,
-    ubo_buffers: []c.VkBuffer = undefined,
+    vertex_buffers: std.ArrayList(c.VkBuffer) = undefined,
+    vertex_allocs: std.ArrayList(c.VmaAllocation) = undefined,
+    vertex_offsets: std.ArrayList(c.VkDeviceSize) = undefined,
+    vertex_counts: std.ArrayList(u32) = undefined,
+
+    ubo_buffers: std.ArrayList(c.VkBuffer) = undefined,
+    ubo_allocs: std.ArrayList(c.VmaAllocation) = undefined,
 
     images: []ImageInfo = undefined,
 
@@ -169,7 +174,7 @@ pub const Instance = struct {
             .pApplicationName = application_name.ptr,
             .pEngineName = engine_name.ptr,
             .engineVersion = c.VK_MAKE_VERSION(1, 0, 0),
-            .apiVersion = c.VK_API_VERSION_1_3,
+            .apiVersion = c.VK_API_VERSION_1_2,
         };
 
         std.debug.print("[Info] Vulkan Application Info:\n", .{});
@@ -463,7 +468,7 @@ pub const Instance = struct {
     }
 
     pub fn create_descriptor_pool(self : *Instance) VkAbstractionError!void {
-        const DESCRIPTOR_COUNT : u32 = 2;
+        const DESCRIPTOR_COUNT : u32 = 3;
 
         const ubo_pool_size = c.VkDescriptorPoolSize{
             .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -475,7 +480,7 @@ pub const Instance = struct {
             .descriptorCount = self.MAX_CONCURRENT_FRAMES,
         };
 
-        const pool_sizes : [DESCRIPTOR_COUNT]c.VkDescriptorPoolSize = .{ubo_pool_size, image_pool_size};
+        const pool_sizes : [DESCRIPTOR_COUNT]c.VkDescriptorPoolSize = .{ubo_pool_size, ubo_pool_size, image_pool_size};
 
         const pool_info = c.VkDescriptorPoolCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -838,7 +843,7 @@ pub const Instance = struct {
         }
     }
 
-    fn record_command_buffer(self: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32, frame_index: u32, vertex_buffers: *[]c.VkBuffer, vertex_count: u32) VkAbstractionError!void {
+    fn record_command_buffer(self: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32, frame_index: u32) VkAbstractionError!void {
         const begin_info = c.VkCommandBufferBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .flags = 0,
@@ -887,12 +892,14 @@ pub const Instance = struct {
 
         c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
         
-        const offsets: [1]c.VkDeviceSize = .{0};
-        c.vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers.*.ptr, &offsets);
+        // TODO make a seperate section for chunks so we can use IndirectDraw
+        for (0..self.vertex_buffers.items.len) |i| {
+            c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &self.vertex_buffers.items[i], &self.vertex_offsets.items[i]);
 
-        c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
+            c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 
-        c.vkCmdDraw(command_buffer, vertex_count, 1, 0, 0);
+            c.vkCmdDraw(command_buffer, self.vertex_counts.items[i], 1, 0, 0);
+        }
 
         c.vkCmdEndRenderPass(command_buffer);
     }
@@ -922,7 +929,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn draw_frame(self: *Instance, frame_index: u32, vertex_buffers: *[]c.VkBuffer, vertex_count: u32) VkAbstractionError!void {
+    pub fn draw_frame(self: *Instance, frame_index: u32) VkAbstractionError!void {
         const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fences[frame_index], c.VK_TRUE, std.math.maxInt(u64));
 
         if (fence_wait != c.VK_SUCCESS) {
@@ -951,7 +958,7 @@ pub const Instance = struct {
             return VkAbstractionError.OutOfMemory;
         }
 
-        try record_command_buffer(self, self.command_buffers[frame_index], image_index, frame_index, vertex_buffers, vertex_count);
+        try record_command_buffer(self, self.command_buffers[frame_index], image_index, frame_index);
 
         const end_recording_success = c.vkEndCommandBuffer(self.command_buffers[frame_index]);
         if (end_recording_success != c.VK_SUCCESS) {
@@ -1110,7 +1117,7 @@ pub const Instance = struct {
         c.vmaDestroyImage(self.vma_allocator, self.depth_image, self.depth_image_alloc);
     }
 
-    pub fn copy_data_via_staging_buffer(self: *Instance, final_buffer: *c.VkBuffer, size: u32, data: *anyopaque) VkAbstractionError!void
+    fn copy_data_via_staging_buffer(self: *Instance, final_buffer: *c.VkBuffer, size: u32, data: *anyopaque) VkAbstractionError!void
     {
         var staging_buffer : c.VkBuffer = undefined;
 
@@ -1207,11 +1214,49 @@ pub const Instance = struct {
         c.vmaDestroyBuffer(self.vma_allocator, staging_buffer, staging_alloc);
     }
 
+    pub fn create_vertex_buffer(self: *Instance, size: u32, ptr: *anyopaque) VkAbstractionError!void
+    {
+        var vertex_buffer : c.VkBuffer = undefined;
+        var alloc: c.VmaAllocation = undefined;
+    
+        var buffer_create_info = c.VkBufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = size,
+            .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        }; 
+    
+        const alloc_create_info = c.VmaAllocationCreateInfo{
+            .usage = c.VMA_MEMORY_USAGE_AUTO,
+            .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+        };
+    
+        const buffer_success = c.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &vertex_buffer, &alloc, null);
+        
+        if (buffer_success != c.VK_SUCCESS)
+        {
+            std.debug.print("success: {}\n", .{buffer_success});
+            return VkAbstractionError.VertexBufferCreationFailure;
+        }
+
+        try self.copy_data_via_staging_buffer(&vertex_buffer, size, @as(*anyopaque, ptr));
+
+        try self.vertex_buffers.append(vertex_buffer);
+        try self.vertex_allocs.append(alloc);
+        const vertex_count = size / @sizeOf(Vertex);
+        try self.vertex_counts.append(vertex_count);
+        try self.vertex_offsets.append(0);
+    }
+
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called
     pub fn cleanup(self: *Instance) void {
-        for (0..self.vertex_buffers.len) |i| {
-            c.vmaDestroyBuffer(self.vma_allocator, self.vertex_buffers[i], self.vertex_allocs[i]);
+        for (0..self.ubo_buffers.items.len) |i|
+        {
+            c.vmaDestroyBuffer(self.vma_allocator, self.ubo_buffers.items[i], self.ubo_allocs.items[i]);
+        }
+
+        for (0..self.vertex_buffers.items.len) |i| {
+            c.vmaDestroyBuffer(self.vma_allocator, self.vertex_buffers.items[i], self.vertex_allocs.items[i]);
         }
 
         for (0..self.MAX_CONCURRENT_FRAMES) |i| {

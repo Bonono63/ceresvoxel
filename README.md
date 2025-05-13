@@ -11,12 +11,27 @@ AMD's vma is used for device memory allocation,
 
 TODO:
 
-    Use a staging buffer for vertex data
+    HIGH PRIORITY:
+    block selection outline
+    block placing/deletion
+    Support multiple vertex buffers
+    chunking
+    basic planet structure
+    basic inv ui
+    
+    basic rigid body physics for player + chunks
+    gravity system for nearest gravitational body
+    basic solar system implementation
+
+    LOW PRIORITY:
+    Free cam mode toggle (c key)
     Fix resizing error reported by validation layer
     Fix Nvidia proprietary driver leak during render runtime
     Move Renderer to a seperate thread and have gameplay run seperately from logic
-    add staging buffer abstraction so we can do the transfer commands all in one command buffer.
-    Abstract image creation
+
+    Bindless textures/buffers
+    dynamic rendering instead of renderpasses etc.
+    shader objects
 
 ## Compilation
 
