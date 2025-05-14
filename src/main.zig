@@ -242,79 +242,76 @@ pub fn main() !void {
     try vulkan.create_samplers(&instance, &image_info0, c.VK_FILTER_LINEAR, c.VK_SAMPLER_ADDRESS_MODE_REPEAT);
 
     // Descriptor Sets
-
-    const layouts : [2]c.VkDescriptorSetLayout = .{instance.descriptor_set_layout, instance.descriptor_set_layout};
-
     const descriptor_alloc_info = c.VkDescriptorSetAllocateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = instance.descriptor_pool,
-        .descriptorSetCount = MAX_CONCURRENT_FRAMES,
-        .pSetLayouts = &layouts,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &instance.descriptor_set_layout,
     };
 
     if (c.vkAllocateDescriptorSets(instance.device, &descriptor_alloc_info, instance.descriptor_sets.ptr) != c.VK_SUCCESS) {
         std.debug.print("Unable to allocate Descriptor Sets\n", .{});
     }
     
-    for (0..MAX_CONCURRENT_FRAMES) |i| {
-        const buffer_info = c.VkDescriptorBufferInfo{
-            .buffer = instance.ubo_buffers.items[i],
-            .offset = 0,
-            .range = @sizeOf(ObjectTransform),
-        };
-        
-        const selector_buffer_info = c.VkDescriptorBufferInfo{
-            .buffer = instance.ubo_buffers.items[i+MAX_CONCURRENT_FRAMES],
-            .offset = 0,
-            .range = @sizeOf(ObjectTransform),
-        };
+    //for (0..MAX_CONCURRENT_FRAMES) |i| {
+    //    const buffer_info = c.VkDescriptorBufferInfo{
+    //        .buffer = instance.ubo_buffers.items[i],
+    //        .offset = 0,
+    //        .range = @sizeOf(ObjectTransform),
+    //    };
+    //    
+    //    const storage_buffer_info = c.VkDescriptorBufferInfo{
+    //        .buffer = undefined,//instance.ubo_buffers.items[i+MAX_CONCURRENT_FRAMES],
+    //        .offset = 0,
+    //        .range = @sizeOf(ObjectTransform),
+    //    };
 
-        const image_info = c.VkDescriptorImageInfo{
-            .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .imageView = image_info0.views[i],
-            .sampler = image_info0.samplers[i],
-        };
+    //    const image_info = c.VkDescriptorImageInfo{
+    //        .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    //        .imageView = image_info0.views[i],
+    //        .sampler = image_info0.samplers[i],
+    //    };
 
-        const ubo_descriptor_write = c.VkWriteDescriptorSet{
-            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = instance.descriptor_sets[i],
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .pBufferInfo = &buffer_info,
-            .pImageInfo = null,
-            .pTexelBufferView = null,
-        };
-        
-        const selector_descriptor_write = c.VkWriteDescriptorSet{
-            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = instance.descriptor_sets[i],
-            .dstBinding = 1,
-            .dstArrayElement = 0,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .pBufferInfo = &selector_buffer_info,
-            .pImageInfo = null,
-            .pTexelBufferView = null,
-        };
-        
-        const image_descriptor_write = c.VkWriteDescriptorSet{
-            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = instance.descriptor_sets[i],
-            .dstBinding = 2,
-            .dstArrayElement = 0,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = 1,
-            .pBufferInfo = null,
-            .pImageInfo = &image_info,
-            .pTexelBufferView = null,
-        };
+    //    const ubo_descriptor_write = c.VkWriteDescriptorSet{
+    //        .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+    //        .dstSet = instance.descriptor_sets[i],
+    //        .dstBinding = 0,
+    //        .dstArrayElement = 0,
+    //        .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    //        .descriptorCount = 1,
+    //        .pBufferInfo = &buffer_info,
+    //        .pImageInfo = null,
+    //        .pTexelBufferView = null,
+    //    };
+    //    
+    //    const storage_descriptor_write = c.VkWriteDescriptorSet{
+    //        .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+    //        .dstSet = instance.descriptor_sets[i],
+    //        .dstBinding = 1,
+    //        .dstArrayElement = 0,
+    //        .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+    //        .descriptorCount = 1,
+    //        .pBufferInfo = &storage_buffer_info,
+    //        .pImageInfo = null,
+    //        .pTexelBufferView = null,
+    //    };
+    //    
+    //    const image_descriptor_write = c.VkWriteDescriptorSet{
+    //        .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+    //        .dstSet = instance.descriptor_sets[i],
+    //        .dstBinding = 2,
+    //        .dstArrayElement = 0,
+    //        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+    //        .descriptorCount = 1,
+    //        .pBufferInfo = null,
+    //        .pImageInfo = &image_info,
+    //        .pTexelBufferView = null,
+    //    };
 
-        const descriptor_writes: [3]c.VkWriteDescriptorSet = .{ubo_descriptor_write, selector_descriptor_write, image_descriptor_write};
+    //    const descriptor_writes: [3]c.VkWriteDescriptorSet = .{ubo_descriptor_write, storage_descriptor_write, image_descriptor_write};
 
-        c.vkUpdateDescriptorSets(instance.device, descriptor_writes.len, &descriptor_writes, 0, null);
-    }
+    //    c.vkUpdateDescriptorSets(instance.device, descriptor_writes.len, &descriptor_writes, 0, null);
+    //}
 
     // FRAME LOOP
 

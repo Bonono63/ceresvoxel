@@ -468,25 +468,31 @@ pub const Instance = struct {
     }
 
     pub fn create_descriptor_pool(self : *Instance) VkAbstractionError!void {
-        const DESCRIPTOR_COUNT : u32 = 3;
-
+        const limits: c.VkPhysicalDeviceLimits = self.physical_device_properties.limits;
         const ubo_pool_size = c.VkDescriptorPoolSize{
             .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = self.MAX_CONCURRENT_FRAMES,
+            .descriptorCount = limits.maxDescriptorSetUniformBuffers,
+        };
+        
+        const storage_pool_size = c.VkDescriptorPoolSize{
+            .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = limits.maxDescriptorSetStorageBuffers,
         };
         
         const image_pool_size = c.VkDescriptorPoolSize{
             .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = self.MAX_CONCURRENT_FRAMES,
+            // TODO Make sure this is the correct limit for combined image samplers
+            .descriptorCount = limits.maxDescriptorSetSamplers,
         };
 
-        const pool_sizes : [DESCRIPTOR_COUNT]c.VkDescriptorPoolSize = .{ubo_pool_size, ubo_pool_size, image_pool_size};
+        const pool_sizes : [3]c.VkDescriptorPoolSize = .{ubo_pool_size, storage_pool_size, image_pool_size};
 
         const pool_info = c.VkDescriptorPoolCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
             .poolSizeCount = pool_sizes.len,
             .pPoolSizes = &pool_sizes,
-            .maxSets = self.MAX_CONCURRENT_FRAMES,
+            .maxSets = 1,
+            .flags = c.VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
         };
         
         const success = c.vkCreateDescriptorPool(self.device, &pool_info, null, &self.descriptor_pool);
@@ -499,31 +505,39 @@ pub const Instance = struct {
 
     pub fn create_descriptor_set_layouts(self : *Instance) VkAbstractionError!void
     {
-        const DESCRIPTOR_COUNT : u32 = 2;
+        const DESCRIPTOR_COUNT : u32 = 3;
 
         // A description of the bindings and their contents
         // Essentially we need one of these per uniform buffer
         const ubo_layout_binding = c.VkDescriptorSetLayoutBinding{
             .binding = 0,
-            .descriptorCount = 1,
+            .descriptorCount = self.physical_device_properties.limits.maxDescriptorSetUniformBuffers,
             .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
+            .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_VERTEX_BIT,
             .pImmutableSamplers = null,
         };
 
-        const image_layout_binding = c.VkDescriptorSetLayoutBinding{
+        const storage_layout_binding = c.VkDescriptorSetLayoutBinding{
             .binding = 1,
-            .descriptorCount = 1,
+            .descriptorCount = self.physical_device_properties.limits.maxDescriptorSetStorageBuffers,
+            .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_VERTEX_BIT,
+            .pImmutableSamplers = null,
+        };
+        
+        const image_layout_binding = c.VkDescriptorSetLayoutBinding{
+            .binding = 2,
+            .descriptorCount = self.physical_device_properties.limits.maxDescriptorSetSamplers,
             .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+            .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_FRAGMENT_BIT,
             .pImmutableSamplers = null,
         };
 
-        const layout_bindings: [DESCRIPTOR_COUNT]c.VkDescriptorSetLayoutBinding = .{ubo_layout_binding, image_layout_binding};
+        const layout_bindings: [DESCRIPTOR_COUNT]c.VkDescriptorSetLayoutBinding = .{ubo_layout_binding, storage_layout_binding, image_layout_binding};
 
         const layout_info = c.VkDescriptorSetLayoutCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = DESCRIPTOR_COUNT,
+            .bindingCount = @intCast(layout_bindings.len),
             .pBindings = &layout_bindings,
         };
 
