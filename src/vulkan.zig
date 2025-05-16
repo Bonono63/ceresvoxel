@@ -161,6 +161,9 @@ pub const Instance = struct {
     depth_image_alloc: c.VmaAllocation = undefined,
     depth_image_view: c.VkImageView = undefined,
 
+    push_constant_data: *anyopaque = undefined,
+    push_constant_size: u32 = 0,
+
     // TODO move the GLFW code out and make this a vulkan only function
     /// Creates our Vulkan instance and GLFW window
     pub fn window_setup(self: *Instance, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
@@ -661,12 +664,18 @@ pub const Instance = struct {
             .pAttachments = &color_blending_attachment_create_info,
         };
 
+        const push_constants = c.VkPushConstantRange{
+            .stageFlags = c.VK_SHADER_STAGE_ALL,
+            .offset = 0,
+            .size = @sizeOf(zm.Mat),
+        };
+
         const pipeline_layout_create_info = c.VkPipelineLayoutCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount = 1,
             .pSetLayouts = &self.descriptor_set_layout,
-            .pushConstantRangeCount = 0,
-            .pPushConstantRanges = null,
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges = &push_constants,
         };
 
         const pipeline_layout_success = c.vkCreatePipelineLayout(self.device, &pipeline_layout_create_info, null, &self.pipeline_layout);
@@ -897,6 +906,8 @@ pub const Instance = struct {
 
         c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
         
+        c.vkCmdPushConstants(command_buffer, self.pipeline_layout, c.VK_SHADER_STAGE_ALL, 0, self.push_constant_size, self.push_constant_data);
+
         // TODO make a seperate section for chunks so we can use IndirectDraw
         for (0..self.vertex_buffers.items.len) |i| {
             c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &self.vertex_buffers.items[i], &self.vertex_offsets.items[i]);

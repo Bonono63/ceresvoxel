@@ -337,9 +337,13 @@ pub fn main() !void {
         const right = zm.cross3(look, up);
         const forward = zm.cross3(right, up);
 
-        object_transform.view = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 1.0}, look, up);
-        object_transform.projection = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
-        
+        const view: zm.Mat = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 1.0}, look, up);
+        const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
+        object_transform.view = zm.mul(object_transform.view, object_transform.projection);
+
+        const view_proj: zm.Mat = zm.mul(view, projection);
+        instance.push_constant_data = @as(*anyopaque, @ptrCast(@constCast(&view_proj)));
+        instance.push_constant_size = @sizeOf(zm.Mat);
         var speed : f32 = 1.0;
         if (inputs.control)
         {
@@ -372,14 +376,13 @@ pub fn main() !void {
             player_state.pos += .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
         }
 
-        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {} {d:.3}ms \r", .{
+        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {d:.3}ms \r", .{
             if (inputs.mouse_capture) "on " else "off",
             player_state.pos[0], 
             player_state.pos[1],
             player_state.pos[2],
             player_state.yaw,
             player_state.pitch,
-            look,
             frame_delta * 1000.0,
         });
 
