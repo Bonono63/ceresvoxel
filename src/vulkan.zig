@@ -468,21 +468,19 @@ pub const Instance = struct {
     }
 
     pub fn create_descriptor_pool(self : *Instance) VkAbstractionError!void {
-        const limits: c.VkPhysicalDeviceLimits = self.physical_device_properties.limits;
         const ubo_pool_size = c.VkDescriptorPoolSize{
             .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = limits.maxDescriptorSetUniformBuffers,
+            .descriptorCount = 10,
         };
         
         const storage_pool_size = c.VkDescriptorPoolSize{
             .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = limits.maxDescriptorSetStorageBuffers,
+            .descriptorCount = 10,
         };
         
         const image_pool_size = c.VkDescriptorPoolSize{
             .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            // TODO Make sure this is the correct limit for combined image samplers
-            .descriptorCount = limits.maxDescriptorSetSamplers,
+            .descriptorCount = 10,
         };
 
         const pool_sizes : [3]c.VkDescriptorPoolSize = .{ubo_pool_size, storage_pool_size, image_pool_size};
@@ -491,7 +489,7 @@ pub const Instance = struct {
             .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
             .poolSizeCount = pool_sizes.len,
             .pPoolSizes = &pool_sizes,
-            .maxSets = 1,
+            .maxSets = self.MAX_CONCURRENT_FRAMES,
             .flags = c.VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
         };
         
@@ -505,35 +503,27 @@ pub const Instance = struct {
 
     pub fn create_descriptor_set_layouts(self : *Instance) VkAbstractionError!void
     {
-        const DESCRIPTOR_COUNT : u32 = 3;
+        const DESCRIPTOR_COUNT : u32 = 2;
 
         // A description of the bindings and their contents
         // Essentially we need one of these per uniform buffer
         const ubo_layout_binding = c.VkDescriptorSetLayoutBinding{
             .binding = 0,
-            .descriptorCount = self.physical_device_properties.limits.maxDescriptorSetUniformBuffers,
+            .descriptorCount = 1,
             .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_VERTEX_BIT,
             .pImmutableSamplers = null,
         };
 
-        const storage_layout_binding = c.VkDescriptorSetLayoutBinding{
-            .binding = 1,
-            .descriptorCount = self.physical_device_properties.limits.maxDescriptorSetStorageBuffers,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_VERTEX_BIT,
-            .pImmutableSamplers = null,
-        };
-        
         const image_layout_binding = c.VkDescriptorSetLayoutBinding{
-            .binding = 2,
-            .descriptorCount = self.physical_device_properties.limits.maxDescriptorSetSamplers,
+            .binding = 1,
+            .descriptorCount = 1,
             .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_FRAGMENT_BIT,
             .pImmutableSamplers = null,
         };
 
-        const layout_bindings: [DESCRIPTOR_COUNT]c.VkDescriptorSetLayoutBinding = .{ubo_layout_binding, storage_layout_binding, image_layout_binding};
+        const layout_bindings: [DESCRIPTOR_COUNT]c.VkDescriptorSetLayoutBinding = .{ubo_layout_binding, image_layout_binding};
 
         const layout_info = c.VkDescriptorSetLayoutCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -858,6 +848,8 @@ pub const Instance = struct {
     }
 
     fn record_command_buffer(self: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32, frame_index: u32) VkAbstractionError!void {
+        _ = &frame_index;
+
         const begin_info = c.VkCommandBufferBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .flags = 0,
@@ -870,7 +862,6 @@ pub const Instance = struct {
         var clear_colors: [2]c.VkClearValue = undefined;
         clear_colors[0].color.float32 = .{0.0, 0.0, 0.0, 0.0};
         clear_colors[1].depthStencil = .{ .depth = 1.0, .stencil = 0 };
-        //const clear_colors: [2]c.VkClearValue = .{undefined, undefined};
 
         const render_pass_info = c.VkRenderPassBeginInfo{
             .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
