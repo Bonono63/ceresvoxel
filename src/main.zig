@@ -12,6 +12,13 @@ var ypos: f64 = 0.0;
 var dx: f64 = 0.0;
 var dy: f64 = 0.0;
 
+// TODO There has got to be a better way than this, so much smell...
+const chunk_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/simple.vert.spv")))));
+const chunk_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/simple.frag.spv")))));
+
+const outline_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/outline.vert.spv")))));
+const outline_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/outline.frag.spv")))));
+
 const Inputs = packed struct {
     w : bool = false,
     a : bool = false,
@@ -42,15 +49,39 @@ var player_state = PlayerState{};
 
 const MAX_CONCURRENT_FRAMES = 2;
 
-const block_selection_cube: [6]vulkan.Vertex = .{
-    .{.pos = .{-0.5,-0.5,0.0}, .color = .{0.0,0.0,1.0} },
-    .{.pos = .{1.0,0.0,0.0}, .color = .{0.0,0.0,1.0} },
-    .{.pos = .{1.0,1.0,0.0}, .color = .{0.0,0.0,1.0} },
-    .{.pos = .{1.0,1.0,0.0}, .color = .{0.0,0.0,1.0} },
-    .{.pos = .{0.0,1.0,0.0}, .color = .{0.0,0.0,1.0} },
-    .{.pos = .{0.0,0.0,0.0}, .color = .{0.0,0.0,1.0} },
+const block_selection_cube: [17]vulkan.Vertex = .{
+    //front
+    .{.pos = .{0.0,0.0,0.0}, .color = .{0.0,0.0,0.0} },
+    .{.pos = .{1.0,0.0,0.0}, .color = .{0.0,0.0,0.0} },
+    .{.pos = .{1.0,1.0,0.0}, .color = .{0.0,0.0,0.0} },
+    .{.pos = .{0.0,1.0,0.0}, .color = .{0.0,0.0,0.0} },
+    //left
+    .{.pos = .{0.0,0.0,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.0,0.0,1.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.0,1.0,1.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.0,1.0,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.0,0.0,0.0}, .color = .{0.0,0.0,0.0}},
+    //right
+    .{.pos = .{1.0,0.0,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{1.0,0.0,1.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{1.0,1.0,1.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{1.0,1.0,0.0}, .color = .{0.0,0.0,0.0}},
+    //back
+    .{.pos = .{1.0,1.0,1.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.0,1.0,1.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.0,0.0,1.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{1.0,0.0,1.0}, .color = .{0.0,0.0,0.0}},
 };
+// 0 to 32768 can fit in u15, but for the sake of making our lives easier we will use a u16
+var block_selection_index: u32 = 0;
 
+fn pos_to_index(pos: @Vector(3, f32)) u16 {
+    return pos[0] + pos[1] * 32 + pos[2] * 32 * 32;
+}
+
+//fn index_to_pos(index: u16) @Vector(3,f32) {
+//    return .{index % 32, index / 32 % 32, index / 32 / 32 % 32};
+//}
 
 pub fn main() !void {
     // ZIG INIT
@@ -76,7 +107,10 @@ pub fn main() !void {
 
     instance.shader_modules = std.ArrayList(c.VkShaderModule).init(instance.allocator.*);
     defer instance.shader_modules.deinit();
-    
+
+    instance.pipelines = try instance.allocator.*.alloc(c.VkPipeline, 2);
+    defer instance.allocator.*.free(instance.pipelines);
+
     instance.vertex_buffers = std.ArrayList(c.VkBuffer).init(instance.allocator.*);
     defer instance.vertex_buffers.deinit();
     instance.vertex_allocs = std.ArrayList(c.VmaAllocation).init(instance.allocator.*);
@@ -141,7 +175,28 @@ pub fn main() !void {
 
     try instance.create_depth_resources();
 
-    try instance.create_graphics_pipeline();
+    const PUSH_CONSTANT_COUNT = 2;
+    instance.push_constant_info = try instance.allocator.*.alloc(c.VkPushConstantRange, PUSH_CONSTANT_COUNT);
+    instance.push_constant_data = try instance.allocator.*.alloc(*anyopaque, PUSH_CONSTANT_COUNT);
+
+    instance.push_constant_info[0] = c.VkPushConstantRange{
+        .stageFlags = c.VK_SHADER_STAGE_ALL,
+        .offset = 0,
+        // must be a multiple of 4
+        .size = @sizeOf(zm.Mat),
+    };
+
+    instance.push_constant_info[1] = c.VkPushConstantRange{
+        .stageFlags = c.VK_SHADER_STAGE_ALL,
+        .offset = @sizeOf(zm.Mat),
+        // must be a multiple of 4
+        .size = @sizeOf(u32),
+    };
+    
+    try instance.create_pipeline_layout();
+    try instance.create_render_pass();
+    instance.pipelines[0] = try instance.create_generic_pipeline(chunk_vert_source, chunk_frag_source, false);
+    instance.pipelines[1] = try instance.create_outline_pipeline(outline_vert_source, outline_frag_source);
     try instance.create_framebuffers();
     try instance.create_command_pool();
     try instance.create_command_buffers();
@@ -305,7 +360,7 @@ pub fn main() !void {
 
     var window_height : i32 = 0;
     var window_width : i32 = 0;
-   
+    
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
 
@@ -342,12 +397,13 @@ pub fn main() !void {
         object_transform.view = zm.mul(object_transform.view, object_transform.projection);
 
         const view_proj: zm.Mat = zm.mul(view, projection);
-        instance.push_constant_data = @as(*anyopaque, @ptrCast(@constCast(&view_proj)));
-        instance.push_constant_size = @sizeOf(zm.Mat);
-        var speed : f32 = 1.0;
+        instance.push_constant_data[0] = @as(*anyopaque, @ptrCast(@constCast(&view_proj)));
+        instance.push_constant_data[1] = @as(*anyopaque, @ptrCast(@constCast(&block_selection_index)));
+
+        var speed : f32 = 5;
         if (inputs.control)
         {
-            speed = 5.0;
+            speed = 10;
         }
 
         // TODO Make this the center of gravitational wells and such
