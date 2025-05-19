@@ -175,23 +175,25 @@ pub fn main() !void {
 
     try instance.create_depth_resources();
 
-    const PUSH_CONSTANT_COUNT = 2;
+    const PUSH_CONSTANT_COUNT = 1;
     instance.push_constant_info = try instance.allocator.*.alloc(c.VkPushConstantRange, PUSH_CONSTANT_COUNT);
+    defer instance.allocator.*.free(instance.push_constant_info);
     instance.push_constant_data = try instance.allocator.*.alloc(*anyopaque, PUSH_CONSTANT_COUNT);
+    defer instance.allocator.*.free(instance.push_constant_data);
 
     instance.push_constant_info[0] = c.VkPushConstantRange{
         .stageFlags = c.VK_SHADER_STAGE_ALL,
         .offset = 0,
         // must be a multiple of 4
-        .size = @sizeOf(zm.Mat),
+        .size = @sizeOf(zm.Mat) + 4,
     };
 
-    instance.push_constant_info[1] = c.VkPushConstantRange{
-        .stageFlags = c.VK_SHADER_STAGE_ALL,
-        .offset = @sizeOf(zm.Mat),
-        // must be a multiple of 4
-        .size = @sizeOf(u32),
-    };
+    //instance.push_constant_info[1] = c.VkPushConstantRange{
+    //    .stageFlags = c.VK_SHADER_STAGE_ALL,
+    //    .offset = @sizeOf(zm.Mat),
+    //    // must be a multiple of 4
+    //    .size = @sizeOf(u32),
+    //};
     
     try instance.create_pipeline_layout();
     try instance.create_render_pass();
@@ -361,6 +363,9 @@ pub fn main() !void {
     var window_height : i32 = 0;
     var window_width : i32 = 0;
     
+    var push_data: [68]u8 = undefined;
+    instance.push_constant_data[0] = @as(*anyopaque, @ptrCast(@constCast(&push_data)));
+    
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
 
@@ -397,8 +402,9 @@ pub fn main() !void {
         object_transform.view = zm.mul(object_transform.view, object_transform.projection);
 
         const view_proj: zm.Mat = zm.mul(view, projection);
-        instance.push_constant_data[0] = @as(*anyopaque, @ptrCast(@constCast(&view_proj)));
-        instance.push_constant_data[1] = @as(*anyopaque, @ptrCast(@constCast(&block_selection_index)));
+        const index: u32 = camera_block_intersection(&chunk_data, .{0.0,0.0,0.0,0.0}, look, player_state.pos);
+        @memcpy(push_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
+        @memcpy(push_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&index)))[0..4]);
 
         var speed : f32 = 5;
         if (inputs.control)
@@ -442,7 +448,7 @@ pub fn main() !void {
             frame_delta * 1000.0,
         });
 
-        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, instance.ubo_allocs.items[current_frame_index], 0, @sizeOf(ObjectTransform));
+        //_ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, instance.ubo_allocs.items[current_frame_index], 0, @sizeOf(ObjectTransform));
 
         try instance.draw_frame(current_frame_index);
 
@@ -563,4 +569,38 @@ pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_in
     _ = &height;
     const instance: *vulkan.Instance = @ptrCast(@alignCast(c.glfwGetWindowUserPointer(window)));
     instance.framebuffer_resized = true;
+}
+
+fn camera_block_intersection(chunk_data: *[32768]u8, chunk_pos: zm.Vec, look: zm.Vec, origin: @Vector(3, f32)) u32
+{
+    _ = &chunk_data;
+    _ = &look;
+    _ = &origin;
+    _ = &chunk_pos;
+
+    //TODO do a chunk bounds test
+
+    //var result: u32 = 0;
+
+    //const end: zm.Vec = origin + look;
+    //var inside_origin: zm.Vec = origin;
+//    const ratio = zm.lengthSq3(look);
+//    while (inside_origin[0] < chunk_pos[0] or inside_origin[0] > chunk_pos[0] + 32.0)
+//    {
+//        inside_origin[0] + ratio[0];
+//    }
+
+    const index: u32 = @as(u32, @intFromFloat(@abs(origin[0]))) + (@as(u32, @intFromFloat(@abs(origin[1]))) * 32 ) + (@as(u32, @intFromFloat(@abs(origin[2]))) * 32 * 32);
+    
+    //var empty = true;
+    //while (empty)
+    //{
+
+    //    if (chunk_data[index] != 0)
+    //    {
+    //        empty = false;
+    //    }
+    //}
+
+    return index;
 }

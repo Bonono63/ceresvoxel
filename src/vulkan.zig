@@ -167,7 +167,6 @@ pub const Instance = struct {
     /// Creates our Vulkan instance and GLFW window
     pub fn window_setup(self: *Instance, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
         c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
-        // c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
 
         self.window = c.glfwCreateWindow(800, 600, application_name.ptr, null, null) orelse return VkAbstractionError.NullWindow;
 
@@ -1111,13 +1110,11 @@ pub const Instance = struct {
 
     pub fn draw_frame(self: *Instance, frame_index: u32) VkAbstractionError!void {
         const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fences[frame_index], c.VK_TRUE, std.math.maxInt(u64));
-
         if (fence_wait != c.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
         }
-
+        
         var image_index: u32 = 0;
-
         const acquire_next_image_success = c.vkAcquireNextImageKHR(self.device, self.swapchain, std.math.maxInt(u64), self.image_available_semaphores[frame_index], null, &image_index);
 
         if (acquire_next_image_success == c.VK_ERROR_OUT_OF_DATE_KHR or acquire_next_image_success == c.VK_SUBOPTIMAL_KHR or self.framebuffer_resized) {
@@ -1128,7 +1125,7 @@ pub const Instance = struct {
             std.debug.print("[Error] Unable to acquire next swapchain image: {} \n", .{acquire_next_image_success});
             return VkAbstractionError.AcquireNextSwapchainImageFailed;
         }
-
+        
         const reset_fence_success = c.vkResetFences(self.device, 1, &self.in_flight_fences[frame_index]);
         if (reset_fence_success != c.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
@@ -1147,6 +1144,7 @@ pub const Instance = struct {
 
         const wait_stages = [_]c.VkPipelineStageFlags{
             c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            //c.VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
         };
 
         const submit_info = c.VkSubmitInfo{
@@ -1175,8 +1173,13 @@ pub const Instance = struct {
         };
 
         const present_success = c.vkQueuePresentKHR(self.present_queue, &present_info);
-        if (present_success != c.VK_SUCCESS and present_success != c.VK_SUBOPTIMAL_KHR and present_success != c.VK_ERROR_OUT_OF_DATE_KHR) {
-            std.debug.print("presentation failure: {}                    \n", .{present_success});
+        if (present_success == c.VK_SUBOPTIMAL_KHR or present_success == c.VK_ERROR_OUT_OF_DATE_KHR or self.framebuffer_resized)
+        {
+            try recreate_swapchain(self);
+            self.framebuffer_resized = false;
+            return;
+        } else if (present_success != c.VK_SUCCESS) {
+            std.debug.print("[Error] Presentation failure: {} \n", .{present_success});
             return VkAbstractionError.PresentationFailure;
         }
     }
