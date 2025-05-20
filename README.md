@@ -12,7 +12,7 @@ AMD's vma is used for device memory allocation,
 TODO:
 
     HIGH PRIORITY:
-    block selection outline
+    block selection outline intersection testing properly
     block placing/deletion
     Support multiple vertex buffers
     chunking
@@ -25,9 +25,10 @@ TODO:
 
     LOW PRIORITY:
     Free cam mode toggle (c key)
-    Fix resizing error reported by validation layer
     Fix Nvidia proprietary driver leak during render runtime
     Move Renderer to a seperate thread and have gameplay run seperately from logic
+
+    Fix frame synchronization to not have the validation layer scream at us
 
     Bindless textures/buffers
     dynamic rendering instead of renderpasses etc.

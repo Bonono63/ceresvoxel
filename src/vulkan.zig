@@ -995,6 +995,13 @@ pub const Instance = struct {
         c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &self.vertex_buffers.items[1], &self.vertex_offsets.items[1]);
         
         c.vkCmdDraw(command_buffer, self.vertex_counts.items[1], 1, 0, 0);
+        
+        // Cursor
+        c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipelines[2]);
+        
+        c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &self.vertex_buffers.items[2], &self.vertex_offsets.items[2]);
+        
+        c.vkCmdDraw(command_buffer, self.vertex_counts.items[2], 1, 0, 0);
 
         c.vkCmdEndRenderPass(command_buffer);
     }

@@ -19,6 +19,9 @@ const chunk_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@emb
 const outline_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/outline.vert.spv")))));
 const outline_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/outline.frag.spv")))));
 
+const cursor_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/cursor.vert.spv")))));
+const cursor_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/cursor.frag.spv")))));
+
 const Inputs = packed struct {
     w : bool = false,
     a : bool = false,
@@ -37,7 +40,7 @@ const PlayerState = struct {
     yaw: f32 = std.math.pi/2.0,
     pitch: f32 = 0.0,
     rot: zm.Quat = zm.qidentity(),
-    up: zm.Vec = .{ 0.0, 1.0, 0.0, 1.0},
+    up: zm.Vec = .{ 0.0, -1.0, 0.0, 1.0},
     look: zm.Vec = .{ 0.0, 0.0, 1.0, 1.0 },
 };
 
@@ -71,6 +74,15 @@ const block_selection_cube: [17]vulkan.Vertex = .{
     .{.pos = .{0.0,1.0,1.0}, .color = .{0.0,0.0,0.0}},
     .{.pos = .{0.0,0.0,1.0}, .color = .{0.0,0.0,0.0}},
     .{.pos = .{1.0,0.0,1.0}, .color = .{0.0,0.0,0.0}},
+};
+
+const cursor_vertices: [6]vulkan.Vertex = .{
+    .{.pos = .{-0.0625,-0.0625,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.0625,0.0625,0.0}, .color = .{1.0,1.0,0.0}},
+    .{.pos = .{-0.0625,0.0625,0.0}, .color = .{0.0,1.0,0.0}},
+    .{.pos = .{-0.0625,-0.0625,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.0625,-0.0625,0.0}, .color = .{1.0,0.0,0.0}},
+    .{.pos = .{0.0625,0.0625,0.0}, .color = .{1.0,1.0,0.0}},
 };
 // 0 to 32768 can fit in u15, but for the sake of making our lives easier we will use a u16
 var block_selection_index: u32 = 0;
@@ -108,7 +120,7 @@ pub fn main() !void {
     instance.shader_modules = std.ArrayList(c.VkShaderModule).init(instance.allocator.*);
     defer instance.shader_modules.deinit();
 
-    instance.pipelines = try instance.allocator.*.alloc(c.VkPipeline, 2);
+    instance.pipelines = try instance.allocator.*.alloc(c.VkPipeline, 3);
     defer instance.allocator.*.free(instance.pipelines);
 
     instance.vertex_buffers = std.ArrayList(c.VkBuffer).init(instance.allocator.*);
@@ -181,11 +193,13 @@ pub fn main() !void {
     instance.push_constant_data = try instance.allocator.*.alloc(*anyopaque, PUSH_CONSTANT_COUNT);
     defer instance.allocator.*.free(instance.push_constant_data);
 
+    const PUSH_CONSTANT_SIZE: u32 = @sizeOf(zm.Mat) + 4 + 4;
+    // Push constant layout is 64 bytes: view_proj | 4 bytes: block_selection_index | 4 bytes: aspect ratio
     instance.push_constant_info[0] = c.VkPushConstantRange{
         .stageFlags = c.VK_SHADER_STAGE_ALL,
         .offset = 0,
         // must be a multiple of 4
-        .size = @sizeOf(zm.Mat) + 4,
+        .size = PUSH_CONSTANT_SIZE,
     };
 
     //instance.push_constant_info[1] = c.VkPushConstantRange{
@@ -199,6 +213,7 @@ pub fn main() !void {
     try instance.create_render_pass();
     instance.pipelines[0] = try instance.create_generic_pipeline(chunk_vert_source, chunk_frag_source, false);
     instance.pipelines[1] = try instance.create_outline_pipeline(outline_vert_source, outline_frag_source);
+    instance.pipelines[2] = try instance.create_generic_pipeline(cursor_vert_source, cursor_frag_source, false);
     try instance.create_framebuffers();
     try instance.create_command_pool();
     try instance.create_command_buffers();
@@ -230,6 +245,7 @@ pub fn main() !void {
     
     try instance.create_vertex_buffer(@intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
     try instance.create_vertex_buffer(@intCast(block_selection_cube.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
+    try instance.create_vertex_buffer(@intCast(cursor_vertices.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
 
     // RENDER INIT
 
@@ -363,7 +379,7 @@ pub fn main() !void {
     var window_height : i32 = 0;
     var window_width : i32 = 0;
     
-    var push_data: [68]u8 = undefined;
+    var push_data: [PUSH_CONSTANT_SIZE]u8 = undefined;
     instance.push_constant_data[0] = @as(*anyopaque, @ptrCast(@constCast(&push_data)));
     
     while (c.glfwWindowShouldClose(instance.window) == 0) {
@@ -388,12 +404,12 @@ pub fn main() !void {
         player_state.look[0] = @as(f32, @floatCast(std.math.cos(player_state.yaw) * std.math.cos(player_state.pitch)));
         player_state.look[1] = @as(f32, @floatCast(std.math.sin(player_state.pitch)));
         player_state.look[2] = @as(f32, @floatCast(std.math.sin(player_state.yaw) * std.math.cos(player_state.pitch)));
-        player_state.look = zm.normalize3(player_state.look);
-        const look = player_state.look;
+        std.debug.print("{} \n", .{player_state.look});
+        const look = zm.normalize3(player_state.look);
         //const test_gravity: @Vector(3, f32) = .{0.0,3.0,0.0};
         //const gravity_dir_vec = player_state.pos - test_gravity;
         //const up : zm.Vec = zm.normalize3(.{-gravity_dir_vec[0],-gravity_dir_vec[1],-gravity_dir_vec[2], 1.0});
-        const up : zm.Vec = .{0.0,1.0,0.0,1.0};
+        const up : zm.Vec = .{0.0,-1.0,0.0,1.0};
         const right = zm.cross3(look, up);
         const forward = zm.cross3(right, up);
 
@@ -402,9 +418,11 @@ pub fn main() !void {
         object_transform.view = zm.mul(object_transform.view, object_transform.projection);
 
         const view_proj: zm.Mat = zm.mul(view, projection);
-        const index: u32 = camera_block_intersection(&chunk_data, .{0.0,0.0,0.0,0.0}, look, player_state.pos);
+        
+        const index: u32 = camera_block_intersection(&chunk_data, .{0.0,0.0,0.0,0.0}, player_state.look, player_state.pos);
         @memcpy(push_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
         @memcpy(push_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&index)))[0..4]);
+        @memcpy(push_data[(@sizeOf(zm.Mat) + 4)..(@sizeOf(zm.Mat) + 4 + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
 
         var speed : f32 = 5;
         if (inputs.control)
@@ -556,8 +574,8 @@ pub fn cursor_pos_callback(window: ?*c.GLFWwindow, _xpos: f64, _ypos: f64) callc
 
     if (inputs.mouse_capture)
     {
-        player_state.yaw -= @as(f32, @floatCast(dx * std.math.pi / 180.0 * MOUSE_SENSITIVITY));
-        player_state.pitch += @as(f32, @floatCast(dy * std.math.pi / 180.0 * MOUSE_SENSITIVITY));
+        player_state.yaw += @as(f32, @floatCast(dx * std.math.pi / 180.0 * MOUSE_SENSITIVITY));
+        player_state.pitch -= @as(f32, @floatCast(dy * std.math.pi / 180.0 * MOUSE_SENSITIVITY));
     }
 
     //player_state.yaw = zm.clamp(player_state.yaw, -std.math.pi, std.math.pi);
@@ -578,10 +596,41 @@ fn camera_block_intersection(chunk_data: *[32768]u8, chunk_pos: zm.Vec, look: zm
     _ = &origin;
     _ = &chunk_pos;
 
+    var result: u32 = 0;
+
+    const max_steps: u32 = 10;
+    var steps: u32 = 0;
     //TODO do a chunk bounds test
 
-    //var result: u32 = 0;
+    const ratio = look;
+    std.debug.print("l: {} nl:{} r: {}\n", .{look, zm.normalize3(look), ratio});
 
+    const origin_adjustment: @Vector(4,f32) = .{origin[0], origin[1], origin[2], 1.0};
+    var current_ray: zm.Vec = zm.normalize3(origin_adjustment) + look;
+    // TODO eventually shift to OBB instead of AABB test, but rotations aren't implemented so we can ignore that for now
+    var current_length: @Vector(4, f32) = zm.length3(current_ray);
+    std.debug.print("{d:.2} {d:.2} {d:.2}  {d:.2} {d:.2} {d:.2} {d:.2} {d:.2} {d:.2}\n", .{current_length[0], current_length[1], current_length[2], origin[0], origin[1], origin[2], current_ray[0], current_ray[1], current_ray[2]});
+    while (((current_ray[0] < chunk_pos[0] or current_ray[0] > chunk_pos[0] + 31.0) or (current_ray[2] < chunk_pos[2] or current_ray[2] > chunk_pos[2] + 31.0)) and !(steps == max_steps))
+    {
+        std.debug.print("current ray not within chunk bounds {} {} {}\n", .{current_ray, ratio, current_length});
+        // X test
+        if (current_length[0] < current_length[1] and current_length[0] < current_length[2]) {
+            current_ray[0] += ratio[0];
+        }
+        //// Y test
+        //if (current_length[1] < current_length[0] and current_length[1] < current_length[2]) {
+        //    current_ray[1] += ratio[1];
+        //}
+        //// Z test
+        if (current_length[2] < current_length[0] and current_length[2] < current_length[1]) {
+            current_ray[2] += ratio[2];
+        }
+        current_length = zm.length3(current_ray);
+        steps += 1;
+    }
+
+    std.debug.print("result: {}\n", .{current_ray});
+    result = @as(u32, @intFromFloat(@abs(current_ray[0]))) + (@as(u32, @intFromFloat(@abs(current_ray[1]))) * 32 ) + (@as(u32, @intFromFloat(@abs(current_ray[2]))) * 32 * 32);
     //const end: zm.Vec = origin + look;
     //var inside_origin: zm.Vec = origin;
 //    const ratio = zm.lengthSq3(look);
@@ -590,8 +639,6 @@ fn camera_block_intersection(chunk_data: *[32768]u8, chunk_pos: zm.Vec, look: zm
 //        inside_origin[0] + ratio[0];
 //    }
 
-    const index: u32 = @as(u32, @intFromFloat(@abs(origin[0]))) + (@as(u32, @intFromFloat(@abs(origin[1]))) * 32 ) + (@as(u32, @intFromFloat(@abs(origin[2]))) * 32 * 32);
-    
     //var empty = true;
     //while (empty)
     //{
@@ -602,5 +649,5 @@ fn camera_block_intersection(chunk_data: *[32768]u8, chunk_pos: zm.Vec, look: zm
     //    }
     //}
 
-    return index;
+    return result;
 }
