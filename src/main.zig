@@ -404,7 +404,6 @@ pub fn main() !void {
         player_state.look[0] = @as(f32, @floatCast(std.math.cos(player_state.yaw) * std.math.cos(player_state.pitch)));
         player_state.look[1] = @as(f32, @floatCast(std.math.sin(player_state.pitch)));
         player_state.look[2] = @as(f32, @floatCast(std.math.sin(player_state.yaw) * std.math.cos(player_state.pitch)));
-        std.debug.print("{} \n", .{player_state.look});
         const look = zm.normalize3(player_state.look);
         //const test_gravity: @Vector(3, f32) = .{0.0,3.0,0.0};
         //const gravity_dir_vec = player_state.pos - test_gravity;
@@ -589,65 +588,43 @@ pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_in
     instance.framebuffer_resized = true;
 }
 
+/// VERY INNACCURATE :(, switch to DDA
 fn camera_block_intersection(chunk_data: *[32768]u8, chunk_pos: zm.Vec, look: zm.Vec, origin: @Vector(3, f32)) u32
 {
-    _ = &chunk_data;
-    _ = &look;
-    _ = &origin;
     _ = &chunk_pos;
 
-    var result: u32 = 0;
-
-    const max_steps: u32 = 10;
+    const max_steps: u32 = 100;
     var steps: u32 = 0;
-    //TODO do a chunk bounds test
 
-    const ratio = look;
-    std.debug.print("l: {} nl:{} r: {}\n", .{look, zm.normalize3(look), ratio});
-
-    const origin_adjustment: @Vector(4,f32) = .{origin[0], origin[1], origin[2], 1.0};
-    var current_ray: zm.Vec = zm.normalize3(origin_adjustment) + look;
+    var current_ray: zm.Vec = .{origin[0], origin[1], origin[2], 1.0};
     // TODO eventually shift to OBB instead of AABB test, but rotations aren't implemented so we can ignore that for now
-    var current_length: @Vector(4, f32) = zm.length3(current_ray);
-    std.debug.print("{d:.2} {d:.2} {d:.2}  {d:.2} {d:.2} {d:.2} {d:.2} {d:.2} {d:.2}\n", .{current_length[0], current_length[1], current_length[2], origin[0], origin[1], origin[2], current_ray[0], current_ray[1], current_ray[2]});
-    while (((current_ray[0] < chunk_pos[0] or current_ray[0] > chunk_pos[0] + 31.0) or (current_ray[2] < chunk_pos[2] or current_ray[2] > chunk_pos[2] + 31.0)) and !(steps == max_steps))
+    //std.debug.print("{d:.2} {d:.2} {d:.2} {d:.2} {d:.2} {d:.2} {d:.2}\n", .{look[0], look[1], look[2], current_ray[0], current_ray[1], current_ray[2], chunk_pos[0]});
+    var current_pos: @Vector(3, i32) = .{@as(i32, @intFromFloat(origin[0])), @as(i32, @intFromFloat(origin[1])),  @as(i32, @intFromFloat(origin[2]))};
+    var success: bool = false;
+    while (steps < max_steps and !success)
     {
-        std.debug.print("current ray not within chunk bounds {} {} {}\n", .{current_ray, ratio, current_length});
-        // X test
-        if (current_length[0] < current_length[1] and current_length[0] < current_length[2]) {
-            current_ray[0] += ratio[0];
+        current_ray[0] += look[0] * 0.25;
+        current_ray[1] += look[1] * 0.25;
+        current_ray[2] += look[2] * 0.25;
+        
+        current_pos[0] = @as(i32, @intFromFloat(current_ray[0]));
+        current_pos[1] = @as(i32, @intFromFloat(current_ray[1]));
+        current_pos[2] = @as(i32, @intFromFloat(current_ray[2]));
+        if (current_pos[0] >= 0 and current_pos[0] <= 31 and current_pos[1] >= 0 and current_pos[1] <= 31 and current_pos[2] >= 0 and current_pos[2] <= 31) {
+            const index: u32 = @abs(current_pos[0]) + @abs(current_pos[1] * 32) + @abs(current_pos[2] * 32 * 32);
+            if (chunk_data.*[index] != 0) {
+                //std.debug.print("SUCCESS ", .{});
+                success = true;
+            }
         }
-        //// Y test
-        //if (current_length[1] < current_length[0] and current_length[1] < current_length[2]) {
-        //    current_ray[1] += ratio[1];
-        //}
-        //// Z test
-        if (current_length[2] < current_length[0] and current_length[2] < current_length[1]) {
-            current_ray[2] += ratio[2];
-        }
-        current_length = zm.length3(current_ray);
         steps += 1;
     }
 
-    std.debug.print("result: {}\n", .{current_ray});
-    result = @as(u32, @intFromFloat(@abs(current_ray[0]))) + (@as(u32, @intFromFloat(@abs(current_ray[1]))) * 32 ) + (@as(u32, @intFromFloat(@abs(current_ray[2]))) * 32 * 32);
-    //const end: zm.Vec = origin + look;
-    //var inside_origin: zm.Vec = origin;
-//    const ratio = zm.lengthSq3(look);
-//    while (inside_origin[0] < chunk_pos[0] or inside_origin[0] > chunk_pos[0] + 32.0)
-//    {
-//        inside_origin[0] + ratio[0];
-//    }
-
-    //var empty = true;
-    //while (empty)
-    //{
-
-    //    if (chunk_data[index] != 0)
-    //    {
-    //        empty = false;
-    //    }
-    //}
+    var result: u32 = 32768;
+    if (success) {
+        result = @abs(current_pos[0]) + @abs(current_pos[1] * 32) + @abs(current_pos[2] * 32 * 32);
+    }
+    //std.debug.print("result: {} | {d:.2} {d:.2} {d:.2} | {} ", .{result, current_pos[0], current_pos[1], current_pos[2], steps});
 
     return result;
 }
