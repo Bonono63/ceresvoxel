@@ -30,7 +30,9 @@ const Inputs = packed struct {
     space : bool = false,
     shift : bool = false,
     control : bool = false,
-    mouse_capture : bool = true
+    mouse_capture : bool = true,
+    left_click: bool = false,
+    right_click: bool = false,
 };
 
 var inputs = Inputs{};
@@ -90,10 +92,6 @@ var block_selection_index: u32 = 0;
 fn pos_to_index(pos: @Vector(3, f32)) u16 {
     return pos[0] + pos[1] * 32 + pos[2] * 32 * 32;
 }
-
-//fn index_to_pos(index: u16) @Vector(3,f32) {
-//    return .{index % 32, index / 32 % 32, index / 32 / 32 % 32};
-//}
 
 pub fn main() !void {
     // ZIG INIT
@@ -201,13 +199,6 @@ pub fn main() !void {
         // must be a multiple of 4
         .size = PUSH_CONSTANT_SIZE,
     };
-
-    //instance.push_constant_info[1] = c.VkPushConstantRange{
-    //    .stageFlags = c.VK_SHADER_STAGE_ALL,
-    //    .offset = @sizeOf(zm.Mat),
-    //    // must be a multiple of 4
-    //    .size = @sizeOf(u32),
-    //};
     
     try instance.create_pipeline_layout();
     try instance.create_render_pass();
@@ -225,6 +216,7 @@ pub fn main() !void {
     _ = c.glfwSetCursorPosCallback(instance.window, cursor_pos_callback);
     _ = c.glfwSetWindowUserPointer(instance.window, &instance);
     _ = c.glfwSetFramebufferSizeCallback(instance.window, window_resize_callback);
+    _ = c.glfwSetMouseButtonCallback(instance.window, mouse_button_input_callback);
 
     c.glfwSetWindowSizeLimits(instance.window, 240, 135, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
 
@@ -381,7 +373,9 @@ pub fn main() !void {
     
     var push_data: [PUSH_CONSTANT_SIZE]u8 = undefined;
     instance.push_constant_data[0] = @as(*anyopaque, @ptrCast(@constCast(&push_data)));
-    
+   
+    var regen_chunk: bool = false;
+
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
 
@@ -401,6 +395,17 @@ pub fn main() !void {
             c.glfwSetInputMode(instance.window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
         }
 
+        if (regen_chunk) {
+            const _chunk_mesh_start_time : f64 = c.glfwGetTime();
+            const _vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &chunk_data);
+            defer _vertices.deinit();
+
+            try instance.create_vertex_buffer(@intCast(_vertices.items.len * @sizeOf(vulkan.Vertex)), _vertices.items.ptr);
+            std.debug.print("chunk mesh + upload time: {d:.3}ms\n", .{ (c.glfwGetTime() - _chunk_mesh_start_time) * 1000.0 });
+
+            regen_chunk = false;
+        }
+
         player_state.look[0] = @as(f32, @floatCast(std.math.cos(player_state.yaw) * std.math.cos(player_state.pitch)));
         player_state.look[1] = @as(f32, @floatCast(std.math.sin(player_state.pitch)));
         player_state.look[2] = @as(f32, @floatCast(std.math.sin(player_state.yaw) * std.math.cos(player_state.pitch)));
@@ -408,14 +413,12 @@ pub fn main() !void {
         //const test_gravity: @Vector(3, f32) = .{0.0,3.0,0.0};
         //const gravity_dir_vec = player_state.pos - test_gravity;
         //const up : zm.Vec = zm.normalize3(.{-gravity_dir_vec[0],-gravity_dir_vec[1],-gravity_dir_vec[2], 1.0});
-        const up : zm.Vec = .{0.0,-1.0,0.0,1.0};
+        const up : zm.Vec = player_state.up;
         const right = zm.cross3(look, up);
         const forward = zm.cross3(right, up);
 
-        const view: zm.Mat = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 1.0}, look, up);
+        const view: zm.Mat = zm.lookToLh(.{0.0,0.0,0.0,0.0}, look, up);
         const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
-        object_transform.view = zm.mul(object_transform.view, object_transform.projection);
-
         const view_proj: zm.Mat = zm.mul(view, projection);
         
         const index: u32 = camera_block_intersection(&chunk_data, .{0.0,0.0,0.0,0.0}, player_state.look, player_state.pos);
@@ -427,6 +430,11 @@ pub fn main() !void {
         if (inputs.control)
         {
             speed = 10;
+        }
+
+        if (inputs.left_click and index < 32768) {
+            chunk_data[index] = 0;
+            regen_chunk = true;
         }
 
         // TODO Make this the center of gravitational wells and such
@@ -454,6 +462,8 @@ pub fn main() !void {
         {
             player_state.pos += .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
         }
+       
+        object_transform.model = zm.translation(-player_state.pos[0], -player_state.pos[1], -player_state.pos[2]);
 
         std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {d:.3}ms \r", .{
             if (inputs.mouse_capture) "on " else "off",
@@ -465,13 +475,14 @@ pub fn main() !void {
             frame_delta * 1000.0,
         });
 
-        //_ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, instance.ubo_allocs.items[current_frame_index], 0, @sizeOf(ObjectTransform));
+        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, instance.ubo_allocs.items[current_frame_index], 0, @sizeOf(ObjectTransform));
 
         try instance.draw_frame(current_frame_index);
 
         current_frame_index = (current_frame_index + 1) % instance.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
     }
+    std.debug.print("\n", .{});
 
     // CLEANUP
 
@@ -483,7 +494,6 @@ pub fn main() !void {
 
 pub fn key_callback(window: ?*c.GLFWwindow, key: i32, scancode: i32, action: i32, mods: i32) callconv(.C) void {
     _ = &scancode;
-    _ = &action;
     _ = &mods;
 
     switch (key) {
@@ -581,6 +591,33 @@ pub fn cursor_pos_callback(window: ?*c.GLFWwindow, _xpos: f64, _ypos: f64) callc
     //player_state.pitch = zm.clamp(player_state.pitch, -std.math.pi, std.math.pi);
 }
 
+pub fn mouse_button_input_callback(window: ?*c.GLFWwindow, button: i32, action: i32, mods: i32) callconv(.C) void {
+    _ = &button;
+    _ = &window;
+    _ = &mods;
+    _ = &action;
+
+    switch (button) {
+        c.GLFW_MOUSE_BUTTON_LEFT => {
+            if (action == c.GLFW_PRESS) {
+                inputs.left_click = true;
+            }
+            if (action == c.GLFW_RELEASE) {
+                inputs.left_click = false;
+            }
+        },
+        c.GLFW_MOUSE_BUTTON_RIGHT => {
+            if (action == c.GLFW_PRESS) {
+                inputs.right_click = true;
+            }
+            if (action == c.GLFW_RELEASE) {
+                inputs.right_click = false;
+            }
+        },
+        else => {},
+    }
+}
+
 pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {
     _ = &width;
     _ = &height;
@@ -607,9 +644,9 @@ fn camera_block_intersection(chunk_data: *[32768]u8, chunk_pos: zm.Vec, look: zm
         current_ray[1] += look[1] * 0.25;
         current_ray[2] += look[2] * 0.25;
         
-        current_pos[0] = @as(i32, @intFromFloat(current_ray[0]));
-        current_pos[1] = @as(i32, @intFromFloat(current_ray[1]));
-        current_pos[2] = @as(i32, @intFromFloat(current_ray[2]));
+        current_pos[0] = @as(i32, @intFromFloat(@floor(current_ray[0])));
+        current_pos[1] = @as(i32, @intFromFloat(@floor(current_ray[1])));
+        current_pos[2] = @as(i32, @intFromFloat(@floor(current_ray[2])));
         if (current_pos[0] >= 0 and current_pos[0] <= 31 and current_pos[1] >= 0 and current_pos[1] <= 31 and current_pos[2] >= 0 and current_pos[2] <= 31) {
             const index: u32 = @abs(current_pos[0]) + @abs(current_pos[1] * 32) + @abs(current_pos[2] * 32 * 32);
             if (chunk_data.*[index] != 0) {

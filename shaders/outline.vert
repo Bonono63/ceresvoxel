@@ -23,6 +23,6 @@ void main()
             in_pos.y + (pc.block_selection_index / 32 % 32),
             in_pos.z + pc.block_selection_index / 32 / 32 % 32
             );
-    gl_Position = pc.view_proj * ubo.outline_pos * vec4(pos, 1.0);
+    gl_Position = pc.view_proj * ubo.outline_pos * ubo.chunk_pos * vec4(pos, 1.0);
     fragColor = in_color;
 }
