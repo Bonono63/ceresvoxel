@@ -125,10 +125,8 @@ pub fn main() !void {
     defer instance.vertex_buffers.deinit();
     instance.vertex_allocs = std.ArrayList(c.VmaAllocation).init(instance.allocator.*);
     defer instance.vertex_allocs.deinit();
-    instance.vertex_offsets = std.ArrayList(c.VkDeviceSize).init(instance.allocator.*);
-    defer instance.vertex_offsets.deinit();
-    instance.vertex_counts = std.ArrayList(u32).init(instance.allocator.*);
-    defer instance.vertex_counts.deinit();
+    instance.render_targets = std.ArrayList(vulkan.RenderInfo).init(instance.allocator.*);
+    defer instance.render_targets.deinit();
 
     instance.ubo_buffers = std.ArrayList(c.VkBuffer).init(instance.allocator.*);
     defer instance.ubo_buffers.deinit();
@@ -225,7 +223,7 @@ pub fn main() !void {
     var chunk_data : [32768]u8 = undefined;
     for (0..32768) |i|
     {
-        const val = random.int(u1);
+        const val = random.int(u2);
         chunk_data[i] = val;
     }
 
@@ -235,9 +233,15 @@ pub fn main() !void {
 
     std.debug.print("chunk mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0 });
     
-    try instance.create_vertex_buffer(@intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
-    try instance.create_vertex_buffer(@intCast(block_selection_cube.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
-    try instance.create_vertex_buffer(@intCast(cursor_vertices.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
+    // create render info
+    try instance.render_targets.append(.{ .vertex_index = 0, .pipeline_index = 1});
+    try instance.render_targets.append(.{ .vertex_index = 1, .pipeline_index = 2});
+    try instance.render_targets.append(.{ .vertex_index = 2, .pipeline_index = 0});
+    
+    // create buffers for the render infos
+    try instance.create_vertex_buffer(0, @intCast(block_selection_cube.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
+    try instance.create_vertex_buffer(1, @intCast(cursor_vertices.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
+    try instance.create_vertex_buffer(2, @intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
 
     // RENDER INIT
 
@@ -290,14 +294,14 @@ pub fn main() !void {
     defer instance.allocator.*.free(image_info0.samplers);
    
     // TODO turn this into a one line conditional
-    const image_data = c.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.STBI_rgb_alpha);
-    if (image_data == null){
+    const image_data0 = c.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.STBI_rgb_alpha);
+    if (image_data0 == null){
         std.debug.print("Unable to find image file \n", .{});
         return;
     }
     else
     {
-        image_info0.data = image_data;
+        image_info0.data = image_data0;
     }
 
     try vulkan.create_2d_texture(&instance, &image_info0);
@@ -305,6 +309,38 @@ pub fn main() !void {
 
     try vulkan.create_image_view(instance.device, &image_info0);
     try vulkan.create_samplers(&instance, &image_info0, c.VK_FILTER_LINEAR, c.VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    
+    var image_info1 = vulkan.ImageInfo{
+        .depth = 1,
+        .subresource_range = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .views = try instance.allocator.*.alloc(c.VkImageView, MAX_CONCURRENT_FRAMES),
+        .samplers = try instance.allocator.*.alloc(c.VkSampler, MAX_CONCURRENT_FRAMES),
+    };
+    defer instance.allocator.*.free(image_info1.views);
+    defer instance.allocator.*.free(image_info1.samplers);
+   
+    // TODO turn this into a one line conditional
+    const image_data1 = c.stbi_load("blocks.png", &image_info1.width, &image_info1.height, &image_info1.channels, c.STBI_rgb_alpha);
+    if (image_data1 == null){
+        std.debug.print("Unable to find image file \n", .{});
+        return;
+    }
+    else
+    {
+        image_info1.data = image_data1;
+    }
+
+    try vulkan.create_2d_texture(&instance, &image_info1);
+    c.stbi_image_free(image_info1.data);
+
+    try vulkan.create_image_view(instance.device, &image_info1);
+    try vulkan.create_samplers(&instance, &image_info1, c.VK_FILTER_NEAREST, c.VK_SAMPLER_ADDRESS_MODE_REPEAT);
 
     // Descriptor Sets
     
@@ -327,37 +363,54 @@ pub fn main() !void {
             .range = @sizeOf(ObjectTransform),
         };
         
-        const image_info = c.VkDescriptorImageInfo{
-            .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .imageView = image_info0.views[i],
-            .sampler = image_info0.samplers[i],
+        const images: [2]c.VkDescriptorImageInfo = .{
+            c.VkDescriptorImageInfo{
+                .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = image_info0.views[i],
+                .sampler = image_info0.samplers[i],
+            },
+            c.VkDescriptorImageInfo{
+                .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = image_info1.views[i],
+                .sampler = image_info1.samplers[i],
+            }
         };
 
-        const ubo_descriptor_write = c.VkWriteDescriptorSet{
-            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = instance.descriptor_sets[i],
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .pBufferInfo = &buffer_info,
-            .pImageInfo = null,
-            .pTexelBufferView = null,
+        const descriptor_writes: [3]c.VkWriteDescriptorSet = .{
+            c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = instance.descriptor_sets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &buffer_info,
+                .pImageInfo = null,
+                .pTexelBufferView = null,
+            },
+            c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = instance.descriptor_sets[i],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pBufferInfo = null,
+                .pImageInfo = &images[0],
+                .pTexelBufferView = null,
+            },
+            c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = instance.descriptor_sets[i],
+                .dstBinding = 2,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pBufferInfo = null,
+                .pImageInfo = &images[1],
+                .pTexelBufferView = null,
+            },
         };
-        
-        const image_descriptor_write = c.VkWriteDescriptorSet{
-            .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = instance.descriptor_sets[i],
-            .dstBinding = 1,
-            .dstArrayElement = 0,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = 1,
-            .pBufferInfo = null,
-            .pImageInfo = &image_info,
-            .pTexelBufferView = null,
-        };
-
-        const descriptor_writes: [2]c.VkWriteDescriptorSet = .{ubo_descriptor_write, image_descriptor_write};
 
         c.vkUpdateDescriptorSets(instance.device, descriptor_writes.len, &descriptor_writes, 0, null);
     }
@@ -400,7 +453,8 @@ pub fn main() !void {
             const _vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &chunk_data);
             defer _vertices.deinit();
 
-            try instance.create_vertex_buffer(@intCast(_vertices.items.len * @sizeOf(vulkan.Vertex)), _vertices.items.ptr);
+            //try instance.create_vertex_buffer(@intCast(_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
+            try instance.replace_vertex_data(2, @intCast(_vertices.items.len * @sizeOf(vulkan.Vertex)), @as(*anyopaque, @ptrCast(&_vertices.items[0])));
             std.debug.print("chunk mesh + upload time: {d:.3}ms\n", .{ (c.glfwGetTime() - _chunk_mesh_start_time) * 1000.0 });
 
             regen_chunk = false;
@@ -432,7 +486,13 @@ pub fn main() !void {
             speed = 10;
         }
 
-        if (inputs.left_click and index < 32768) {
+        if (index >= 32768 or !inputs.mouse_capture) {
+            instance.render_targets.items[0].rendering_enabled = false;
+        } else {
+            instance.render_targets.items[0].rendering_enabled = true;
+        }
+
+        if (inputs.left_click and index < 32768 and inputs.mouse_capture) {
             chunk_data[index] = 0;
             regen_chunk = true;
         }
@@ -489,6 +549,7 @@ pub fn main() !void {
     _ = c.vkDeviceWaitIdle(instance.device);
 
     vulkan.image_cleanup(&instance, &image_info0);
+    vulkan.image_cleanup(&instance, &image_info1);
     instance.cleanup();
 }
 

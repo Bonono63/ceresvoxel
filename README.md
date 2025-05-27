@@ -1,20 +1,10 @@
 # CeresVoxel
 A Voxel Engine
 
-Technical details:
-The engine is written in the Zig programming language, utilizes the Vulkan graphics API, and GLFW for interfacing with the Operating System.
-
-zmath is used for math,
-glfw for window events and input,
-vulkan for graphics,
-AMD's vma is used for device memory allocation,
-
 TODO:
 
     HIGH PRIORITY:
-    block selection outline intersection testing properly
     block placing/deletion
-    Support multiple vertex buffers
     chunking
     basic planet structure
     basic inv ui
@@ -33,6 +23,14 @@ TODO:
     Bindless textures/buffers
     dynamic rendering instead of renderpasses etc.
     shader objects
+
+Technical details:
+The engine is written in the Zig programming language, utilizes the Vulkan graphics API, and GLFW for interfacing with the Operating System.
+
+zmath is used for math,
+glfw for window events and input,
+vulkan for graphics,
+AMD's vma is used for device memory allocation,
 
 ## Compilation
 

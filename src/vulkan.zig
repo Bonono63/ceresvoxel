@@ -96,6 +96,15 @@ pub const ImageInfo = struct{
     samplers: []c.VkSampler = undefined,
 };
 
+/// All the info required to render a vertex buffer
+pub const RenderInfo = struct {
+    vertex_index: u32,
+    pipeline_index: u32,
+    vertex_count: u32 = 0,
+    vertex_offset: c.VkDeviceSize = 0,
+    rendering_enabled: bool = true,
+};
+
 // The vulkan/render state
 pub const Instance = struct {
     REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
@@ -140,8 +149,8 @@ pub const Instance = struct {
 
     vertex_buffers: std.ArrayList(c.VkBuffer) = undefined,
     vertex_allocs: std.ArrayList(c.VmaAllocation) = undefined,
-    vertex_offsets: std.ArrayList(c.VkDeviceSize) = undefined,
-    vertex_counts: std.ArrayList(u32) = undefined,
+
+    render_targets: std.ArrayList(RenderInfo) = undefined,
 
     ubo_buffers: std.ArrayList(c.VkBuffer) = undefined,
     ubo_allocs: std.ArrayList(c.VmaAllocation) = undefined,
@@ -506,27 +515,33 @@ pub const Instance = struct {
 
     pub fn create_descriptor_set_layouts(self : *Instance) VkAbstractionError!void
     {
-        const DESCRIPTOR_COUNT : u32 = 2;
+        const DESCRIPTOR_COUNT : u32 = 3;
 
         // A description of the bindings and their contents
         // Essentially we need one of these per uniform buffer
-        const ubo_layout_binding = c.VkDescriptorSetLayoutBinding{
-            .binding = 0,
-            .descriptorCount = 1,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_VERTEX_BIT,
-            .pImmutableSamplers = null,
+        const layout_bindings: [DESCRIPTOR_COUNT]c.VkDescriptorSetLayoutBinding = .{
+            c.VkDescriptorSetLayoutBinding{
+                .binding = 0,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_VERTEX_BIT,
+                .pImmutableSamplers = null,
+            },
+            c.VkDescriptorSetLayoutBinding{
+                .binding = 1,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_FRAGMENT_BIT,
+                .pImmutableSamplers = null,
+            },
+            c.VkDescriptorSetLayoutBinding{
+                .binding = 2,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_FRAGMENT_BIT,
+                .pImmutableSamplers = null,
+            },
         };
-
-        const image_layout_binding = c.VkDescriptorSetLayoutBinding{
-            .binding = 1,
-            .descriptorCount = 1,
-            .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_FRAGMENT_BIT,
-            .pImmutableSamplers = null,
-        };
-
-        const layout_bindings: [DESCRIPTOR_COUNT]c.VkDescriptorSetLayoutBinding = .{ubo_layout_binding, image_layout_binding};
 
         const layout_info = c.VkDescriptorSetLayoutCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -982,26 +997,25 @@ pub const Instance = struct {
         }
         c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 
-        // Chunks
-        c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipelines[0]);
-        
-        c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &self.vertex_buffers.items[0], &self.vertex_offsets.items[0]);
-        
-        c.vkCmdDraw(command_buffer, self.vertex_counts.items[0], 1, 0, 0);
-
-        // Outline
-        c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipelines[1]);
-        
-        c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &self.vertex_buffers.items[1], &self.vertex_offsets.items[1]);
-        
-        c.vkCmdDraw(command_buffer, self.vertex_counts.items[1], 1, 0, 0);
-        
-        // Cursor
-        c.vkCmdBindPipeline(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipelines[2]);
-        
-        c.vkCmdBindVertexBuffers(command_buffer, 0, 1, &self.vertex_buffers.items[2], &self.vertex_offsets.items[2]);
-        
-        c.vkCmdDraw(command_buffer, self.vertex_counts.items[2], 1, 0, 0);
+        for (self.render_targets.items) |render_target| {
+            if (render_target.rendering_enabled) {
+                c.vkCmdBindPipeline(
+                    command_buffer,
+                    c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    self.pipelines[render_target.pipeline_index]
+                    );
+                
+                c.vkCmdBindVertexBuffers(
+                    command_buffer,
+                    0,
+                    1,
+                    &self.vertex_buffers.items[render_target.vertex_index],
+                    &render_target.vertex_offset
+                    );
+                
+                c.vkCmdDraw(command_buffer, render_target.vertex_count, 1, 0, 0);
+            }
+        }
 
         c.vkCmdEndRenderPass(command_buffer);
     }
@@ -1404,7 +1418,7 @@ pub const Instance = struct {
         c.vmaDestroyBuffer(self.vma_allocator, staging_buffer, staging_alloc);
     }
 
-    pub fn create_vertex_buffer(self: *Instance, size: u32, ptr: *anyopaque) VkAbstractionError!void
+    pub fn create_vertex_buffer(self: *Instance, render_index: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void
     {
         var vertex_buffer : c.VkBuffer = undefined;
         var alloc: c.VmaAllocation = undefined;
@@ -1428,13 +1442,50 @@ pub const Instance = struct {
             return VkAbstractionError.VertexBufferCreationFailure;
         }
 
-        try self.copy_data_via_staging_buffer(&vertex_buffer, size, @as(*anyopaque, ptr));
+        try self.copy_data_via_staging_buffer(&vertex_buffer, size, ptr);
 
         try self.vertex_buffers.append(vertex_buffer);
         try self.vertex_allocs.append(alloc);
         const vertex_count = size / @sizeOf(Vertex);
-        try self.vertex_counts.append(vertex_count);
-        try self.vertex_offsets.append(0);
+        self.render_targets.items[render_index].vertex_count = vertex_count;
+    }
+
+    pub fn replace_vertex_data(self: *Instance, render_index: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void
+    {
+        // needs to occur asynchronously
+        var vertex_buffer : c.VkBuffer = undefined;
+        var alloc: c.VmaAllocation = undefined;
+    
+        var buffer_create_info = c.VkBufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = size,
+            .usage = c.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        }; 
+    
+        const alloc_create_info = c.VmaAllocationCreateInfo{
+            .usage = c.VMA_MEMORY_USAGE_AUTO,
+            .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+        };
+    
+        const buffer_success = c.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &vertex_buffer, &alloc, null);
+        
+        if (buffer_success != c.VK_SUCCESS)
+        {
+            std.debug.print("success: {}\n", .{buffer_success});
+            return VkAbstractionError.VertexBufferCreationFailure;
+        }
+
+        try self.copy_data_via_staging_buffer(&vertex_buffer, size, ptr);
+
+        const old_buffer = self.vertex_buffers.items[self.render_targets.items[render_index].vertex_index];
+        const old_alloc = self.vertex_allocs.items[self.render_targets.items[render_index].vertex_index];
+        self.vertex_buffers.items[self.render_targets.items[render_index].vertex_index] = vertex_buffer;
+        self.vertex_allocs.items[self.render_targets.items[render_index].vertex_index] = alloc;
+        
+        const vertex_count = size / @sizeOf(Vertex);
+        self.render_targets.items[render_index].vertex_count = vertex_count;
+        
+        c.vmaDestroyBuffer(self.vma_allocator, old_buffer, old_alloc);
     }
 
     /// Frees all Vulkan state
@@ -1486,19 +1537,6 @@ pub const Instance = struct {
         c.glfwTerminate();
     }
 };
-
-pub fn memory_type_selection(self: *Instance, typeFilter : u32, properties: u32) VkAbstractionError!u32 {
-    for (0..self.mem_properties.memoryTypeCount) |i| {
-        // TODO this additional line checking memory TypeBits is in vulkan tutorial,
-        // but I'm not sure it really works good...
-        // mem_requirements.memoryTypeBits & (@as(u32, 1) << @intCast(i)) == 0
-        if ((typeFilter & (@as(usize, 1) << @intCast(i))) != 0 and (self.mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return @intCast(i);
-        }
-    }
-    std.debug.print("Unable to find adequate memory type on device with flags: {}\n", .{properties});
-    return VkAbstractionError.SuitableDeviceMemoryTypeSelectionFailure;
-}
 
 /// Image format must be assigned before this function
 pub fn create_2d_texture(self: *Instance, image_info: *ImageInfo) VkAbstractionError!void

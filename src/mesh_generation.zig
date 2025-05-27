@@ -24,62 +24,62 @@ pub fn basic_mesh(allocator : *const std.mem.Allocator, data : *[32768]u8) !std.
             const z : f32 = @floatFromInt(i / 32 / 32 % 32);
             
             //Front
-            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = br });
-            try result.append(.{.pos = .{ x, y + 1.0, z }, .color = bl });
-            try result.append(.{.pos = .{ x, y, z }, .color = tl });
+            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tl });
+            try result.append(.{.pos = .{ x, y + 1.0, z }, .color = tr });
+            try result.append(.{.pos = .{ x, y, z }, .color = br });
             
-            try result.append(.{.pos = .{ x, y, z }, .color = tl });
-            try result.append(.{.pos = .{ x + 1.0, y, z }, .color = tr });
-            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = br });
+            try result.append(.{.pos = .{ x, y, z }, .color = br });
+            try result.append(.{.pos = .{ x + 1.0, y, z }, .color = bl });
+            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tl });
 
             //Right
-            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = bl });
-            try result.append(.{.pos = .{ x + 1.0, y, z }, .color = tl });
-            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = br });
+            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tr });
+            try result.append(.{.pos = .{ x + 1.0, y, z }, .color = br });
+            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
             
-            try result.append(.{.pos = .{ x + 1.0, y, z }, .color = tl });
-            try result.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = tr });
-            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = br });
+            try result.append(.{.pos = .{ x + 1.0, y, z }, .color = br });
+            try result.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
+            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
 
             //Back
-            try result.append(.{.pos = .{ x, y, z + 1.0 }, .color = tr });
-            try result.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .color = br });
-            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = bl });
+            try result.append(.{.pos = .{ x, y, z + 1.0 }, .color = bl });
+            try result.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .color = tl });
+            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tr });
             
-            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = bl });
-            try result.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = tl });
-            try result.append(.{.pos = .{ x, y, z + 1.0 }, .color = tr });
+            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tr });
+            try result.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = br });
+            try result.append(.{.pos = .{ x, y, z + 1.0 }, .color = bl });
             
             //Left
-            try result.append(.{.pos = .{ x, y, z + 1.0}, .color = tl });
-            try result.append(.{.pos = .{ x, y, z }, .color = tr });
-            try result.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
+            try result.append(.{.pos = .{ x, y, z + 1.0}, .color = br });
+            try result.append(.{.pos = .{ x, y, z }, .color = bl });
+            try result.append(.{.pos = .{ x, y + 1.0, z }, .color = tl });
             
-            try result.append(.{.pos = .{ x, y, z + 1.0}, .color = tl });
-            try result.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
-            try result.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .color = bl });
+            try result.append(.{.pos = .{ x, y, z + 1.0}, .color = br });
+            try result.append(.{.pos = .{ x, y + 1.0, z }, .color = tl });
+            try result.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .color = tr });
             
             //Bottom
-            try result.append(.{.pos = .{ x, y + 1.0, z }, .color = tl });
-            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .color = tr });
-            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = br });
+            try result.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
+            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .color = bl });
+            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
             
-            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = br });
-            try result.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .color = bl });
-            try result.append(.{.pos = .{ x, y + 1.0, z }, .color = tl });
+            try result.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
+            try result.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .color = tr });
+            try result.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
             
             //Top
-            try result.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = tr });
-            try result.append(.{.pos = .{ x + 1.0, y, z}, .color = br });
-            try result.append(.{.pos = .{ x, y, z }, .color = bl });
+            try result.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
+            try result.append(.{.pos = .{ x + 1.0, y, z}, .color = tl });
+            try result.append(.{.pos = .{ x, y, z }, .color = tr });
             
-            try result.append(.{.pos = .{ x, y, z }, .color = bl });
-            try result.append(.{.pos = .{ x, y, z + 1.0}, .color = tl });
-            try result.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = tr });
+            try result.append(.{.pos = .{ x, y, z }, .color = tr });
+            try result.append(.{.pos = .{ x, y, z + 1.0}, .color = br });
+            try result.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
         }
     }
     
-    std.debug.print("vertex len: {}\n", .{result.items.len});
+    //std.debug.print("vertex len: {}\n", .{result.items.len});
 
     return result;
 }
