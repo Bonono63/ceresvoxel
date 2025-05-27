@@ -4,14 +4,15 @@ A Voxel Engine
 TODO:
 
     HIGH PRIORITY:
-    block placing/deletion
     chunking
-    basic planet structure
+    basic planet world generation (like 2-3 layers for terrestrial planets, nothing serious, cuboid)
+    basic OBB physics system, for simple entities (player + animals) and inter-chunk
     basic inv ui
-    
-    basic rigid body physics for player + chunks
-    gravity system for nearest gravitational body
-    basic solar system implementation
+    basic items
+    block placing
+    gravity
+    simple solar system implementation
+    Make ages outline with content
 
     LOW PRIORITY:
     Free cam mode toggle (c key)
