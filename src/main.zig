@@ -223,8 +223,12 @@ pub fn main() !void {
     var chunk_data : [32768]u8 = undefined;
     for (0..32768) |i|
     {
-        const val = random.int(u2);
-        chunk_data[i] = val;
+        if (i / 32 % 32 % 4 == 0) {
+            chunk_data[i] = 0;
+        } else {
+            const val = random.int(u2);
+            chunk_data[i] = val;
+        }
     }
 
     const chunk_mesh_start_time : f64 = c.glfwGetTime();
@@ -308,7 +312,7 @@ pub fn main() !void {
     c.stbi_image_free(image_info0.data);
 
     try vulkan.create_image_view(instance.device, &image_info0);
-    try vulkan.create_samplers(&instance, &image_info0, c.VK_FILTER_LINEAR, c.VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    try vulkan.create_samplers(&instance, &image_info0, c.VK_FILTER_LINEAR, c.VK_SAMPLER_ADDRESS_MODE_REPEAT, true);
     
     var image_info1 = vulkan.ImageInfo{
         .depth = 1,
@@ -340,7 +344,7 @@ pub fn main() !void {
     c.stbi_image_free(image_info1.data);
 
     try vulkan.create_image_view(instance.device, &image_info1);
-    try vulkan.create_samplers(&instance, &image_info1, c.VK_FILTER_NEAREST, c.VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    try vulkan.create_samplers(&instance, &image_info1, c.VK_FILTER_NEAREST, c.VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
 
     // Descriptor Sets
     

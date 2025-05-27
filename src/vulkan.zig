@@ -1705,7 +1705,7 @@ pub fn create_image_view(device: c.VkDevice, image_info: *const ImageInfo) VkAbs
     }
 }
 
-pub fn create_samplers(instance: *Instance, image_info: *ImageInfo, filter: c.VkFilter, repeat_mode: c.VkSamplerAddressMode) VkAbstractionError!void
+pub fn create_samplers(instance: *Instance, image_info: *ImageInfo, filter: c.VkFilter, repeat_mode: c.VkSamplerAddressMode, anisotropy: bool) VkAbstractionError!void
 {
     const sampler_info = c.VkSamplerCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -1714,7 +1714,7 @@ pub fn create_samplers(instance: *Instance, image_info: *ImageInfo, filter: c.Vk
         .addressModeU = repeat_mode,//VK_SAMPLER_ADDRESS_MODE_REPEAT
         .addressModeV = repeat_mode,
         .addressModeW = repeat_mode,
-        .anisotropyEnable = c.VK_TRUE,
+        .anisotropyEnable = if (anisotropy) c.VK_TRUE else c.VK_FALSE,
         .maxAnisotropy = instance.physical_device_properties.limits.maxSamplerAnisotropy,
         .borderColor = c.VK_BORDER_COLOR_INT_OPAQUE_BLACK,
         .unnormalizedCoordinates = c.VK_FALSE,
