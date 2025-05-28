@@ -2,7 +2,7 @@
 const std = @import("std");
 const vulkan = @import("vulkan.zig");
 
-pub fn basic_mesh(allocator : *const std.mem.Allocator, data : *[32768]u8) !std.ArrayList(vulkan.Vertex)
+pub fn basic_mesh(allocator : *const std.mem.Allocator, data : *[32768]u8, chunk_pos: @Vector(3, u10)) !std.ArrayList(vulkan.Vertex)
 {
     _ = &data;
     var result : std.ArrayList(vulkan.Vertex) = std.ArrayList(vulkan.Vertex).init(allocator.*);
@@ -14,10 +14,11 @@ pub fn basic_mesh(allocator : *const std.mem.Allocator, data : *[32768]u8) !std.
         if (val != 0){
             const step: f32 = 1.0/block_count;
             const uv_index: f32 = step * @as(f32, @floatFromInt(val-1));
-            const tl = .{0.0,uv_index,1.0};
-            const bl = .{0.0,uv_index+step,1.0};
-            const tr = .{1.0,uv_index,1.0};
-            const br = .{1.0,uv_index+step,1.0};
+            const compressed_chunk_pos: f32 = (@as(f32, @bitCast(@as(u32, @intCast(chunk_pos[0])) << 20)));
+            const tl = .{0.0,uv_index,compressed_chunk_pos};
+            const bl = .{0.0,uv_index+step,compressed_chunk_pos};
+            const tr = .{1.0,uv_index,compressed_chunk_pos};
+            const br = .{1.0,uv_index+step,compressed_chunk_pos};
             const i : u32 = @intCast(index);
             const x : f32 = @floatFromInt(i % 32);
             const y : f32 = @floatFromInt(i / 32 % 32);

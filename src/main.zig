@@ -218,48 +218,71 @@ pub fn main() !void {
 
     c.glfwSetWindowSizeLimits(instance.window, 240, 135, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
 
-    const random = std.crypto.random; 
-
-    var chunk_data : [32768]u8 = undefined;
-    for (0..32768) |i|
-    {
-        if (i / 32 % 32 % 4 == 0) {
-            chunk_data[i] = 0;
-        } else {
-            const val = random.int(u2);
-            chunk_data[i] = val;
-        }
-    }
-
-    const chunk_mesh_start_time : f64 = c.glfwGetTime();
-    const chunk_vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &chunk_data);
-    defer chunk_vertices.deinit();
-
-    std.debug.print("chunk mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0 });
-    
-    // create render info
     try instance.render_targets.append(.{ .vertex_index = 0, .pipeline_index = 1});
     try instance.render_targets.append(.{ .vertex_index = 1, .pipeline_index = 2});
-    try instance.render_targets.append(.{ .vertex_index = 2, .pipeline_index = 0});
     
-    // create buffers for the render infos
     try instance.create_vertex_buffer(0, @intCast(block_selection_cube.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
     try instance.create_vertex_buffer(1, @intCast(cursor_vertices.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
-    try instance.create_vertex_buffer(2, @intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
+
+
+    const random = std.crypto.random; 
+
+    //const seed: u64 = random.int(u64);
+
+    const VoxelSpace = struct {
+        size: @Vector(3, u10),
+        pos: @Vector(3, f64),
+        rot: zm.Quat = zm.qidentity(),
+        chunks: std.ArrayList([32768]u8),
+    };
+
+    var Earth: VoxelSpace = .{
+        .size = .{2,2,2},
+        .pos = .{0.0,0.0,0.0},
+        .chunks = std.ArrayList([32768]u8).init(instance.allocator.*),
+    };
+    defer Earth.chunks.deinit();
+
+    for (0..(Earth.size[0]*Earth.size[1]*Earth.size[2])) |index| {
+        _ = &index;
+        var chunk_data : [32768]u8 = undefined;
+        for (0..32768) |i|
+        {
+            if (i / 32 % 32 % 4 == 0) {
+                chunk_data[i] = 0;
+            } else {
+                const val = random.int(u2);
+                chunk_data[i] = val;
+            }
+        }
+        try Earth.chunks.append(chunk_data);
+    }
+
+    for (0..Earth.chunks.items.len) |index| {
+        _ = &index;
+        const chunk_mesh_start_time : f64 = c.glfwGetTime();
+        const chunk_pos: @Vector(3, u10) = .{0,0,0};
+        const chunk_vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &Earth.chunks.items[index], chunk_pos);
+        defer chunk_vertices.deinit();
+    
+        std.debug.print("chunk mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0 });
+    
+        try instance.render_targets.append(.{ .vertex_index = @as(u32, @intCast(index)) + 2, .pipeline_index = 0});
+        try instance.create_vertex_buffer(@as(u32, @intCast(index)) + 2, @intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
+    }
 
     // RENDER INIT
 
-    const ObjectTransform = struct {
+    const ChunkTransform = struct {
         model: zm.Mat = zm.identity(),
-        view: zm.Mat = zm.identity(),
-        projection: zm.Mat = zm.identity(),
+        size: @Vector(3, u10),
     };
     
-    var object_transform = ObjectTransform{};
+    var object_transform = ChunkTransform{ .size = Earth.size };
     
     const create_info = c.VkBufferCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = @sizeOf(ObjectTransform),
+        .size = @sizeOf(ChunkTransform),
         .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
     };
 
@@ -276,7 +299,7 @@ pub fn main() !void {
         var alloc: c.VmaAllocation = undefined;
         _ = c.vmaCreateBuffer(instance.vma_allocator, &create_info, &ubo_alloc_create_info, &buffer, &alloc, null);
         
-        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, alloc, 0, @sizeOf(ObjectTransform));
+        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, alloc, 0, @sizeOf(ChunkTransform));
         try instance.ubo_allocs.append(alloc);
         try instance.ubo_buffers.append(buffer);
     }
@@ -364,7 +387,7 @@ pub fn main() !void {
         const buffer_info = c.VkDescriptorBufferInfo{
             .buffer = instance.ubo_buffers.items[i],
             .offset = 0,
-            .range = @sizeOf(ObjectTransform),
+            .range = @sizeOf(ChunkTransform),
         };
         
         const images: [2]c.VkDescriptorImageInfo = .{
@@ -454,7 +477,7 @@ pub fn main() !void {
 
         if (regen_chunk) {
             const _chunk_mesh_start_time : f64 = c.glfwGetTime();
-            const _vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &chunk_data);
+            const _vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &Earth.chunks.items[0], .{0,0,0});
             defer _vertices.deinit();
 
             //try instance.create_vertex_buffer(@intCast(_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
@@ -479,7 +502,7 @@ pub fn main() !void {
         const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
         const view_proj: zm.Mat = zm.mul(view, projection);
         
-        const index: u32 = camera_block_intersection(&chunk_data, .{0.0,0.0,0.0,0.0}, player_state.look, player_state.pos);
+        const index: u32 = camera_block_intersection(&Earth.chunks.items[0], .{0.0,0.0,0.0,0.0}, player_state.look, player_state.pos);
         @memcpy(push_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
         @memcpy(push_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&index)))[0..4]);
         @memcpy(push_data[(@sizeOf(zm.Mat) + 4)..(@sizeOf(zm.Mat) + 4 + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
@@ -497,7 +520,7 @@ pub fn main() !void {
         }
 
         if (inputs.left_click and index < 32768 and inputs.mouse_capture) {
-            chunk_data[index] = 0;
+            Earth.chunks.items[0][index] = 0;
             regen_chunk = true;
         }
 
@@ -539,7 +562,7 @@ pub fn main() !void {
             frame_delta * 1000.0,
         });
 
-        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, instance.ubo_allocs.items[current_frame_index], 0, @sizeOf(ObjectTransform));
+        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, instance.ubo_allocs.items[current_frame_index], 0, @sizeOf(ChunkTransform));
 
         try instance.draw_frame(current_frame_index);
 
