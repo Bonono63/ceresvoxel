@@ -231,7 +231,7 @@ pub fn main() !void {
     };
 
     var Earth: VoxelSpace = .{
-        .size = .{4,4,4},
+        .size = .{2,2,2},
         .pos = .{0.0,0.0,0.0},
         .chunks = std.ArrayList([32768]u8).init(instance.allocator.*),
     };

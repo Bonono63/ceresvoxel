@@ -114,6 +114,15 @@ pub fn cull_mesh(data : *[32768]u8, chunk_pos: @Vector(3, u8), list: *std.ArrayL
                     try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
                     try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
                 }
+            } else {
+                //Right
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tr });
+                try list.append(.{.pos = .{ x + 1.0, y, z }, .color = br });
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
+                
+                try list.append(.{.pos = .{ x + 1.0, y, z }, .color = br });
+                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
             }
 
             if (x > 0) {
@@ -128,43 +137,109 @@ pub fn cull_mesh(data : *[32768]u8, chunk_pos: @Vector(3, u8), list: *std.ArrayL
                     try list.append(.{.pos = .{ x, y + 1.0, z }, .color = tl });
                     try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .color = tr });
                 }
+            } else {
+                //Left
+                try list.append(.{.pos = .{ x, y, z + 1.0}, .color = br });
+                try list.append(.{.pos = .{ x, y, z }, .color = bl });
+                try list.append(.{.pos = .{ x, y + 1.0, z }, .color = tl });
+                
+                try list.append(.{.pos = .{ x, y, z + 1.0}, .color = br });
+                try list.append(.{.pos = .{ x, y + 1.0, z }, .color = tl });
+                try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .color = tr });
+            }
+
+            if (z < 31) {
+                const zp = data[index + 32*32];
+                if (zp == 0) {
+                    //Back
+                    try list.append(.{.pos = .{ x, y, z + 1.0 }, .color = bl });
+                    try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .color = tl });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tr });
+                    
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tr });
+                    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = br });
+                    try list.append(.{.pos = .{ x, y, z + 1.0 }, .color = bl });
+                }
+
+            } else {
+                //Back
+                try list.append(.{.pos = .{ x, y, z + 1.0 }, .color = bl });
+                try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .color = tl });
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tr });
+                
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tr });
+                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = br });
+                try list.append(.{.pos = .{ x, y, z + 1.0 }, .color = bl });
             }
             
-            //Back
-            try list.append(.{.pos = .{ x, y, z + 1.0 }, .color = bl });
-            try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .color = tl });
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tr });
-            
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tr });
-            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = br });
-            try list.append(.{.pos = .{ x, y, z + 1.0 }, .color = bl });
+            if (z > 0) {
+                const zn = data[index - 32*32];
+                if (zn == 0) {
+                    //Front
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tl });
+                    try list.append(.{.pos = .{ x, y + 1.0, z }, .color = tr });
+                    try list.append(.{.pos = .{ x, y, z }, .color = br });
                     
-            //Front
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tl });
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .color = tr });
-            try list.append(.{.pos = .{ x, y, z }, .color = br });
-            
-            try list.append(.{.pos = .{ x, y, z }, .color = br });
-            try list.append(.{.pos = .{ x + 1.0, y, z }, .color = bl });
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tl });
-            
-            //Bottom
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .color = bl });
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
-            
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
-            try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .color = tr });
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
-            
-            //Top
-            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
-            try list.append(.{.pos = .{ x + 1.0, y, z}, .color = tl });
-            try list.append(.{.pos = .{ x, y, z }, .color = tr });
-            
-            try list.append(.{.pos = .{ x, y, z }, .color = tr });
-            try list.append(.{.pos = .{ x, y, z + 1.0}, .color = br });
-            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
+                    try list.append(.{.pos = .{ x, y, z }, .color = br });
+                    try list.append(.{.pos = .{ x + 1.0, y, z }, .color = bl });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tl });
+                }
+            } else {
+                //Front
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tl });
+                try list.append(.{.pos = .{ x, y + 1.0, z }, .color = tr });
+                try list.append(.{.pos = .{ x, y, z }, .color = br });
+                
+                try list.append(.{.pos = .{ x, y, z }, .color = br });
+                try list.append(.{.pos = .{ x + 1.0, y, z }, .color = bl });
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tl });
+            }
+
+            if (y < 31) {
+                const yp = data[index + 32];
+                if (yp == 0) {
+                    //Bottom
+                    try list.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .color = bl });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
+                    
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
+                    try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .color = tr });
+                    try list.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
+                }
+            } else {
+                //Bottom
+                try list.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .color = bl });
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
+                
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
+                try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .color = tr });
+                try list.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
+            }
+
+            if (y > 0) {
+                const yn  = data[index - 32];
+                if (yn == 0) {
+                    //Top
+                    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
+                    try list.append(.{.pos = .{ x + 1.0, y, z}, .color = tl });
+                    try list.append(.{.pos = .{ x, y, z }, .color = tr });
+                    
+                    try list.append(.{.pos = .{ x, y, z }, .color = tr });
+                    try list.append(.{.pos = .{ x, y, z + 1.0}, .color = br });
+                    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
+                }
+            } else {
+                //Top
+                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
+                try list.append(.{.pos = .{ x + 1.0, y, z}, .color = tl });
+                try list.append(.{.pos = .{ x, y, z }, .color = tr });
+                
+                try list.append(.{.pos = .{ x, y, z }, .color = tr });
+                try list.append(.{.pos = .{ x, y, z + 1.0}, .color = br });
+                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
+            }
             size += 36;
         }
     }
