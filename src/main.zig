@@ -89,8 +89,8 @@ const cursor_vertices: [6]vulkan.Vertex = .{
 // 0 to 32768 can fit in u15, but for the sake of making our lives easier we will use a u16
 var block_selection_index: u32 = 0;
 
-fn pos_to_index(pos: @Vector(3, f32)) u16 {
-    return pos[0] + pos[1] * 32 + pos[2] * 32 * 32;
+fn pos_to_index(pos: @Vector(3, u8)) u32 {
+    return @as(u32, @intCast(pos[0])) << 24;// & pos[1] << 16 & pos[2] << 8;
 }
 
 pub fn main() !void {
@@ -183,15 +183,9 @@ pub fn main() !void {
 
     try instance.create_depth_resources();
 
-    const PUSH_CONSTANT_COUNT = 1;
-    instance.push_constant_info = try instance.allocator.*.alloc(c.VkPushConstantRange, PUSH_CONSTANT_COUNT);
-    defer instance.allocator.*.free(instance.push_constant_info);
-    instance.push_constant_data = try instance.allocator.*.alloc(*anyopaque, PUSH_CONSTANT_COUNT);
-    defer instance.allocator.*.free(instance.push_constant_data);
-
-    const PUSH_CONSTANT_SIZE: u32 = @sizeOf(zm.Mat) + 4 + 4 + 4;
+    const PUSH_CONSTANT_SIZE: u32 = @sizeOf(zm.Mat) + 4 + 4;
     // 64 : view_proj | 4 : block_selection_index | 4 : aspect ratio | 4: chunk position index
-    instance.push_constant_info[0] = c.VkPushConstantRange{
+    instance.push_constant_info = c.VkPushConstantRange{
         .stageFlags = c.VK_SHADER_STAGE_ALL,
         .offset = 0,
         // must be a multiple of 4
@@ -237,7 +231,7 @@ pub fn main() !void {
     };
 
     var Earth: VoxelSpace = .{
-        .size = .{2,2,2},
+        .size = .{4,4,4},
         .pos = .{0.0,0.0,0.0},
         .chunks = std.ArrayList([32768]u8).init(instance.allocator.*),
     };
@@ -258,28 +252,29 @@ pub fn main() !void {
         try Earth.chunks.append(chunk_data);
     }
 
+    const chunk_mesh_start_time : f64 = c.glfwGetTime();
+    var chunk_vertices : std.ArrayList(vulkan.Vertex) = std.ArrayList(vulkan.Vertex).init(instance.allocator.*);
+    defer chunk_vertices.deinit();
+    var vertex_count: u32 = 0;
     for (0..Earth.chunks.items.len) |index| {
-        _ = &index;
-        const chunk_mesh_start_time : f64 = c.glfwGetTime();
-        const chunk_pos: @Vector(3, u10) = .{@as(u10, @intCast(index)) % Earth.size[0],@as(u10, @intCast(index)) / Earth.size[0] % Earth.size[1],@as(u10, @intCast(index)) / Earth.size[0] / Earth.size[1] % Earth.size[2]};
-        const chunk_vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &Earth.chunks.items[index], chunk_pos);
-        defer chunk_vertices.deinit();
-    
-        std.debug.print("chunk mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0 });
-    
-        try instance.render_targets.append(.{ .vertex_index = @as(u32, @intCast(index)) + 2, .pipeline_index = 0});
-        try instance.create_vertex_buffer(@as(u32, @intCast(index)) + 2, @intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
+        const chunk_pos: @Vector(3, u8) = .{@as(u8, @intCast(index)) % Earth.size[0], @as(u8, @intCast(index)) / Earth.size[0] % Earth.size[1], @as(u8, @intCast(index)) / Earth.size[0] / Earth.size[1] % Earth.size[2]};
+        const addition_size = try meshers.cull_mesh(&Earth.chunks.items[index], chunk_pos, &chunk_vertices);
+        vertex_count += addition_size;
     }
 
+    try instance.render_targets.append(.{ .vertex_index = 2, .pipeline_index = 0, .vertex_render_offset = 0});
+    try instance.create_vertex_buffer(2, @intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
+    
+    std.debug.print("chunk mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0 });
+    
     // RENDER INIT
 
     const ChunkTransform = struct {
         model: zm.Mat = zm.identity(),
-        pos: [1024]u32 = undefined,
     };
     
     var object_transform = ChunkTransform{};
-    
+
     const create_info = c.VkBufferCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = @sizeOf(ChunkTransform),
@@ -451,9 +446,9 @@ pub fn main() !void {
     var window_height : i32 = 0;
     var window_width : i32 = 0;
     
-    var push_data: [PUSH_CONSTANT_SIZE]u8 = undefined;
-    instance.push_constant_data[0] = @as(*anyopaque, @ptrCast(@constCast(&push_data)));
-   
+    instance.push_constant_data = try instance.allocator.*.alloc(u8, PUSH_CONSTANT_SIZE);
+    defer instance.allocator.*.free(instance.push_constant_data);
+
     var regen_chunk: bool = false;
 
     while (c.glfwWindowShouldClose(instance.window) == 0) {
@@ -475,17 +470,17 @@ pub fn main() !void {
             c.glfwSetInputMode(instance.window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
         }
 
-        if (regen_chunk) {
-            const _chunk_mesh_start_time : f64 = c.glfwGetTime();
-            const _vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &Earth.chunks.items[0], .{0,0,0});
-            defer _vertices.deinit();
+        //if (regen_chunk) {
+        //    const _chunk_mesh_start_time : f64 = c.glfwGetTime();
+        //    const _vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(&Earth.chunks.items[0], .{0,0,0});
+        //    defer _vertices.deinit();
 
-            //try instance.create_vertex_buffer(@intCast(_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
-            try instance.replace_vertex_data(2, @intCast(_vertices.items.len * @sizeOf(vulkan.Vertex)), @as(*anyopaque, @ptrCast(&_vertices.items[0])));
-            std.debug.print("chunk mesh + upload time: {d:.3}ms\n", .{ (c.glfwGetTime() - _chunk_mesh_start_time) * 1000.0 });
+        //    //try instance.create_vertex_buffer(@intCast(_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
+        //    try instance.replace_vertex_data(2, @intCast(_vertices.items.len * @sizeOf(vulkan.Vertex)), @as(*anyopaque, @ptrCast(&_vertices.items[0])));
+        //    std.debug.print("chunk mesh + upload time: {d:.3}ms\n", .{ (c.glfwGetTime() - _chunk_mesh_start_time) * 1000.0 });
 
-            regen_chunk = false;
-        }
+        //    regen_chunk = false;
+        //}
 
         player_state.look[0] = @as(f32, @floatCast(std.math.cos(player_state.yaw) * std.math.cos(player_state.pitch)));
         player_state.look[1] = @as(f32, @floatCast(std.math.sin(player_state.pitch)));
@@ -498,14 +493,14 @@ pub fn main() !void {
         const right = zm.cross3(look, up);
         const forward = zm.cross3(right, up);
 
-        const view: zm.Mat = zm.lookToLh(.{0.0,0.0,0.0,0.0}, look, up);
+        const view: zm.Mat = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 0.0}, look, up);
         const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
         const view_proj: zm.Mat = zm.mul(view, projection);
         
         const index: u32 = camera_block_intersection(&Earth.chunks.items[0], .{0.0,0.0,0.0,0.0}, player_state.look, player_state.pos);
-        @memcpy(push_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
-        @memcpy(push_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&index)))[0..4]);
-        @memcpy(push_data[(@sizeOf(zm.Mat) + 4)..(@sizeOf(zm.Mat) + 4 + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+        @memcpy(instance.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
+        @memcpy(instance.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&index)))[0..4]);
+        @memcpy(instance.push_constant_data[(@sizeOf(zm.Mat) + 4)..(@sizeOf(zm.Mat) + 4 + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
 
         var speed : f32 = 5;
         if (inputs.control)
@@ -550,7 +545,7 @@ pub fn main() !void {
             player_state.pos += .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
         }
        
-        object_transform.model = zm.translation(-player_state.pos[0], -player_state.pos[1], -player_state.pos[2]);
+        //object_transform.model = zm.translation(-player_state.pos[0], -player_state.pos[1], -player_state.pos[2]);
 
         std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {d:.3}ms \r", .{
             if (inputs.mouse_capture) "on " else "off",

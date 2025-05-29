@@ -101,7 +101,8 @@ pub const RenderInfo = struct {
     vertex_index: u32,
     pipeline_index: u32,
     vertex_count: u32 = 0,
-    vertex_offset: c.VkDeviceSize = 0,
+    vertex_buffer_offset: c.VkDeviceSize = 0,
+    vertex_render_offset: u32 = 0,
     rendering_enabled: bool = true,
 };
 
@@ -140,8 +141,6 @@ pub const Instance = struct {
     descriptor_sets : []c.VkDescriptorSet = undefined,
     descriptor_set_layout : c.VkDescriptorSetLayout = undefined,
 
-    push_constants: c.VkPushConstantRange = undefined,
-
     pipeline_layout: c.VkPipelineLayout = undefined,
     renderpass: c.VkRenderPass = undefined,
     pipelines: []c.VkPipeline = undefined,
@@ -169,8 +168,8 @@ pub const Instance = struct {
     depth_image_alloc: c.VmaAllocation = undefined,
     depth_image_view: c.VkImageView = undefined,
 
-    push_constant_data: []*anyopaque = undefined,
-    push_constant_info: []c.VkPushConstantRange = undefined,
+    push_constant_data: []u8 = undefined,
+    push_constant_info: c.VkPushConstantRange = undefined,
 
     // TODO move the GLFW code out and make this a vulkan only function
     /// Creates our Vulkan instance and GLFW window
@@ -992,30 +991,66 @@ pub const Instance = struct {
         c.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
         
         // Camera
-        for (self.push_constant_info, 0..self.push_constant_info.len) |info, i| {
-            c.vkCmdPushConstants(command_buffer, self.pipeline_layout, c.VK_SHADER_STAGE_ALL, 0, info.size, self.push_constant_data[i]);
-        }
+        c.vkCmdPushConstants(command_buffer, self.pipeline_layout, c.VK_SHADER_STAGE_ALL, 0, self.push_constant_info.size, &self.push_constant_data[0]);
         c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 
-        for (self.render_targets.items) |render_target| {
-            if (render_target.rendering_enabled) {
-                c.vkCmdBindPipeline(
-                    command_buffer,
-                    c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    self.pipelines[render_target.pipeline_index]
-                    );
-                
-                c.vkCmdBindVertexBuffers(
-                    command_buffer,
-                    0,
-                    1,
-                    &self.vertex_buffers.items[render_target.vertex_index],
-                    &render_target.vertex_offset
-                    );
-                
-                c.vkCmdDraw(command_buffer, render_target.vertex_count, 1, 0, 0);
-            }
-        }
+        // outline
+        c.vkCmdBindPipeline(
+            command_buffer,
+            c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+            self.pipelines[self.render_targets.items[0].pipeline_index]
+            );
+        
+        c.vkCmdBindVertexBuffers(
+            command_buffer,
+            0,
+            1,
+            &self.vertex_buffers.items[self.render_targets.items[0].vertex_index],
+            &self.render_targets.items[0].vertex_buffer_offset
+            );
+        
+        c.vkCmdDraw(command_buffer, self.render_targets.items[0].vertex_count, 1, 0, 0);
+        
+        // cursor
+        c.vkCmdBindPipeline(
+            command_buffer,
+            c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+            self.pipelines[self.render_targets.items[1].pipeline_index]
+            );
+        
+        c.vkCmdBindVertexBuffers(
+            command_buffer,
+            0,
+            1,
+            &self.vertex_buffers.items[self.render_targets.items[1].vertex_index],
+            &self.render_targets.items[1].vertex_buffer_offset
+            );
+        
+        c.vkCmdDraw(command_buffer, self.render_targets.items[1].vertex_count, 1, 0, 0);
+       
+        // chunks
+        c.vkCmdBindPipeline(
+            command_buffer,
+            c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+            self.pipelines[self.render_targets.items[2].pipeline_index]
+            );
+        
+        c.vkCmdBindVertexBuffers(
+            command_buffer,
+            0,
+            1,
+            &self.vertex_buffers.items[2],
+            &self.render_targets.items[2].vertex_buffer_offset 
+            );
+        
+        c.vkCmdDraw(command_buffer, self.render_targets.items[2].vertex_count, 1, self.render_targets.items[2].vertex_render_offset, 0);
+
+        //for (2..self.render_targets.items.len) |index| {
+        //    const render_target = self.render_targets.items[index];
+        //    if (render_target.rendering_enabled) {
+        //        c.vkCmdDraw(command_buffer, render_target.vertex_count, 1, render_target.vertex_render_offset, 0);
+        //    }
+        //}
 
         c.vkCmdEndRenderPass(command_buffer);
     }
@@ -1025,8 +1060,8 @@ pub const Instance = struct {
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount = 1,
             .pSetLayouts = &self.descriptor_set_layout,
-            .pushConstantRangeCount = @intCast(self.push_constant_info.len),
-            .pPushConstantRanges = &self.push_constant_info[0],
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges = &self.push_constant_info,
         };
 
         const pipeline_layout_success = c.vkCreatePipelineLayout(self.device, &pipeline_layout_create_info, null, &self.pipeline_layout);
