@@ -14,7 +14,7 @@ pub fn basic_mesh(allocator : *const std.mem.Allocator, data : *[32768]u8, chunk
         if (val != 0){
             const step: f32 = 1.0/block_count;
             const uv_index: f32 = step * @as(f32, @floatFromInt(val-1));
-            const compressed_chunk_pos: f32 = (@as(f32, @bitCast(@as(u32, @intCast(chunk_pos[0])) << 20)));
+            const compressed_chunk_pos: f32 = (@as(f32, @bitCast(@as(u32, @intCast(chunk_pos[0])) )));// << 20)));
             const tl = .{0.0,uv_index,compressed_chunk_pos};
             const bl = .{0.0,uv_index+step,compressed_chunk_pos};
             const tr = .{1.0,uv_index,compressed_chunk_pos};

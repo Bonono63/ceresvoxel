@@ -189,8 +189,8 @@ pub fn main() !void {
     instance.push_constant_data = try instance.allocator.*.alloc(*anyopaque, PUSH_CONSTANT_COUNT);
     defer instance.allocator.*.free(instance.push_constant_data);
 
-    const PUSH_CONSTANT_SIZE: u32 = @sizeOf(zm.Mat) + 4 + 4;
-    // Push constant layout is 64 bytes: view_proj | 4 bytes: block_selection_index | 4 bytes: aspect ratio
+    const PUSH_CONSTANT_SIZE: u32 = @sizeOf(zm.Mat) + 4 + 4 + 4;
+    // 64 : view_proj | 4 : block_selection_index | 4 : aspect ratio | 4: chunk position index
     instance.push_constant_info[0] = c.VkPushConstantRange{
         .stageFlags = c.VK_SHADER_STAGE_ALL,
         .offset = 0,
@@ -230,7 +230,7 @@ pub fn main() !void {
     //const seed: u64 = random.int(u64);
 
     const VoxelSpace = struct {
-        size: @Vector(3, u10),
+        size: @Vector(3, u8),
         pos: @Vector(3, f64),
         rot: zm.Quat = zm.qidentity(),
         chunks: std.ArrayList([32768]u8),
@@ -261,7 +261,7 @@ pub fn main() !void {
     for (0..Earth.chunks.items.len) |index| {
         _ = &index;
         const chunk_mesh_start_time : f64 = c.glfwGetTime();
-        const chunk_pos: @Vector(3, u10) = .{0,0,0};
+        const chunk_pos: @Vector(3, u10) = .{@as(u10, @intCast(index)) % Earth.size[0],@as(u10, @intCast(index)) / Earth.size[0] % Earth.size[1],@as(u10, @intCast(index)) / Earth.size[0] / Earth.size[1] % Earth.size[2]};
         const chunk_vertices : std.ArrayList(vulkan.Vertex) = try meshers.basic_mesh(instance.allocator, &Earth.chunks.items[index], chunk_pos);
         defer chunk_vertices.deinit();
     
@@ -275,10 +275,10 @@ pub fn main() !void {
 
     const ChunkTransform = struct {
         model: zm.Mat = zm.identity(),
-        size: @Vector(3, u10),
+        pos: [1024]u32 = undefined,
     };
     
-    var object_transform = ChunkTransform{ .size = Earth.size };
+    var object_transform = ChunkTransform{};
     
     const create_info = c.VkBufferCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
