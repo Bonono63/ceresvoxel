@@ -994,6 +994,24 @@ pub const Instance = struct {
         c.vkCmdPushConstants(command_buffer, self.pipeline_layout, c.VK_SHADER_STAGE_ALL, 0, self.push_constant_info.size, &self.push_constant_data[0]);
         c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 
+        // 2D objects
+        // cursor
+        c.vkCmdBindPipeline(
+            command_buffer,
+            c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+            self.pipelines[self.render_targets.items[1].pipeline_index]
+            );
+        
+        c.vkCmdBindVertexBuffers(
+            command_buffer,
+            0,
+            1,
+            &self.vertex_buffers.items[self.render_targets.items[1].vertex_index],
+            &self.render_targets.items[1].vertex_buffer_offset
+            );
+        
+        c.vkCmdDraw(command_buffer, self.render_targets.items[1].vertex_count, 1, 0, 0);
+        
         // outline
         if (self.render_targets.items[0].rendering_enabled) {
             c.vkCmdBindPipeline(
@@ -1013,23 +1031,8 @@ pub const Instance = struct {
             c.vkCmdDraw(command_buffer, self.render_targets.items[0].vertex_count, 1, 0, 0);
         }
 
-        // cursor
-        c.vkCmdBindPipeline(
-            command_buffer,
-            c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-            self.pipelines[self.render_targets.items[1].pipeline_index]
-            );
-        
-        c.vkCmdBindVertexBuffers(
-            command_buffer,
-            0,
-            1,
-            &self.vertex_buffers.items[self.render_targets.items[1].vertex_index],
-            &self.render_targets.items[1].vertex_buffer_offset
-            );
-        
-        c.vkCmdDraw(command_buffer, self.render_targets.items[1].vertex_count, 1, 0, 0);
-       
+      
+        // 3D objects
         // chunks
         c.vkCmdBindPipeline(
             command_buffer,
@@ -1047,12 +1050,12 @@ pub const Instance = struct {
         
         c.vkCmdDraw(command_buffer, self.render_targets.items[2].vertex_count, 1, self.render_targets.items[2].vertex_render_offset, 0);
 
-        //for (2..self.render_targets.items.len) |index| {
-        //    const render_target = self.render_targets.items[index];
-        //    if (render_target.rendering_enabled) {
-        //        c.vkCmdDraw(command_buffer, render_target.vertex_count, 1, render_target.vertex_render_offset, 0);
-        //    }
-        //}
+        for (2..self.render_targets.items.len) |index| {
+            const render_target = self.render_targets.items[index];
+            if (render_target.rendering_enabled) {
+                c.vkCmdDraw(command_buffer, render_target.vertex_count, 1, render_target.vertex_render_offset, 0);
+            }
+        }
 
         c.vkCmdEndRenderPass(command_buffer);
     }
