@@ -87,7 +87,7 @@ const cursor_vertices: [6]vulkan.Vertex = .{
     .{.pos = .{0.0625,0.0625,0.0}, .color = .{1.0,1.0,0.0}},
 };
 // 0 to 32768 can fit in u15, but for the sake of making our lives easier we will use a u16
-var block_selection_index: u32 = 0;
+//var block_selection_index: u32 = 0;
 
 fn pos_to_index(pos: @Vector(3, u8)) u32 {
     return @as(u32, @intCast(pos[0])) << 24;// & pos[1] << 16 & pos[2] << 8;
@@ -183,8 +183,8 @@ pub fn main() !void {
 
     try instance.create_depth_resources();
 
-    const PUSH_CONSTANT_SIZE: u32 = @sizeOf(zm.Mat) + 4 + 4;
-    // 64 : view_proj | 4 : block_selection_index | 4 : aspect ratio | 4: chunk position index
+    const PUSH_CONSTANT_SIZE: u32 = @sizeOf(zm.Mat) + @sizeOf(zm.Mat) + 4;
+    // 64 : view_proj | 64 : block_selection_model | 4 : aspect ratio |
     instance.push_constant_info = c.VkPushConstantRange{
         .stageFlags = c.VK_SHADER_STAGE_ALL,
         .offset = 0,
@@ -224,14 +224,15 @@ pub fn main() !void {
     //const seed: u64 = random.int(u64);
 
     const VoxelSpace = struct {
-        size: @Vector(3, u8),
+        size: @Vector(3, u32),
         pos: @Vector(3, f64),
         rot: zm.Quat = zm.qidentity(),
         chunks: std.ArrayList([32768]u8),
     };
 
     var Earth: VoxelSpace = .{
-        .size = .{2,2,2},
+        // sizes larger than 8**3 this can't be sent to the GPU in one go
+        .size = .{8,8,8},
         .pos = .{0.0,0.0,0.0},
         .chunks = std.ArrayList([32768]u8).init(instance.allocator.*),
     };
@@ -257,15 +258,16 @@ pub fn main() !void {
     defer chunk_vertices.deinit();
     var vertex_count: u32 = 0;
     for (0..Earth.chunks.items.len) |index| {
-        const chunk_pos: @Vector(3, u8) = .{@as(u8, @intCast(index)) % Earth.size[0], @as(u8, @intCast(index)) / Earth.size[0] % Earth.size[1], @as(u8, @intCast(index)) / Earth.size[0] / Earth.size[1] % Earth.size[2]};
+        const chunk_pos: @Vector(3, u8) = .{@as(u8, @intCast(index % Earth.size[0])), @as(u8, @intCast(index / Earth.size[0] % Earth.size[1])), @as(u8, @intCast(index / Earth.size[0] / Earth.size[1] % Earth.size[2]))};
         const addition_size = try meshers.cull_mesh(&Earth.chunks.items[index], chunk_pos, &chunk_vertices);
         vertex_count += addition_size;
     }
 
     try instance.render_targets.append(.{ .vertex_index = 2, .pipeline_index = 0, .vertex_render_offset = 0});
+    const upload_mesh_starting_time: f64 = c.glfwGetTime(); 
     try instance.create_vertex_buffer(2, @intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
     
-    std.debug.print("chunk mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0 });
+    std.debug.print("chunk mesh time: {d:.3}ms \nupload mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0, (c.glfwGetTime() - upload_mesh_starting_time) * 1000.0 });
     
     // RENDER INIT
 
@@ -298,7 +300,6 @@ pub fn main() !void {
         try instance.ubo_allocs.append(alloc);
         try instance.ubo_buffers.append(buffer);
     }
-
 
     var image_info0 = vulkan.ImageInfo{
         .depth = 1,
@@ -497,25 +498,25 @@ pub fn main() !void {
         const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
         const view_proj: zm.Mat = zm.mul(view, projection);
         
-        const index: u32 = camera_block_intersection(&Earth.chunks.items[0], .{0.0,0.0,0.0,0.0}, player_state.look, player_state.pos);
+        var block_selection_success: bool = false;
+        var block_selection_index: u32 = 0;
+        // TODO fix this function it is ugly as hell
+        const intersect_vec: zm.Vec = camera_block_intersection(&Earth.chunks.items[0], player_state.look, player_state.pos, &block_selection_success, &block_selection_index);
+        const block_selection_matrix: zm.Mat = zm.translation(intersect_vec[0], intersect_vec[1], intersect_vec[2]);
         @memcpy(instance.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
-        @memcpy(instance.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&index)))[0..4]);
-        @memcpy(instance.push_constant_data[(@sizeOf(zm.Mat) + 4)..(@sizeOf(zm.Mat) + 4 + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+        @memcpy(instance.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) * 2)], @as([*]u8, @ptrCast(@constCast(&block_selection_matrix)))[0..64]);
+        @memcpy(instance.push_constant_data[(@sizeOf(zm.Mat) * 2)..((@sizeOf(zm.Mat) * 2) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
 
         var speed : f32 = 5;
         if (inputs.control)
         {
-            speed = 10;
+            speed = 100;
         }
 
-        if (index >= 32768 or !inputs.mouse_capture) {
-            instance.render_targets.items[0].rendering_enabled = false;
-        } else {
-            instance.render_targets.items[0].rendering_enabled = true;
-        }
+        instance.render_targets.items[0].rendering_enabled = block_selection_success;
 
-        if (inputs.left_click and index < 32768 and inputs.mouse_capture) {
-            Earth.chunks.items[0][index] = 0;
+        if (inputs.left_click and block_selection_success and inputs.mouse_capture) {
+            Earth.chunks.items[0][block_selection_index] = 0;
             regen_chunk = true;
         }
 
@@ -708,11 +709,9 @@ pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_in
     instance.framebuffer_resized = true;
 }
 
-/// VERY INNACCURATE :(, switch to DDA
-fn camera_block_intersection(chunk_data: *[32768]u8, chunk_pos: zm.Vec, look: zm.Vec, origin: @Vector(3, f32)) u32
+//TODO replace the bool with a special error return
+fn camera_block_intersection(chunk_data: *[32768]u8, look: zm.Vec, origin: @Vector(3, f32), success: *bool, return_index: *u32) zm.Vec
 {
-    _ = &chunk_pos;
-
     const max_steps: u32 = 100;
     var steps: u32 = 0;
 
@@ -720,8 +719,7 @@ fn camera_block_intersection(chunk_data: *[32768]u8, chunk_pos: zm.Vec, look: zm
     // TODO eventually shift to OBB instead of AABB test, but rotations aren't implemented so we can ignore that for now
     //std.debug.print("{d:.2} {d:.2} {d:.2} {d:.2} {d:.2} {d:.2} {d:.2}\n", .{look[0], look[1], look[2], current_ray[0], current_ray[1], current_ray[2], chunk_pos[0]});
     var current_pos: @Vector(3, i32) = .{@as(i32, @intFromFloat(origin[0])), @as(i32, @intFromFloat(origin[1])),  @as(i32, @intFromFloat(origin[2]))};
-    var success: bool = false;
-    while (steps < max_steps and !success)
+    while (steps < max_steps and !success.*)
     {
         current_ray[0] += look[0] * 0.25;
         current_ray[1] += look[1] * 0.25;
@@ -734,17 +732,17 @@ fn camera_block_intersection(chunk_data: *[32768]u8, chunk_pos: zm.Vec, look: zm
             const index: u32 = @abs(current_pos[0]) + @abs(current_pos[1] * 32) + @abs(current_pos[2] * 32 * 32);
             if (chunk_data.*[index] != 0) {
                 //std.debug.print("SUCCESS ", .{});
-                success = true;
+                success.* = true;
             }
         }
         steps += 1;
     }
 
-    var result: u32 = 32768;
-    if (success) {
-        result = @abs(current_pos[0]) + @abs(current_pos[1] * 32) + @abs(current_pos[2] * 32 * 32);
+    return_index.* = 32768;
+    if (success.*) {
+        return_index.* = @abs(current_pos[0]) + @abs(current_pos[1] * 32) + @abs(current_pos[2] * 32 * 32);
     }
     //std.debug.print("result: {} | {d:.2} {d:.2} {d:.2} | {} ", .{result, current_pos[0], current_pos[1], current_pos[2], steps});
 
-    return result;
+    return .{@floatFromInt(current_pos[0]), @floatFromInt(current_pos[1]), @floatFromInt(current_pos[2]), 1.0};
 }

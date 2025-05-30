@@ -995,22 +995,24 @@ pub const Instance = struct {
         c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 
         // outline
-        c.vkCmdBindPipeline(
-            command_buffer,
-            c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-            self.pipelines[self.render_targets.items[0].pipeline_index]
-            );
-        
-        c.vkCmdBindVertexBuffers(
-            command_buffer,
-            0,
-            1,
-            &self.vertex_buffers.items[self.render_targets.items[0].vertex_index],
-            &self.render_targets.items[0].vertex_buffer_offset
-            );
-        
-        c.vkCmdDraw(command_buffer, self.render_targets.items[0].vertex_count, 1, 0, 0);
-        
+        if (self.render_targets.items[0].rendering_enabled) {
+            c.vkCmdBindPipeline(
+                command_buffer,
+                c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+                self.pipelines[self.render_targets.items[0].pipeline_index]
+                );
+            
+            c.vkCmdBindVertexBuffers(
+                command_buffer,
+                0,
+                1,
+                &self.vertex_buffers.items[self.render_targets.items[0].vertex_index],
+                &self.render_targets.items[0].vertex_buffer_offset
+                );
+            
+            c.vkCmdDraw(command_buffer, self.render_targets.items[0].vertex_count, 1, 0, 0);
+        }
+
         // cursor
         c.vkCmdBindPipeline(
             command_buffer,
