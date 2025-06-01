@@ -4,6 +4,7 @@ const c = @import("clibs.zig");
 const vulkan = @import("vulkan.zig");
 const zm = @import("zmath");
 const meshers = @import("mesh_generation.zig");
+const chunk = @import("chunk.zig");
 
 const ENGINE_NAME = "CeresVoxel";
 
@@ -125,6 +126,7 @@ pub fn main() !void {
     defer instance.vertex_buffers.deinit();
     instance.vertex_allocs = std.ArrayList(c.VmaAllocation).init(instance.allocator.*);
     defer instance.vertex_allocs.deinit();
+    
     instance.render_targets = std.ArrayList(vulkan.RenderInfo).init(instance.allocator.*);
     defer instance.render_targets.deinit();
 
@@ -132,7 +134,6 @@ pub fn main() !void {
     defer instance.ubo_buffers.deinit();
     instance.ubo_allocs = std.ArrayList(c.VmaAllocation).init(instance.allocator.*);
     defer instance.ubo_allocs.deinit();
-
 
     instance.command_buffers = try instance.allocator.*.alloc(c.VkCommandBuffer, instance.MAX_CONCURRENT_FRAMES);
     defer instance.allocator.*.free(instance.command_buffers);
@@ -194,12 +195,12 @@ pub fn main() !void {
     
     try instance.create_pipeline_layout();
     try instance.create_render_pass();
-    // simple chunk
-    instance.pipelines[0] = try instance.create_generic_pipeline(chunk_vert_source, chunk_frag_source, false);
+    // cursor
+    instance.pipelines[0] = try instance.create_generic_pipeline(cursor_vert_source, cursor_frag_source, false);
     // outline
     instance.pipelines[1] = try instance.create_outline_pipeline(outline_vert_source, outline_frag_source);
-    // cursor
-    instance.pipelines[2] = try instance.create_generic_pipeline(cursor_vert_source, cursor_frag_source, false);
+    // simple chunk
+    instance.pipelines[2] = try instance.create_generic_pipeline(chunk_vert_source, chunk_frag_source, false);
     try instance.create_framebuffers();
     try instance.create_command_pool();
     try instance.create_command_buffers();
@@ -215,73 +216,57 @@ pub fn main() !void {
 
     c.glfwSetWindowSizeLimits(instance.window, 240, 135, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
 
+    try instance.render_targets.append(.{ .vertex_index = 0, .pipeline_index = 0});
     try instance.render_targets.append(.{ .vertex_index = 1, .pipeline_index = 1});
-    try instance.render_targets.append(.{ .vertex_index = 0, .pipeline_index = 2});
     
     try instance.create_vertex_buffer(0, @intCast(cursor_vertices.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
     try instance.create_vertex_buffer(1, @intCast(block_selection_cube.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
 
+    const planet_count : u32 = 9;
+    var voxel_spaces: [planet_count]chunk.VoxelSpace = undefined; 
 
-    const random = std.crypto.random; 
-
-    //const seed: u64 = random.int(u64);
-
-    const VoxelSpace = struct {
-        size: @Vector(3, u32),
-        pos: @Vector(3, f64),
-        rot: zm.Quat = zm.qidentity(),
-        chunks: std.ArrayList([32768]u8),
-    };
-
-    instance.voxel_spaces = try instance.allocator.*.alloc(VoxelSpace, 2);
-    defer instance.allocator.*.free(instance.voxel_spaces);
-
-    voxel_spaces[0] = .{
-        // sizes larger than 8**3 can't be sent to the GPU in one go
-        .size = .{2,2,2},
-        .pos = .{0.0,0.0,0.0},
-        .chunks = std.ArrayList([32768]u8).init(instance.allocator.*),
-    };
-    defer {
-        for (voxel_spaces) |space| {
-            space.chunks.deinit();
-        }
+    for (voxel_spaces, 0..planet_count) |vs, index| {
+        vs.size = .{2, 2, 2};
+        vs.pos = .{@intCast(vs.size[0]*index) + @intCast(index), 0.0, 0.0};
     }
 
-    for (voxel_spaces) |space| {
-        for (0..space.size[0] * space.size[1] * space.size[2]) |index| {
-            _ = &index;
-            var chunk_data : [32768]u8 = undefined;
-            for (0..32768) |i|
-            {
-                if (i / 32 % 32 % 4 == 0) {
-                    chunk_data[i] = 0;
-                } else {
-                    const val = random.int(u2);
-                    chunk_data[i] = val;
-                }
-            }
-            try space.chunks.append(chunk_data);
-        }
-    }
+    //const seed: u64 = 0;
+    //const random = std.rand.xoshiro256.init(seed);
 
-    const chunk_mesh_start_time : f64 = c.glfwGetTime();
-    var chunk_vertices : std.ArrayList(vulkan.Vertex) = std.ArrayList(vulkan.Vertex).init(instance.allocator.*);
-    defer chunk_vertices.deinit();
-    var vertex_count: u32 = 0;
-    for (voxel_spaces) |space| {
-        for (0..space.chunks.items.len) |index| {
-            const chunk_pos: @Vector(3, u8) = .{@as(u8, @intCast(index % space.size[0])), @as(u8, @intCast(index / space.size[0] % space.size[1])), @as(u8, @intCast(index / space.size[0] / space.size[1] % space.size[2]))};
-            const addition_size = try meshers.cull_mesh(&space.chunks.items[index], chunk_pos, &chunk_vertices);
-            vertex_count += addition_size;
-        }
-    
-        try instance.render_targets.append(.{ .vertex_index = 2, .pipeline_index = 0, .vertex_render_offset = 0});
-        const upload_mesh_starting_time: f64 = c.glfwGetTime(); 
-        try instance.create_vertex_buffer(2, @intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
-        
-        std.debug.print("chunk mesh time: {d:.3}ms \nupload mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0, (c.glfwGetTime() - upload_mesh_starting_time) * 1000.0 });
-    }
+    //for (instance.voxel_spaces) |space| {
+    //    for (0..space.size[0] * space.size[1] * space.size[2]) |index| {
+    //        _ = &index;
+    //        var chunk_data : [32768]u8 = undefined;
+    //        for (0..32768) |i|
+    //        {
+    //            if (i / 32 % 32 % 4 == 0) {
+    //                chunk_data[i] = 0;
+    //            } else {
+    //                const val = random.int(u2);
+    //                chunk_data[i] = val;
+    //            }
+    //        }
+    //        try space.chunks.append(chunk_data);
+    //    }
+    //}
+
+    //const chunk_mesh_start_time : f64 = c.glfwGetTime();
+    //var chunk_vertices : std.ArrayList(vulkan.Vertex) = std.ArrayList(vulkan.Vertex).init(instance.allocator.*);
+    //defer chunk_vertices.deinit();
+    //var vertex_count: u32 = 0;
+    //for (instance.voxel_spaces) |space| {
+    //    for (0..space.chunks.items.len) |index| {
+    //        const chunk_pos: @Vector(3, u8) = .{@as(u8, @intCast(index % space.size[0])), @as(u8, @intCast(index / space.size[0] % space.size[1])), @as(u8, @intCast(index / space.size[0] / space.size[1] % space.size[2]))};
+    //        const addition_size = try meshers.cull_mesh(&space.chunks.items[index], chunk_pos, &chunk_vertices);
+    //        vertex_count += addition_size;
+    //    }
+    //
+    //    try instance.render_targets.append(.{ .vertex_index = 2, .pipeline_index = 0, .vertex_render_offset = 0});
+    //    const upload_mesh_starting_time: f64 = c.glfwGetTime(); 
+    //    try instance.create_vertex_buffer(2, @intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
+    //    
+    //    std.debug.print("chunk mesh time: {d:.3}ms \nupload mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0, (c.glfwGetTime() - upload_mesh_starting_time) * 1000.0 });
+    //}
 
     
     // RENDER INIT
@@ -465,7 +450,7 @@ pub fn main() !void {
     instance.push_constant_data = try instance.allocator.*.alloc(u8, PUSH_CONSTANT_SIZE);
     defer instance.allocator.*.free(instance.push_constant_data);
 
-    var regen_chunk: bool = false;
+    //var regen_chunk: bool = false;
 
     while (c.glfwWindowShouldClose(instance.window) == 0) {
         c.glfwPollEvents();
@@ -513,13 +498,13 @@ pub fn main() !void {
         const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
         const view_proj: zm.Mat = zm.mul(view, projection);
         
-        var block_selection_success: bool = false;
-        var block_selection_index: u32 = 0;
+        //var block_selection_success: bool = false;
+        //var block_selection_index: u32 = 0;
         // TODO fix this function it is ugly as hell
-        const intersect_vec: zm.Vec = camera_block_intersection(&voxel_spaces.items[0].chunks.items[0], player_state.look, player_state.pos, &block_selection_success, &block_selection_index);
-        const block_selection_matrix: zm.Mat = zm.translation(intersect_vec[0], intersect_vec[1], intersect_vec[2]);
+        //const intersect_vec: zm.Vec = camera_block_intersection(&instance.voxel_spaces.items[0].chunks.items[0], player_state.look, player_state.pos, &block_selection_success, &block_selection_index);
+        //const block_selection_matrix: zm.Mat = zm.translation(intersect_vec[0], intersect_vec[1], intersect_vec[2]);
         @memcpy(instance.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
-        @memcpy(instance.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) * 2)], @as([*]u8, @ptrCast(@constCast(&block_selection_matrix)))[0..64]);
+        //@memcpy(instance.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) * 2)], @as([*]u8, @ptrCast(@constCast(&block_selection_matrix)))[0..64]);
         @memcpy(instance.push_constant_data[(@sizeOf(zm.Mat) * 2)..((@sizeOf(zm.Mat) * 2) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
 
         var speed : f32 = 5;
@@ -528,12 +513,12 @@ pub fn main() !void {
             speed = 100;
         }
 
-        instance.render_targets.items[0].rendering_enabled = block_selection_success;
+        //instance.render_targets.items[0].rendering_enabled = block_selection_success;
 
-        if (inputs.left_click and block_selection_success and inputs.mouse_capture) {
-            //Earth.chunks.items[0][block_selection_index] = 0;
-            regen_chunk = true;
-        }
+        //if (inputs.left_click and block_selection_success and inputs.mouse_capture) {
+        //    //Earth.chunks.items[0][block_selection_index] = 0;
+        //    regen_chunk = true;
+        //}
 
         // TODO Make this the center of gravitational wells and such
         if (inputs.space)
