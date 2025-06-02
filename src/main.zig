@@ -140,6 +140,11 @@ pub fn main() !void {
     defer instance.ubo_buffers.deinit();
     instance.ubo_allocs = std.ArrayList(c.VmaAllocation).init(instance.allocator.*);
     defer instance.ubo_allocs.deinit();
+    
+    instance.ssbo_buffers = std.ArrayList(c.VkBuffer).init(instance.allocator.*);
+    defer instance.ssbo_buffers.deinit();
+    instance.ssbo_allocs = std.ArrayList(c.VmaAllocation).init(instance.allocator.*);
+    defer instance.ssbo_allocs.deinit();
 
     instance.command_buffers = try instance.allocator.*.alloc(c.VkCommandBuffer, instance.MAX_CONCURRENT_FRAMES);
     defer instance.allocator.*.free(instance.command_buffers);
@@ -230,13 +235,20 @@ try instance.create_render_pass();
     try instance.create_vertex_buffer(0, @sizeOf(vulkan.Vertex), @intCast(cursor_vertices.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
     try instance.create_vertex_buffer(1, @sizeOf(vulkan.Vertex), @intCast(block_selection_cube.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
 
-
     var game_state = GameState{
         .voxel_spaces = try instance.allocator.*.alloc(chunk.VoxelSpace, 9),
     };
     defer instance.allocator.*.free(game_state.voxel_spaces);
-
-    _ = &game_state;
+    
+    const ChunkRenderData = struct {
+        x: u32,
+        y: u32,
+        z: u32,
+        model: zm.Mat = zm.identity(),
+    };
+    
+    var chunk_render_data: std.ArrayList(ChunkRenderData) = std.ArrayList(ChunkRenderData).init(instance.allocator.*);
+    defer chunk_render_data.deinit();
 
     for (game_state.voxel_spaces, 0..game_state.voxel_spaces.len) |vs, index| {
         game_state.voxel_spaces[index].size = .{2, 2, 2};
@@ -257,14 +269,25 @@ try instance.create_render_pass();
             const new_vertices_count = try mesh_generation.cull_mesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
             _ = &new_vertices_count;
             std.debug.print("Chicken {} \n", .{new_vertices_count});
+
+            try chunk_render_data.append(.{
+                .x = @intCast(chunk_index),
+                .y = @intCast(chunk_index),
+                .z = @intCast(chunk_index),
+                .model = zm.translation(@floatCast(vs.pos[0]), @floatCast(vs.pos[1]), @floatCast(vs.pos[2])),
+            });
         }
         last_space_chunk_index += vs.size[0] + vs.size[1] + vs.size[2];
+
 
         const vertex_buffer_index: u32 = 2 + @as(u32, @intCast(space_index));
         try instance.render_targets.append(.{ .vertex_index = vertex_buffer_index, .pipeline_index = 2, .vertex_render_offset = 0});
         try instance.create_vertex_buffer(vertex_buffer_index, @sizeOf(vulkan.ChunkVertex), @intCast(mesh_data.items.len * @sizeOf(vulkan.ChunkVertex)), mesh_data.items.ptr);
     }
-    
+
+    // TODO initialize chunk data appropriately
+    try instance.create_ssbo(@intCast(chunk_render_data.items.len * @sizeOf(ChunkRenderData)), &chunk_render_data.items[0]);
+
     // RENDER INIT
 
     const BlockSelectorTransform = struct {
@@ -376,10 +399,17 @@ try instance.create_render_pass();
     }
     
     for (0..MAX_CONCURRENT_FRAMES) |i| {
-        const buffer_info = c.VkDescriptorBufferInfo{
-            .buffer = instance.ubo_buffers.items[i],
-            .offset = 0,
-            .range = @sizeOf(BlockSelectorTransform),
+        const buffers: [2]c.VkDescriptorBufferInfo = .{
+            c.VkDescriptorBufferInfo{
+                .buffer = instance.ubo_buffers.items[i],
+                .offset = 0,
+                .range = @sizeOf(BlockSelectorTransform),
+            },
+            c.VkDescriptorBufferInfo{
+                .buffer = instance.ssbo_buffers.items[0],
+                .offset = 0,
+                .range = chunk_render_data.items.len * @sizeOf(ChunkRenderData),
+            },
         };
         
         const images: [2]c.VkDescriptorImageInfo = .{
@@ -395,7 +425,7 @@ try instance.create_render_pass();
             }
         };
 
-        const descriptor_writes: [3]c.VkWriteDescriptorSet = .{
+        const descriptor_writes: [4]c.VkWriteDescriptorSet = .{
             c.VkWriteDescriptorSet{
                 .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = instance.descriptor_sets[i],
@@ -403,7 +433,7 @@ try instance.create_render_pass();
                 .dstArrayElement = 0,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
-                .pBufferInfo = &buffer_info,
+                .pBufferInfo = &buffers[0],
                 .pImageInfo = null,
                 .pTexelBufferView = null,
             },
@@ -427,6 +457,17 @@ try instance.create_render_pass();
                 .descriptorCount = 1,
                 .pBufferInfo = null,
                 .pImageInfo = &images[1],
+                .pTexelBufferView = null,
+            },
+            c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = instance.descriptor_sets[i],
+                .dstBinding = 3,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &buffers[1],
+                .pImageInfo = null,
                 .pTexelBufferView = null,
             },
         };

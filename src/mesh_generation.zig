@@ -102,6 +102,7 @@ pub fn cull_mesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList
             const br = .{1.0,uv_index+step};
             
             const i: u16 = @as(u15, @truncate(index));
+            //std.debug.print("i: {}", .{i});
 
             //const i : u32 = @intCast(index);
             //const x : f32 = @floatFromInt(i % 32 + @as(u32, @intCast(chunk_pos[0])) * 32);

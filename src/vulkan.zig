@@ -151,14 +151,17 @@ pub const Instance = struct {
     renderpass: c.VkRenderPass = undefined,
     pipelines: []c.VkPipeline = undefined,
     frame_buffers: []c.VkFramebuffer = undefined,
+    
+    render_targets: std.ArrayList(RenderInfo) = undefined,
 
     vertex_buffers: std.ArrayList(c.VkBuffer) = undefined,
     vertex_allocs: std.ArrayList(c.VmaAllocation) = undefined,
 
-    render_targets: std.ArrayList(RenderInfo) = undefined,
-
     ubo_buffers: std.ArrayList(c.VkBuffer) = undefined,
     ubo_allocs: std.ArrayList(c.VmaAllocation) = undefined,
+    
+    ssbo_buffers: std.ArrayList(c.VkBuffer) = undefined,
+    ssbo_allocs: std.ArrayList(c.VmaAllocation) = undefined,
 
     images: []ImageInfo = undefined,
 
@@ -1657,6 +1660,40 @@ pub const Instance = struct {
         
         c.vmaDestroyBuffer(self.vma_allocator, old_buffer, old_alloc);
     }
+    
+    // TODO decide whether we want to make this host coherent based on the frequency
+    // of chunk data updates
+    // TODO make a way to modify the buffer at all, could replace it or change
+    // data based on frequency and size...
+    pub fn create_ssbo(self: *Instance, size: u32, ptr: *anyopaque) VkAbstractionError!void
+    {
+        var ssbo: c.VkBuffer = undefined;
+        var alloc: c.VmaAllocation = undefined;
+    
+        var buffer_create_info = c.VkBufferCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = size,
+            .usage = c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        }; 
+    
+        const alloc_create_info = c.VmaAllocationCreateInfo{
+            .usage = c.VMA_MEMORY_USAGE_AUTO,
+            .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+        };
+    
+        const buffer_success = c.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &ssbo, &alloc, null);
+        
+        if (buffer_success != c.VK_SUCCESS)
+        {
+            std.debug.print("success: {}\n", .{buffer_success});
+            return VkAbstractionError.VertexBufferCreationFailure;
+        }
+
+        try self.copy_data_via_staging_buffer(&ssbo, size, ptr);
+
+        try self.ssbo_buffers.append(ssbo);
+        try self.ssbo_allocs.append(alloc);
+    }
 
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called
@@ -1668,6 +1705,10 @@ pub const Instance = struct {
 
         for (0..self.vertex_buffers.items.len) |i| {
             c.vmaDestroyBuffer(self.vma_allocator, self.vertex_buffers.items[i], self.vertex_allocs.items[i]);
+        }
+        
+        for (0..self.ssbo_buffers.items.len) |i| {
+            c.vmaDestroyBuffer(self.vma_allocator, self.ssbo_buffers.items[i], self.ssbo_allocs.items[i]);
         }
 
         for (0..self.MAX_CONCURRENT_FRAMES) |i| {
