@@ -11,9 +11,6 @@ layout(binding = 0) uniform chunk_transform {
 } ct;
 
 struct chunk {
-    uint x;
-    uint y;
-    uint z;
     mat4 model;
 };
 
@@ -29,9 +26,9 @@ layout(location = 0) out vec2 uv_out;
 
 void main()
 {
-    const float x = in_pos % 32 + cd.data[chunk_index].x;
-    const float y = in_pos / 32 % 32 + cd.data[chunk_index].y;
-    const float z = in_pos / 32 / 32 % 32 + cd.data[chunk_index].z;
-    gl_Position = pc.view_proj * vec4(x, y, z, 1.0);
+    const float x = in_pos % 32;
+    const float y = in_pos / 32 % 32;
+    const float z = in_pos / 32 / 32 % 32;
+    gl_Position = pc.view_proj * cd.data[chunk_index].model * vec4(x, y, z, 1.0);
     uv_out = uv;
 }

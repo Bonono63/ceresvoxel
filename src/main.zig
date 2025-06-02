@@ -241,9 +241,8 @@ try instance.create_render_pass();
     defer instance.allocator.*.free(game_state.voxel_spaces);
     
     const ChunkRenderData = struct {
-        x: u32,
-        y: u32,
-        z: u32,
+        size: @Vector(3, u32),
+        pos: @Vector(3, f32),
         model: zm.Mat = zm.identity(),
     };
     
@@ -251,8 +250,9 @@ try instance.create_render_pass();
     defer chunk_render_data.deinit();
 
     for (game_state.voxel_spaces, 0..game_state.voxel_spaces.len) |vs, index| {
+        _ = &vs;
         game_state.voxel_spaces[index].size = .{2, 2, 2};
-        game_state.voxel_spaces[index].pos = .{@as(f32, @floatFromInt(vs.size[0]*index + index * 32)), 0.0, 0.0};
+        game_state.voxel_spaces[index].pos = .{@as(f32, @floatFromInt(index * 32)), 0.0, 0.0};
     }
 
     try instance.render_targets.ensureUnusedCapacity(game_state.voxel_spaces.len);
@@ -263,7 +263,7 @@ try instance.create_render_pass();
         var mesh_data = std.ArrayList(vulkan.ChunkVertex).init(instance.allocator.*);
         defer mesh_data.deinit();
 
-        for (0..vs.size[0] + vs.size[1] + vs.size[2]) |chunk_index| {
+        for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
             // The goal is for this get chunk to be faster than reading the disk for an unmodified chunk
             const data = try chunk.get_chunk_data(game_state.seed, @intCast(space_index), .{0,0,0});
             const new_vertices_count = try mesh_generation.cull_mesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
@@ -271,13 +271,12 @@ try instance.create_render_pass();
             std.debug.print("Chicken {} \n", .{new_vertices_count});
 
             try chunk_render_data.append(.{
-                .x = @intCast(chunk_index),
-                .y = @intCast(chunk_index),
-                .z = @intCast(chunk_index),
                 .model = zm.translation(@floatCast(vs.pos[0]), @floatCast(vs.pos[1]), @floatCast(vs.pos[2])),
+                .size = .{2,2,2},
+                .pos = .{0,0,0},
             });
         }
-        last_space_chunk_index += vs.size[0] + vs.size[1] + vs.size[2];
+        last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
 
 
         const vertex_buffer_index: u32 = 2 + @as(u32, @intCast(space_index));
