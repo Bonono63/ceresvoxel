@@ -10,13 +10,17 @@ layout(binding = 0) uniform chunk_transform {
     mat4 model;
 } ct;
 
-layout(location = 0) in vec3 in_pos;
-layout(location = 1) in vec3 in_color;
+layout(location = 0) in uint in_pos;
+layout(location = 1) in vec2 uv;
+layout(location = 2) in uint chunk_index;
 
-layout(location = 0) out vec3 fragColor;
+layout(location = 0) out vec2 uv_out;
 
 void main()
 {
-    gl_Position = pc.view_proj * ct.model * vec4(in_pos, 1.0);
-    fragColor = in_color;
+    const float x = in_pos % 32;
+    const float y = in_pos / 32 % 32;
+    const float z = in_pos / 32 / 32 % 32;
+    gl_Position = pc.view_proj * vec4(x, y, z, 1.0);
+    uv_out = uv;
 }

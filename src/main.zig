@@ -3,7 +3,7 @@ const std = @import("std");
 const c = @import("clibs.zig");
 const vulkan = @import("vulkan.zig");
 const zm = @import("zmath");
-const meshers = @import("mesh_generation.zig");
+const mesh_generation = @import("mesh_generation.zig");
 const chunk = @import("chunk.zig");
 
 const ENGINE_NAME = "CeresVoxel";
@@ -57,26 +57,26 @@ const MAX_CONCURRENT_FRAMES = 2;
 
 const block_selection_cube: [17]vulkan.Vertex = .{
     //front
-    .{.pos = .{0.0,0.0,0.0}, .color = .{0.0,0.0,0.0} },
-    .{.pos = .{1.0,0.0,0.0}, .color = .{0.0,0.0,0.0} },
-    .{.pos = .{1.0,1.0,0.0}, .color = .{0.0,0.0,0.0} },
-    .{.pos = .{0.0,1.0,0.0}, .color = .{0.0,0.0,0.0} },
+    .{.pos = .{0.0,0.0,0.0}, .color = .{1.0,1.0,1.0} },
+    .{.pos = .{1.0,0.0,0.0}, .color = .{1.0,1.0,1.0} },
+    .{.pos = .{1.0,1.0,0.0}, .color = .{1.0,1.0,1.0} },
+    .{.pos = .{0.0,1.0,0.0}, .color = .{1.0,1.0,1.0} },
     //left
-    .{.pos = .{0.0,0.0,0.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{0.0,0.0,1.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{0.0,1.0,1.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{0.0,1.0,0.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{0.0,0.0,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.0,0.0,0.0}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{0.0,0.0,1.0}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{0.0,1.0,1.0}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{0.0,1.0,0.0}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{0.0,0.0,0.0}, .color = .{1.0,1.0,1.0}},
     //right
-    .{.pos = .{1.0,0.0,0.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{1.0,0.0,1.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{1.0,1.0,1.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{1.0,1.0,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{1.0,0.0,0.0}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{1.0,0.0,1.0}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{1.0,1.0,1.0}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{1.0,1.0,0.0}, .color = .{1.0,1.0,1.0}},
     //back
-    .{.pos = .{1.0,1.0,1.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{0.0,1.0,1.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{0.0,0.0,1.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{1.0,0.0,1.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{1.0,1.0,1.0}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{0.0,1.0,1.0}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{0.0,0.0,1.0}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{1.0,0.0,1.0}, .color = .{1.0,1.0,1.0}},
 };
 
 const cursor_vertices: [6]vulkan.Vertex = .{
@@ -93,6 +93,12 @@ const cursor_vertices: [6]vulkan.Vertex = .{
 fn pos_to_index(pos: @Vector(3, u8)) u32 {
     return @as(u32, @intCast(pos[0])) << 24;// & pos[1] << 16 & pos[2] << 8;
 }
+
+const GameState = struct {
+    planet_count: u32 = 9,
+    voxel_spaces: []chunk.VoxelSpace = undefined,
+    seed: u64 = 0,
+};
 
 pub fn main() !void {
     // ZIG INIT
@@ -184,8 +190,8 @@ pub fn main() !void {
 
     try instance.create_depth_resources();
 
-    const PUSH_CONSTANT_SIZE: u32 = @sizeOf(zm.Mat) + @sizeOf(zm.Mat) + 4 + 4;
-    // 64: view_proj | 64: block_selection_model | 4: aspect ratio | 4: voxel_space index |
+    const PUSH_CONSTANT_SIZE: u32 = @sizeOf(zm.Mat) + @sizeOf(zm.Mat) + 4;
+    // 64: view_proj | 64: block_selection_model | 4: aspect ratio |
     instance.push_constant_info = c.VkPushConstantRange{
         .stageFlags = c.VK_SHADER_STAGE_ALL,
         .offset = 0,
@@ -194,13 +200,13 @@ pub fn main() !void {
     };
     
     try instance.create_pipeline_layout();
-    try instance.create_render_pass();
+try instance.create_render_pass();
     // cursor
     instance.pipelines[0] = try instance.create_generic_pipeline(cursor_vert_source, cursor_frag_source, false);
     // outline
     instance.pipelines[1] = try instance.create_outline_pipeline(outline_vert_source, outline_frag_source);
     // simple chunk
-    instance.pipelines[2] = try instance.create_generic_pipeline(chunk_vert_source, chunk_frag_source, false);
+    instance.pipelines[2] = try instance.create_simple_chunk_pipeline(chunk_vert_source, chunk_frag_source, false);
     try instance.create_framebuffers();
     try instance.create_command_pool();
     try instance.create_command_buffers();
@@ -216,70 +222,60 @@ pub fn main() !void {
 
     c.glfwSetWindowSizeLimits(instance.window, 240, 135, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
 
+    // cursor
     try instance.render_targets.append(.{ .vertex_index = 0, .pipeline_index = 0});
+    // outline
     try instance.render_targets.append(.{ .vertex_index = 1, .pipeline_index = 1});
     
-    try instance.create_vertex_buffer(0, @intCast(cursor_vertices.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
-    try instance.create_vertex_buffer(1, @intCast(block_selection_cube.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
+    try instance.create_vertex_buffer(0, @sizeOf(vulkan.Vertex), @intCast(cursor_vertices.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
+    try instance.create_vertex_buffer(1, @sizeOf(vulkan.Vertex), @intCast(block_selection_cube.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
 
-    const planet_count : u32 = 9;
-    var voxel_spaces: [planet_count]chunk.VoxelSpace = undefined; 
 
-    for (voxel_spaces, 0..planet_count) |vs, index| {
-        vs.size = .{2, 2, 2};
-        vs.pos = .{@intCast(vs.size[0]*index) + @intCast(index), 0.0, 0.0};
+    var game_state = GameState{
+        .voxel_spaces = try instance.allocator.*.alloc(chunk.VoxelSpace, 9),
+    };
+    defer instance.allocator.*.free(game_state.voxel_spaces);
+
+    _ = &game_state;
+
+    for (game_state.voxel_spaces, 0..game_state.voxel_spaces.len) |vs, index| {
+        game_state.voxel_spaces[index].size = .{2, 2, 2};
+        game_state.voxel_spaces[index].pos = .{@as(f32, @floatFromInt(vs.size[0]*index + index * 32)), 0.0, 0.0};
     }
 
-    //const seed: u64 = 0;
-    //const random = std.rand.xoshiro256.init(seed);
+    try instance.render_targets.ensureUnusedCapacity(game_state.voxel_spaces.len);
 
-    //for (instance.voxel_spaces) |space| {
-    //    for (0..space.size[0] * space.size[1] * space.size[2]) |index| {
-    //        _ = &index;
-    //        var chunk_data : [32768]u8 = undefined;
-    //        for (0..32768) |i|
-    //        {
-    //            if (i / 32 % 32 % 4 == 0) {
-    //                chunk_data[i] = 0;
-    //            } else {
-    //                const val = random.int(u2);
-    //                chunk_data[i] = val;
-    //            }
-    //        }
-    //        try space.chunks.append(chunk_data);
-    //    }
-    //}
+    var last_space_chunk_index: u32 = 0;
+    // TODO add entries in a chunk data storage buffer for chunk pos etc.
+    for (game_state.voxel_spaces, 0..game_state.voxel_spaces.len) |vs, space_index| {
+        var mesh_data = std.ArrayList(vulkan.ChunkVertex).init(instance.allocator.*);
+        defer mesh_data.deinit();
 
-    //const chunk_mesh_start_time : f64 = c.glfwGetTime();
-    //var chunk_vertices : std.ArrayList(vulkan.Vertex) = std.ArrayList(vulkan.Vertex).init(instance.allocator.*);
-    //defer chunk_vertices.deinit();
-    //var vertex_count: u32 = 0;
-    //for (instance.voxel_spaces) |space| {
-    //    for (0..space.chunks.items.len) |index| {
-    //        const chunk_pos: @Vector(3, u8) = .{@as(u8, @intCast(index % space.size[0])), @as(u8, @intCast(index / space.size[0] % space.size[1])), @as(u8, @intCast(index / space.size[0] / space.size[1] % space.size[2]))};
-    //        const addition_size = try meshers.cull_mesh(&space.chunks.items[index], chunk_pos, &chunk_vertices);
-    //        vertex_count += addition_size;
-    //    }
-    //
-    //    try instance.render_targets.append(.{ .vertex_index = 2, .pipeline_index = 0, .vertex_render_offset = 0});
-    //    const upload_mesh_starting_time: f64 = c.glfwGetTime(); 
-    //    try instance.create_vertex_buffer(2, @intCast(chunk_vertices.items.len * @sizeOf(vulkan.Vertex)), chunk_vertices.items.ptr);
-    //    
-    //    std.debug.print("chunk mesh time: {d:.3}ms \nupload mesh time: {d:.3}ms\n", .{ (c.glfwGetTime() - chunk_mesh_start_time) * 1000.0, (c.glfwGetTime() - upload_mesh_starting_time) * 1000.0 });
-    //}
+        for (0..vs.size[0] + vs.size[1] + vs.size[2]) |chunk_index| {
+            // The goal is for this get chunk to be faster than reading the disk for an unmodified chunk
+            const data = try chunk.get_chunk_data(game_state.seed, @intCast(space_index), .{0,0,0});
+            const new_vertices_count = try mesh_generation.cull_mesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
+            _ = &new_vertices_count;
+            std.debug.print("Chicken {} \n", .{new_vertices_count});
+        }
+        last_space_chunk_index += vs.size[0] + vs.size[1] + vs.size[2];
 
+        const vertex_buffer_index: u32 = 2 + @as(u32, @intCast(space_index));
+        try instance.render_targets.append(.{ .vertex_index = vertex_buffer_index, .pipeline_index = 2, .vertex_render_offset = 0});
+        try instance.create_vertex_buffer(vertex_buffer_index, @sizeOf(vulkan.ChunkVertex), @intCast(mesh_data.items.len * @sizeOf(vulkan.ChunkVertex)), mesh_data.items.ptr);
+    }
     
     // RENDER INIT
 
-    const ChunkTransform = struct {
+    const BlockSelectorTransform = struct {
         model: zm.Mat = zm.identity(),
     };
     
-    var object_transform = ChunkTransform{};
+    var selector_transform = BlockSelectorTransform{};
 
     const create_info = c.VkBufferCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = @sizeOf(ChunkTransform),
+        .size = @sizeOf(BlockSelectorTransform),
         .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
     };
 
@@ -296,7 +292,7 @@ pub fn main() !void {
         var alloc: c.VmaAllocation = undefined;
         _ = c.vmaCreateBuffer(instance.vma_allocator, &create_info, &ubo_alloc_create_info, &buffer, &alloc, null);
         
-        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, alloc, 0, @sizeOf(ChunkTransform));
+        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &selector_transform, alloc, 0, @sizeOf(BlockSelectorTransform));
         try instance.ubo_allocs.append(alloc);
         try instance.ubo_buffers.append(buffer);
     }
@@ -383,7 +379,7 @@ pub fn main() !void {
         const buffer_info = c.VkDescriptorBufferInfo{
             .buffer = instance.ubo_buffers.items[i],
             .offset = 0,
-            .range = @sizeOf(ChunkTransform),
+            .range = @sizeOf(BlockSelectorTransform),
         };
         
         const images: [2]c.VkDescriptorImageInfo = .{
@@ -502,9 +498,9 @@ pub fn main() !void {
         //var block_selection_index: u32 = 0;
         // TODO fix this function it is ugly as hell
         //const intersect_vec: zm.Vec = camera_block_intersection(&instance.voxel_spaces.items[0].chunks.items[0], player_state.look, player_state.pos, &block_selection_success, &block_selection_index);
-        //const block_selection_matrix: zm.Mat = zm.translation(intersect_vec[0], intersect_vec[1], intersect_vec[2]);
+        const block_selection_matrix: zm.Mat = zm.identity();
         @memcpy(instance.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
-        //@memcpy(instance.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) * 2)], @as([*]u8, @ptrCast(@constCast(&block_selection_matrix)))[0..64]);
+        @memcpy(instance.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) * 2)], @as([*]u8, @ptrCast(@constCast(&block_selection_matrix)))[0..64]);
         @memcpy(instance.push_constant_data[(@sizeOf(zm.Mat) * 2)..((@sizeOf(zm.Mat) * 2) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
 
         var speed : f32 = 5;
@@ -558,7 +554,7 @@ pub fn main() !void {
             frame_delta * 1000.0,
         });
 
-        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &object_transform, instance.ubo_allocs.items[current_frame_index], 0, @sizeOf(ChunkTransform));
+        _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &selector_transform, instance.ubo_allocs.items[current_frame_index], 0, @sizeOf(BlockSelectorTransform));
 
         try instance.draw_frame(current_frame_index);
 

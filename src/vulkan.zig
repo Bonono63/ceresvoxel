@@ -77,6 +77,12 @@ pub const Vertex = struct {
     color: @Vector(3, f32),
 };
 
+pub const ChunkVertex = packed struct {
+    index: u32,
+    uv: @Vector(2, f32), // TODO Make the UV split into a texture index and the normal values (we can do basic lighting and have access to all textures using a texture atlas essentially with the same amount of data)
+    pos: u16, // 3 * u5 + 1 bit
+};
+
 /// image_views size should be of size MAX_CONCURRENT_FRAMES
 /// Current implementation also assumes 2D texture
 /// Defaults to 2D image view type
@@ -514,11 +520,9 @@ pub const Instance = struct {
 
     pub fn create_descriptor_set_layouts(self : *Instance) VkAbstractionError!void
     {
-        const DESCRIPTOR_COUNT : u32 = 3;
-
         // A description of the bindings and their contents
         // Essentially we need one of these per uniform buffer
-        const layout_bindings: [DESCRIPTOR_COUNT]c.VkDescriptorSetLayoutBinding = .{
+        const layout_bindings: [4]c.VkDescriptorSetLayoutBinding = .{
             c.VkDescriptorSetLayoutBinding{
                 .binding = 0,
                 .descriptorCount = 1,
@@ -538,6 +542,13 @@ pub const Instance = struct {
                 .descriptorCount = 1,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 .stageFlags = c.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_FRAGMENT_BIT,
+                .pImmutableSamplers = null,
+            },
+            c.VkDescriptorSetLayoutBinding{
+                .binding = 3,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .stageFlags = c.VK_SHADER_STAGE_ALL,
                 .pImmutableSamplers = null,
             },
         };
@@ -589,13 +600,12 @@ pub const Instance = struct {
             .pDynamicStates = &dynamic_state,
         };
 
-        var binding_description: []c.VkVertexInputBindingDescription = undefined;
-        binding_description = try self.allocator.*.alloc(c.VkVertexInputBindingDescription, 1);
-        defer self.allocator.*.free(binding_description);
-        binding_description[0] = .{
-            .binding = 0,
-            .stride = @sizeOf(Vertex),
-            .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,
+        var binding_description: [1]c.VkVertexInputBindingDescription = .{ 
+            c.VkVertexInputBindingDescription{
+                .binding = 0,
+                .stride = @sizeOf(Vertex),
+                .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,
+            }
         };
 
         var attribute_description: []c.VkVertexInputAttributeDescription = undefined;
@@ -607,7 +617,7 @@ pub const Instance = struct {
         const vertex_input_info = c.VkPipelineVertexInputStateCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
             .vertexBindingDescriptionCount = @intCast(binding_description.len),
-            .pVertexBindingDescriptions = binding_description.ptr,
+            .pVertexBindingDescriptions = &binding_description,
             .vertexAttributeDescriptionCount = @intCast(attribute_description.len),
             .pVertexAttributeDescriptions = attribute_description.ptr,
         };
@@ -1038,6 +1048,164 @@ pub const Instance = struct {
         }
     }
 
+    pub fn create_simple_chunk_pipeline(self: *Instance, vert_source: []align(4) u8, frag_source: []align(4) u8, wireframe: bool) VkAbstractionError!c.VkPipeline {
+        const vert_index = self.shader_modules.items.len;
+        try create_shader_module(self, vert_source);
+        const frag_index = self.shader_modules.items.len;
+        try create_shader_module(self, frag_source);
+
+
+        const vertex_shader_stage = c.VkPipelineShaderStageCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = c.VK_SHADER_STAGE_VERTEX_BIT,
+            .module = self.shader_modules.items[vert_index],
+            .pName = "main",
+        };
+
+        const fragment_shader_stage = c.VkPipelineShaderStageCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = self.shader_modules.items[frag_index],
+            .pName = "main",
+        };
+
+        const shader_stages: [2]c.VkPipelineShaderStageCreateInfo = .{vertex_shader_stage, fragment_shader_stage};
+
+        const dynamic_state = [_]c.VkDynamicState{
+            c.VK_DYNAMIC_STATE_VIEWPORT,
+            c.VK_DYNAMIC_STATE_SCISSOR,
+        };
+
+        const dynamic_state_create_info = c.VkPipelineDynamicStateCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+            .dynamicStateCount = dynamic_state.len,
+            .pDynamicStates = &dynamic_state,
+        };
+
+        const binding_description: [1]c.VkVertexInputBindingDescription = .{
+            c.VkVertexInputBindingDescription{
+                .binding = 0,
+                .stride = @sizeOf(ChunkVertex),
+                .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,
+            },
+        };
+
+        const attribute_description: [3]c.VkVertexInputAttributeDescription = .{ 
+            c.VkVertexInputAttributeDescription{ .binding = 0, .location = 0, .format = c.VK_FORMAT_R32_UINT, .offset = 0 }, // chunk index
+            c.VkVertexInputAttributeDescription{ .binding = 0, .location = 1, .format = c.VK_FORMAT_R32G32_SFLOAT, .offset = @sizeOf(u32) }, // uv
+            c.VkVertexInputAttributeDescription{ .binding = 0, .location = 2, .format = c.VK_FORMAT_R16_UINT, .offset = @sizeOf(u32) + @sizeOf(@Vector(2, f32)) }, // pos
+        };
+
+        const vertex_input_info = c.VkPipelineVertexInputStateCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+            .vertexBindingDescriptionCount = @intCast(binding_description.len),
+            .pVertexBindingDescriptions = &binding_description,
+            .vertexAttributeDescriptionCount = @intCast(attribute_description.len),
+            .pVertexAttributeDescriptions = &attribute_description,
+        };
+
+        const assembly_create_info = c.VkPipelineInputAssemblyStateCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+            .topology = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            .primitiveRestartEnable = c.VK_FALSE,
+        };
+
+        const viewport = c.VkViewport{
+            .x = 0.0,
+            .y = 0.0,
+            .width = @floatFromInt(self.swapchain_extent.width),
+            .height = @floatFromInt(self.swapchain_extent.height),
+            .minDepth = 0.0,
+            .maxDepth = 1.0,
+        };
+
+        const scissor = c.VkRect2D{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = self.swapchain_extent,
+        };
+
+        const viewport_create_info = c.VkPipelineViewportStateCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            .viewportCount = 1,
+            .pViewports = &viewport,
+            .scissorCount = 1,
+            .pScissors = &scissor,
+        };
+
+        const rasterization_create_info = c.VkPipelineRasterizationStateCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+            .depthClampEnable = c.VK_FALSE,
+            .rasterizerDiscardEnable = c.VK_FALSE,
+            .polygonMode = if (wireframe) c.VK_POLYGON_MODE_LINE else c.VK_POLYGON_MODE_FILL,
+            .lineWidth = 1.0,
+            .cullMode = c.VK_CULL_MODE_BACK_BIT,
+            .frontFace = c.VK_FRONT_FACE_CLOCKWISE,
+            .depthBiasEnable = c.VK_FALSE,
+            .depthBiasConstantFactor = 0.0,
+            .depthBiasClamp = 0.0,
+            .depthBiasSlopeFactor = 0.0,
+        };
+
+        const multisampling_create_info = c.VkPipelineMultisampleStateCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            .sampleShadingEnable = c.VK_FALSE,
+            .rasterizationSamples = c.VK_SAMPLE_COUNT_1_BIT,
+            .minSampleShading = 1.0,
+            .pSampleMask = null,
+            .alphaToCoverageEnable = c.VK_FALSE,
+            .alphaToOneEnable = c.VK_FALSE,
+        };
+
+        const color_blending_attachment_create_info = c.VkPipelineColorBlendAttachmentState{
+            .colorWriteMask = c.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
+            .blendEnable = c.VK_FALSE,
+        };
+
+        const color_blending_create_info = c.VkPipelineColorBlendStateCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            .logicOpEnable = c.VK_FALSE,
+            .logicOp = c.VK_LOGIC_OP_COPY,
+            .attachmentCount = 1,
+            .pAttachments = &color_blending_attachment_create_info,
+        };
+
+        const depth_stencil_state_info = c.VkPipelineDepthStencilStateCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+            .depthTestEnable = c.VK_TRUE,
+            .depthWriteEnable = c.VK_TRUE,
+            .depthCompareOp = c.VK_COMPARE_OP_LESS,
+            .depthBoundsTestEnable = c.VK_FALSE,
+            .minDepthBounds = 0.0,
+            .maxDepthBounds = 1.0,
+            .stencilTestEnable = c.VK_FALSE,
+        };
+
+        const pipeline_create_info = c.VkGraphicsPipelineCreateInfo{
+            .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+            .stageCount = @intCast(shader_stages.len),
+            .pStages = &shader_stages,
+            .pVertexInputState = &vertex_input_info,
+            .pInputAssemblyState = &assembly_create_info,
+            .pViewportState = &viewport_create_info,
+            .pRasterizationState = &rasterization_create_info,
+            .pMultisampleState = &multisampling_create_info,
+            .pDepthStencilState = &depth_stencil_state_info,
+            .pColorBlendState = &color_blending_create_info,
+            .pDynamicState = &dynamic_state_create_info,
+            .layout = self.pipeline_layout,
+            .renderPass = self.renderpass,
+            .subpass = 0,
+        };
+
+        var pipeline: c.VkPipeline = undefined;
+        const pipeline_success = c.vkCreateGraphicsPipelines(self.device, null, 1, &pipeline_create_info, null, &pipeline);
+        if (pipeline_success != c.VK_SUCCESS) {
+            return VkAbstractionError.FailedCreatingGraphicsPipeline;
+        }
+
+        return pipeline;
+    }
+
     pub fn create_render_pass(self: *Instance) VkAbstractionError!void {
         const color_attachment = c.VkAttachmentDescription{
             .format = self.swapchain_format.format,
@@ -1419,8 +1587,8 @@ pub const Instance = struct {
 
         c.vmaDestroyBuffer(self.vma_allocator, staging_buffer, staging_alloc);
     }
-
-    pub fn create_vertex_buffer(self: *Instance, render_index: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void
+    
+    pub fn create_vertex_buffer(self: *Instance, render_index: u32, stride_size: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void
     {
         var vertex_buffer : c.VkBuffer = undefined;
         var alloc: c.VmaAllocation = undefined;
@@ -1448,7 +1616,7 @@ pub const Instance = struct {
 
         try self.vertex_buffers.append(vertex_buffer);
         try self.vertex_allocs.append(alloc);
-        const vertex_count = size / @sizeOf(Vertex);
+        const vertex_count = size / stride_size;
         self.render_targets.items[render_index].vertex_count = vertex_count;
     }
 
