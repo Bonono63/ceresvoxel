@@ -101,156 +101,153 @@ pub fn cull_mesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList
             const tr = .{1.0,uv_index};
             const br = .{1.0,uv_index+step};
             
-            const i: u16 = @as(u15, @truncate(index));
-            //std.debug.print("i: {}", .{i});
+            const i : u32 = @intCast(index);
+            const x : f32 = @floatFromInt(i % 32);
+            const y : f32 = @floatFromInt(i / 32 % 32);
+            const z : f32 = @floatFromInt(i / 32 / 32 % 32);
 
-            //const i : u32 = @intCast(index);
-            //const x : f32 = @floatFromInt(i % 32 + @as(u32, @intCast(chunk_pos[0])) * 32);
-            //const y : f32 = @floatFromInt(i / 32 % 32 + @as(u32, @intCast(chunk_pos[1])) * 32);
-            //const z : f32 = @floatFromInt(i / 32 / 32 % 32 + @as(u32, @intCast( chunk_pos[2])) * 32);
+            if (index % 32 < 31) {
+                const xp = data[index+1];
+                if (xp == 0) {
+                    //Right
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    
+                    try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                }
+            } else {
+                //Right
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr, .index = chunk_index });
+                try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                
+                try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
+                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+            }
 
-            //if (index % 32 < 31) {
-            //    const xp = data[index+1];
-            //    if (xp == 0) {
-            //        //Right
-            //        try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr });
-            //        try list.append(.{.pos = .{ x + 1.0, y, z }, .vu = br });
-            //        try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
-            //        
-            //        try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br });
-            //        try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
-            //        try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
-            //    }
-            //} else {
-            //    //Right
-            //    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr });
-            //    try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br });
-            //    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
-            //    
-            //    try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br });
-            //    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
-            //    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
-            //}
+            if (index % 32 > 0) {
+                const xn = data[index-1];
+                if (xn == 0) {
+                    //Left
+                    try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y, z }, .uv = bl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                    
+                    try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                }
+            } else {
+                //Left
+                try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                try list.append(.{.pos = .{ x, y, z }, .uv = bl, .index = chunk_index });
+                try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                
+                try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+            }
 
-            //if (index % 32 > 0) {
-            //    const xn = data[index-1];
-            //    if (xn == 0) {
-            //        //Left
-            //        try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br });
-            //        try list.append(.{.pos = .{ x, y, z }, .uv = bl });
-            //        try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl });
-            //        
-            //        try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br });
-            //        try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl });
-            //        try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr });
-            //    }
-            //} else {
-            //    //Left
-            //    try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br });
-            //    try list.append(.{.pos = .{ x, y, z }, .uv = bl });
-            //    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl });
-            //    
-            //    try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br });
-            //    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl });
-            //    try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr });
-            //}
+            if (index / 32 / 32 % 32 < 31) {
+                const zp = data[index + 32*32];
+                if (zp == 0) {
+                    //Back
+                    try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                    
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = br, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                }
 
-            //if (index / 32 / 32 % 32 < 31) {
-            //    const zp = data[index + 32*32];
-            //    if (zp == 0) {
-            //        //Back
-            //        try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl });
-            //        try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl });
-            //        try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr });
-            //        
-            //        try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr });
-            //        try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = br });
-            //        try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl });
-            //    }
-
-            //} else {
-            //    //Back
-            //    try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl });
-            //    try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl });
-            //    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr });
-            //    
-            //    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr });
-            //    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = br });
-            //    try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl });
-            //}
-            //
+            } else {
+                //Back
+                try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = br, .index = chunk_index });
+                try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+            }
+            
             if (index / 32 / 32 % 32 > 0) {
                 const zn = data[index - 32*32];
                 if (zn == 0) {
                     //Front
-                    try list.append(.{.pos = i + 1 + 32, .uv = tl, .index = chunk_index });
-                    try list.append(.{.pos = i + 32, .uv = tr, .index = chunk_index });
-                    try list.append(.{.pos = i, .uv = br, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index});
+                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tr, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
                     
-                    try list.append(.{.pos = i, .uv = br, .index = chunk_index });
-                    try list.append(.{.pos = i + 1, .uv = bl, .index = chunk_index });
-                    try list.append(.{.pos = i + 1 + 32, .uv = tl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = bl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
 
                     size += 6;
                 }
             } else {
                 //Front
-                try list.append(.{.pos = i + 1 + 32, .uv = tl, .index = chunk_index });
-                try list.append(.{.pos = i + 32, .uv = tr, .index = chunk_index });
-                try list.append(.{.pos = i, .uv = br, .index = chunk_index });
-                
-                try list.append(.{.pos = i, .uv = br, .index = chunk_index });
-                try list.append(.{.pos = i + 1, .uv = bl, .index = chunk_index });
-                try list.append(.{.pos = i + 1 + 32, .uv = tl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tr, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
+                    
+                    try list.append(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = bl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
 
                 size += 6;
             }
 
-            //if (index / 32 % 32 < 31) {
-            //    const yp = data[index + 32];
-            //    if (yp == 0) {
-            //        //Bottom
-            //        try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br });
-            //        try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .uv = bl });
-            //        try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
-            //        
-            //        try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
-            //        try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .uv = tr });
-            //        try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br });
-            //    }
-            //} else {
-            //    //Bottom
-            //    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br });
-            //    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .uv = bl });
-            //    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
-            //    
-            //    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
-            //    try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .uv = tr });
-            //    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br });
-            //}
+            if (index / 32 % 32 < 31) {
+                const yp = data[index + 32];
+                if (yp == 0) {
+                    //Bottom
+                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .uv = bl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    
+                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .uv = tr, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
+                }
+            } else {
+                //Bottom
+                try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .uv = bl, .index = chunk_index });
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                
+                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .uv = tr, .index = chunk_index });
+                try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
+            }
 
-            //if (index / 32 % 32 > 0) {
-            //    const yn  = data[index - 32];
-            //    if (yn == 0) {
-            //        //Top
-            //        try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
-            //        try list.append(.{.pos = .{ x + 1.0, y, z}, .uv = tl });
-            //        try list.append(.{.pos = .{ x, y, z }, .uv = tr });
-            //        
-            //        try list.append(.{.pos = .{ x, y, z }, .uv = tr });
-            //        try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br });
-            //        try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
-            //    }
-            //} else {
-            //    //Top
-            //    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
-            //    try list.append(.{.pos = .{ x + 1.0, y, z}, .uv = tl });
-            //    try list.append(.{.pos = .{ x, y, z }, .uv = tr });
-            //    
-            //    try list.append(.{.pos = .{ x, y, z }, .uv = tr });
-            //    try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br });
-            //    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
-            //}
+            if (index / 32 % 32 > 0) {
+                const yn  = data[index - 32];
+                if (yn == 0) {
+                    //Top
+                    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y, z}, .uv = tl, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
+                    
+                    try list.append(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
+                    try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                }
+            } else {
+                //Top
+                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                try list.append(.{.pos = .{ x + 1.0, y, z}, .uv = tl, .index = chunk_index });
+                try list.append(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
+                
+                try list.append(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
+                try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+            }
         }
     }
     return size;

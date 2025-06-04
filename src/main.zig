@@ -80,12 +80,12 @@ const block_selection_cube: [17]vulkan.Vertex = .{
 };
 
 const cursor_vertices: [6]vulkan.Vertex = .{
-    .{.pos = .{-0.0625,-0.0625,0.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{0.0625,0.0625,0.0}, .color = .{1.0,1.0,0.0}},
-    .{.pos = .{-0.0625,0.0625,0.0}, .color = .{0.0,1.0,0.0}},
-    .{.pos = .{-0.0625,-0.0625,0.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{0.0625,-0.0625,0.0}, .color = .{1.0,0.0,0.0}},
-    .{.pos = .{0.0625,0.0625,0.0}, .color = .{1.0,1.0,0.0}},
+    .{.pos = .{-0.03125,-0.03125,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.03125,0.03125,0.0}, .color = .{1.0,1.0,0.0}},
+    .{.pos = .{-0.03125,0.03125,0.0}, .color = .{0.0,1.0,0.0}},
+    .{.pos = .{-0.03125,-0.03125,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.03125,-0.03125,0.0}, .color = .{1.0,0.0,0.0}},
+    .{.pos = .{0.03215,0.03125,0.0}, .color = .{1.0,1.0,0.0}},
 };
 // 0 to 32768 can fit in u15, but for the sake of making our lives easier we will use a u16
 //var block_selection_index: u32 = 0;
@@ -95,7 +95,6 @@ fn pos_to_index(pos: @Vector(3, u8)) u32 {
 }
 
 const GameState = struct {
-    planet_count: u32 = 9,
     voxel_spaces: []chunk.VoxelSpace = undefined,
     seed: u64 = 0,
 };
@@ -252,7 +251,7 @@ try instance.create_render_pass();
     for (game_state.voxel_spaces, 0..game_state.voxel_spaces.len) |vs, index| {
         _ = &vs;
         game_state.voxel_spaces[index].size = .{2, 2, 2};
-        game_state.voxel_spaces[index].pos = .{@as(f32, @floatFromInt(index * 32)), 0.0, 0.0};
+        game_state.voxel_spaces[index].pos = .{@as(f32, @floatFromInt(index * 64 + index * 32)), 0.0, 0.0};
     }
 
     try instance.render_targets.ensureUnusedCapacity(game_state.voxel_spaces.len);
@@ -265,15 +264,19 @@ try instance.create_render_pass();
 
         for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
             // The goal is for this get chunk to be faster than reading the disk for an unmodified chunk
-            const data = try chunk.get_chunk_data(game_state.seed, @intCast(space_index), .{0,0,0});
+            const data = try chunk.get_chunk_data_random(game_state.seed, @intCast(space_index), .{0,0,0});
             const new_vertices_count = try mesh_generation.cull_mesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
             _ = &new_vertices_count;
             std.debug.print("Chicken {} \n", .{new_vertices_count});
 
             try chunk_render_data.append(.{
                 .model = zm.translation(@floatCast(vs.pos[0]), @floatCast(vs.pos[1]), @floatCast(vs.pos[2])),
-                .size = .{2,2,2},
-                .pos = .{0,0,0},
+                .size = vs.size,
+                .pos = .{
+                    @floatFromInt(chunk_index % vs.size[0] * 32),
+                    @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32),
+                    @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32),
+                },
             });
         }
         last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];

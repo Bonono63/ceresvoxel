@@ -80,7 +80,7 @@ pub const Vertex = struct {
 pub const ChunkVertex = packed struct {
     index: u32,
     uv: @Vector(2, f32), // TODO Make the UV split into a texture index and the normal values (we can do basic lighting and have access to all textures using a texture atlas essentially with the same amount of data)
-    pos: u16, // 3 * u5 + 1 bit
+    pos: @Vector(3, f32), // 3 * u5 + 1 bit
 };
 
 /// image_views size should be of size MAX_CONCURRENT_FRAMES
@@ -1096,7 +1096,7 @@ pub const Instance = struct {
         const attribute_description: [3]c.VkVertexInputAttributeDescription = .{ 
             c.VkVertexInputAttributeDescription{ .binding = 0, .location = 0, .format = c.VK_FORMAT_R32_UINT, .offset = 0 }, // chunk index
             c.VkVertexInputAttributeDescription{ .binding = 0, .location = 1, .format = c.VK_FORMAT_R32G32_SFLOAT, .offset = @sizeOf(u32) }, // uv
-            c.VkVertexInputAttributeDescription{ .binding = 0, .location = 2, .format = c.VK_FORMAT_R16_UINT, .offset = @sizeOf(u32) + @sizeOf(@Vector(2, f32)) }, // pos
+            c.VkVertexInputAttributeDescription{ .binding = 0, .location = 2, .format = c.VK_FORMAT_R32G32B32_SFLOAT, .offset = @sizeOf(u32) + @sizeOf(@Vector(2, f32)) }, // pos
         };
 
         const vertex_input_info = c.VkPipelineVertexInputStateCreateInfo{
