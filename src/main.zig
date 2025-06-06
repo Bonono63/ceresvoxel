@@ -39,7 +39,7 @@ const Inputs = packed struct {
 var inputs = Inputs{};
 
 const PlayerState = struct {
-    pos: @Vector(3, f32) = .{ 0.0, 0.0, -1.0 },
+    pos: @Vector(3, f64) = .{ 0.0, 0.0, -1.0 },
     yaw: f32 = std.math.pi/2.0,
     pitch: f32 = 0.0,
     rot: zm.Quat = zm.qidentity(),
@@ -282,9 +282,10 @@ try instance.create_render_pass();
         last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
 
 
-        const vertex_buffer_index: u32 = 2 + @as(u32, @intCast(space_index));
-        try instance.render_targets.append(.{ .vertex_index = vertex_buffer_index, .pipeline_index = 2, .vertex_render_offset = 0});
-        try instance.create_vertex_buffer(vertex_buffer_index, @sizeOf(vulkan.ChunkVertex), @intCast(mesh_data.items.len * @sizeOf(vulkan.ChunkVertex)), mesh_data.items.ptr);
+        const render_index: u32 = 2 + @as(u32, @intCast(space_index));
+        game_state.voxel_spaces[space_index].render_index = render_index;
+        try instance.render_targets.append(.{ .vertex_index = render_index, .pipeline_index = 2, .vertex_render_offset = 0});
+        try instance.create_vertex_buffer(render_index, @sizeOf(vulkan.ChunkVertex), @intCast(mesh_data.items.len * @sizeOf(vulkan.ChunkVertex)), mesh_data.items.ptr);
     }
 
     // TODO initialize chunk data appropriately
@@ -533,7 +534,7 @@ try instance.create_render_pass();
         const right = zm.cross3(look, up);
         const forward = zm.cross3(right, up);
 
-        const view: zm.Mat = zm.lookToLh(.{player_state.pos[0], player_state.pos[1], player_state.pos[2], 0.0}, look, up);
+        const view: zm.Mat = zm.lookToLh(.{@floatCast(player_state.pos[0]), @floatCast(player_state.pos[1]), @floatCast(player_state.pos[2]), 0.0}, look, up);
         const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
         const view_proj: zm.Mat = zm.mul(view, projection);
         
@@ -552,14 +553,6 @@ try instance.create_render_pass();
             speed = 100;
         }
 
-        //instance.render_targets.items[0].rendering_enabled = block_selection_success;
-
-        //if (inputs.left_click and block_selection_success and inputs.mouse_capture) {
-        //    //Earth.chunks.items[0][block_selection_index] = 0;
-        //    regen_chunk = true;
-        //}
-
-        // TODO Make this the center of gravitational wells and such
         if (inputs.space)
         {
             player_state.pos -= .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
@@ -584,9 +577,37 @@ try instance.create_render_pass();
         {
             player_state.pos += .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
         }
-       
-        //object_transform.model = zm.translation(-player_state.pos[0], -player_state.pos[1], -player_state.pos[2]);
 
+        for (game_state.voxel_spaces) |space| {
+            instance.render_targets.items[space.render_index].rendering_enabled = distance_test(&player_state.pos, &space, 100.0);
+        }
+
+
+        const player_pos: @Vector(3, f32) = .{@floatCast(player_state.pos[0]), @floatCast(player_state.pos[1]), @floatCast(player_state.pos[2])};
+
+        var block_selection: bool = false;
+        var last_valid_intersection_distance: f32 = 100.0;
+        var last_intersection_vec: zm.Vec = undefined;
+        var block_selection_index: u32 = 0;
+        for (game_state.voxel_spaces) |space| {
+            if (distance_test(&player_state.pos, &space, 100.0)) {
+                const chunk_data = try chunk.get_chunk_data_random(game_state.seed, 0, .{0,0,0});
+                var temp_block_selection_index: u32 = 0;
+                var distance: f32 = undefined;
+                const intersection_vec = camera_block_intersection(&chunk_data, look, player_pos, &block_selection, &temp_block_selection_index, &distance);
+                //intersection_vec += .{@floatCast(space.pos[0]), @floatCast(space.pos[1]), @floatCast(space.pos[2]), 0.0};
+
+                if (distance < last_valid_intersection_distance) {
+                    last_valid_intersection_distance = distance;
+                    block_selection_index = temp_block_selection_index;
+                    last_intersection_vec = intersection_vec;
+                }
+            }
+        }
+
+        instance.render_targets.items[1].rendering_enabled = block_selection;
+        selector_transform.model = zm.translation(last_intersection_vec[0], last_intersection_vec[1], last_intersection_vec[2]);
+       
         std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {d:.3}ms \r", .{
             if (inputs.mouse_capture) "on " else "off",
             player_state.pos[0], 
@@ -749,10 +770,11 @@ pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_in
 }
 
 //TODO replace the bool with a special error return
-fn camera_block_intersection(chunk_data: *[32768]u8, look: zm.Vec, origin: @Vector(3, f32), success: *bool, return_index: *u32) zm.Vec
+fn camera_block_intersection(chunk_data: *const [32768]u8, look: zm.Vec, origin: @Vector(3, f32), success: *bool, return_index: *u32, distance: *f32) zm.Vec
 {
     const max_steps: u32 = 100;
     var steps: u32 = 0;
+    var result: zm.Vec = undefined;
 
     var current_ray: zm.Vec = .{origin[0], origin[1], origin[2], 1.0};
     // TODO eventually shift to OBB instead of AABB test, but rotations aren't implemented so we can ignore that for now
@@ -783,5 +805,23 @@ fn camera_block_intersection(chunk_data: *[32768]u8, look: zm.Vec, origin: @Vect
     }
     //std.debug.print("result: {} | {d:.2} {d:.2} {d:.2} | {} ", .{result, current_pos[0], current_pos[1], current_pos[2], steps});
 
-    return .{@floatFromInt(current_pos[0]), @floatFromInt(current_pos[1]), @floatFromInt(current_pos[2]), 1.0};
+    result = .{@as(f32, @floatFromInt(current_pos[0])), @as(f32, @floatFromInt(current_pos[1])), @as(f32, @floatFromInt(current_pos[2])), 0.0};
+
+    distance.* = zm.length3(.{result[0] - origin[0], result[1] - origin[1], result[2] - origin[2], 0.0})[0];
+
+    return result;
+}
+
+pub fn distance_test(player_pos: *const @Vector(3, f64), space: * const chunk.VoxelSpace, distance: f32) bool {
+    var result = false;
+
+    const distance_vec: zm.Vec = .{@floatCast(player_pos.*[0] - space.*.pos[0]), @floatCast(player_pos.*[1] - space.*.pos[1]), @floatCast(player_pos.*[2] - space.*.pos[2]), 0.0};
+    const length = zm.length3(distance_vec);
+    //std.debug.print("{}\n", .{length});
+
+    if (length[0] < distance) {
+        result = true;
+    }
+
+    return result;
 }
