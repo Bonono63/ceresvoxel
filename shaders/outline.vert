@@ -2,7 +2,6 @@
 
 layout(push_constant, std430) uniform push_constants {
     layout(offset=0) mat4 view_proj;
-    layout(offset=64) mat4 block_selection_model;
     layout(offset=128) float aspect_ratio;
 } pc;
 
