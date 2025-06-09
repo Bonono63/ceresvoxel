@@ -561,8 +561,6 @@ try instance.create_render_pass();
         const player_pos: @Vector(3, f32) = .{@floatCast(player_state.pos[0]), @floatCast(player_state.pos[1]), @floatCast(player_state.pos[2])};
 
         // TODO fix this function it is ugly as hell
-        var block_selection: bool = false;
-        var last_valid_intersection_distance: f32 = 100.0;
         var last_intersection_vec: zm.Vec = undefined;
         var block_selection_index: u32 = 0;
         const max_selection_distance: f32 = 20.0;
@@ -574,20 +572,24 @@ try instance.create_render_pass();
             };
             if (distance_test(&player_state.pos, &centeralized_space_pos, max_selection_distance)) {
                 var temp_block_selection_index: u32 = 0;
-                var distance: f32 = max_selection_distance;
-                const origin: @Vector(3, f32) = .{@as(f32, @floatCast(space.pos[0] + player_pos[0])), @as(f32, @floatCast(space.pos[1] + player_pos[1])), @as(f32, @floatCast(space.pos[2] + player_pos[2]))};
                 
                 for (0..space.size[0] * space.size[1] * space.size[2]) |chunk_index| {
+                    _ = &chunk_index;
+                    //const chunk_pos: @Vector(3, f32) = .{
+                    //    @as(f32, @floatFromInt(chunk_index % space.size[0])) * 32.0,
+                    //    @as(f32, @floatFromInt((chunk_index / space.size[0] % space.size[1]))) * 32.0,
+                    //    @as(f32, @floatFromInt(chunk_index / space.size[0] / space.size[1] % space.size[2])) * 32.0
+                    //};
+                    const origin: @Vector(3, f32) = .{@as(f32, @floatCast(space.pos[0] + player_pos[0])), @as(f32, @floatCast(space.pos[1] + player_pos[1])), @as(f32, @floatCast(space.pos[2] + player_pos[2]))};
+                    //origin += chunk_pos;
                     const chunk_data = try chunk.get_chunk_data_random(game_state.seed, 0, .{0,0,0});
-                    var intersection_vec = camera_block_intersection(&chunk_data, look, origin, max_selection_distance, &block_selection, &temp_block_selection_index, &distance);
-                    intersection_vec[0] += @as(f32, @floatFromInt(chunk_index % space.size[0])) * 32.0;
-                    intersection_vec[1] += @as(f32, @floatFromInt((chunk_index / space.size[0] % space.size[1]))) * 32.0;
-                    intersection_vec[2] += @as(f32, @floatFromInt(chunk_index / space.size[0] / space.size[1] % space.size[2])) * 32.0;
-                
-                    if (block_selection and distance < last_valid_intersection_distance) {
-                        last_valid_intersection_distance = distance;
+                    var intersection_vec: zm.Vec = undefined;
+                    const success = camera_block_intersection(&chunk_data, look, origin, &intersection_vec, max_selection_distance, &temp_block_selection_index);
+
+                    if (success) {
                         block_selection_index = temp_block_selection_index;
                         last_intersection_vec = intersection_vec;
+                        std.debug.print("success {}\n", .{intersection_vec});
                     }
                 }
             }
@@ -595,7 +597,7 @@ try instance.create_render_pass();
             instance.render_targets.items[space.render_index].rendering_enabled = distance_test(&player_state.pos, &centeralized_space_pos, 300.0);
         }
 
-        instance.render_targets.items[1].rendering_enabled = block_selection;
+        instance.render_targets.items[1].rendering_enabled = true;// block_selection;
         selector_transform.model = zm.translation(last_intersection_vec[0], last_intersection_vec[1], last_intersection_vec[2]);
        
         var average_frame_time: f32 = 0;
@@ -605,7 +607,7 @@ try instance.create_render_pass();
         }
         average_frame_time /= 256;
 
-        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {d:.3}ms {} {d:.1} {d:.1} {d:.1} {d:.1} \r", .{
+        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {d:.3}ms {d:.1} {d:.1} {d:.1}\r", .{
             if (inputs.mouse_capture) "on " else "off",
             player_state.pos[0], 
             player_state.pos[1],
@@ -613,9 +615,8 @@ try instance.create_render_pass();
             player_state.yaw,
             player_state.pitch,
             average_frame_time * 1000.0,
-            block_selection,
+            //block_selection,
             last_intersection_vec[0], last_intersection_vec[1], last_intersection_vec[2],
-            last_valid_intersection_distance,
         });
 
         frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
@@ -781,24 +782,21 @@ pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_in
 
 //TODO replace the bool with a special error return
 /// origin must be a vector from the corner of the chunk to the player's position
-fn camera_block_intersection(chunk_data: *const [32768]u8, look: zm.Vec, origin: @Vector(3, f32), max_distance: f32, success: *bool, return_index: *u32, distance: *f32) zm.Vec
+fn camera_block_intersection(chunk_data: *const [32768]u8, look: zm.Vec, origin: @Vector(3, f32), intersection: *zm.Vec, max_distance: f32, return_index: *u32) bool
 {
-    const max_steps: u32 = 100;
-    var steps: u32 = 0;
-    var result: zm.Vec = .{0.0,0.0,0.0,0.0};
+    _ = &return_index;
+    var result: bool = false;
 
-    var current_ray: zm.Vec = .{origin[0], origin[1], origin[2], 1.0};
+    var current_ray: @Vector(3, f32) = .{origin[0], origin[1], origin[2]};
     // TODO eventually shift to OBB instead of AABB test, but rotations aren't implemented so we can ignore that for now
     //std.debug.print("{d:.2} {d:.2} {d:.2} {d:.2} {d:.2} {d:.2} {d:.2}\n", .{look[0], look[1], look[2], current_ray[0], current_ray[1], current_ray[2], chunk_pos[0]});
     var current_pos: @Vector(3, i32) = .{@as(i32, @intFromFloat(origin[0])), @as(i32, @intFromFloat(origin[1])),  @as(i32, @intFromFloat(origin[2]))};
     var current_distance: f32 = 0.0;
-    while (current_distance < max_distance and !success.* and steps < max_steps)
+    while (current_distance < max_distance and !result)
     {
-        current_ray[0] += look[0] * 0.15;
-        current_ray[1] += look[1] * 0.15;
-        current_ray[2] += look[2] * 0.15;
-
-        current_distance += look[0] * 0.15 + look[1] * 0.15 + look[2] * 0.15;
+        const step_vec: @Vector(3, f32) = .{look[0] * 0.15, look[1] * 0.15, look[2] * 0.15};
+        current_ray += step_vec;
+        current_distance += step_vec[0] + step_vec[1] + step_vec[2];
         
         current_pos[0] = @as(i32, @intFromFloat(@floor(current_ray[0])));
         current_pos[1] = @as(i32, @intFromFloat(@floor(current_ray[1])));
@@ -807,19 +805,13 @@ fn camera_block_intersection(chunk_data: *const [32768]u8, look: zm.Vec, origin:
             const index: u32 = @abs(current_pos[0]) + @abs(current_pos[1] * 32) + @abs(current_pos[2] * 32 * 32);
             if (chunk_data.*[index] != 0) {
                 //std.debug.print("SUCCESS ", .{});
-                success.* = true;
+                result = true;
+                //return_index.* = current_pos[0] + current_pos[1] * 32 + current_pos[2] * 32 * 32;
+                intersection.* = .{@as(f32, @floatFromInt(current_pos[0])), @as(f32, @floatFromInt(current_pos[1])), @as(f32, @floatFromInt(current_pos[2])), 0.0};
             }
         }
-        steps += 1;
     }
     
-    result = .{@as(f32, @floatFromInt(current_pos[0])), @as(f32, @floatFromInt(current_pos[1])), @as(f32, @floatFromInt(current_pos[2])), 0.0};
-
-    return_index.* = 32768;
-    if (success.*) {
-        return_index.* = @abs(current_pos[0]) + @abs(current_pos[1] * 32) + @abs(current_pos[2] * 32 * 32);
-        distance.* = zm.length3(.{result[0], result[1], result[2], 0.0})[0];
-    }
     //std.debug.print("result: {} | {d:.2} {d:.2} {d:.2} | {} ", .{result, current_pos[0], current_pos[1], current_pos[2], steps});
 
     return result;
