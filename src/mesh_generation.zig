@@ -7,7 +7,7 @@ const vulkan = @import("vulkan.zig");
 // TODO add a lattice algorithm
 // TODO add a glass panes algorithm
 
-pub fn basic_mesh(data : *[32768]u8, chunk_pos: @Vector(3, u8), list: *std.ArrayList(vulkan.Vertex)) !u32
+pub fn basic_mesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList(vulkan.ChunkVertex)) !u32
 {
     var size: u32 = 0;
     const block_count = 2.0;
@@ -16,68 +16,68 @@ pub fn basic_mesh(data : *[32768]u8, chunk_pos: @Vector(3, u8), list: *std.Array
         if (val != 0) {
             const step: f32 = 1.0/block_count;
             const uv_index: f32 = step * @as(f32, @floatFromInt(val-1));
-            const tl = .{0.0,uv_index,1.0};
-            const bl = .{0.0,uv_index+step,1.0};
-            const tr = .{1.0,uv_index,1.0};
-            const br = .{1.0,uv_index+step,1.0};
+            const tl = .{0.0,uv_index};
+            const bl = .{0.0,uv_index+step};
+            const tr = .{1.0,uv_index};
+            const br = .{1.0,uv_index+step};
             const i : u32 = @intCast(index);
-            const x : f32 = @floatFromInt(i % 32 + chunk_pos[0] * 32);
-            const y : f32 = @floatFromInt(i / 32 % 32 + chunk_pos[1] * 32);
-            const z : f32 = @floatFromInt(i / 32 / 32 % 32 + chunk_pos[2] * 32);
+            const x : f32 = @floatFromInt(i % 32);
+            const y : f32 = @floatFromInt(i / 32 % 32);
+            const z : f32 = @floatFromInt(i / 32 / 32 % 32);
             
             //Front
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tl });
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .color = tr });
-            try list.append(.{.pos = .{ x, y, z }, .color = br });
+            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index});
+            try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tr, .index = chunk_index});
+            try list.append(.{.pos = .{ x, y, z }, .uv = br , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x, y, z }, .color = br });
-            try list.append(.{.pos = .{ x + 1.0, y, z }, .color = bl });
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tl });
+            try list.append(.{.pos = .{ x, y, z }, .uv = br , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = bl , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl , .index = chunk_index});
 
             //Right
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .color = tr });
-            try list.append(.{.pos = .{ x + 1.0, y, z }, .color = br });
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
+            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x + 1.0, y, z }, .color = br });
-            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
+            try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
 
             //Back
-            try list.append(.{.pos = .{ x, y, z + 1.0 }, .color = bl });
-            try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .color = tl });
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tr });
+            try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl , .index = chunk_index});
+            try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tr });
-            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = br });
-            try list.append(.{.pos = .{ x, y, z + 1.0 }, .color = bl });
+            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = br , .index = chunk_index});
+            try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl , .index = chunk_index});
             
             //Left
-            try list.append(.{.pos = .{ x, y, z + 1.0}, .color = br });
-            try list.append(.{.pos = .{ x, y, z }, .color = bl });
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .color = tl });
+            try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br , .index = chunk_index});
+            try list.append(.{.pos = .{ x, y, z }, .uv = bl , .index = chunk_index});
+            try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x, y, z + 1.0}, .color = br });
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .color = tl });
-            try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .color = tr });
+            try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br , .index = chunk_index});
+            try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl , .index = chunk_index});
+            try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr , .index = chunk_index});
             
             //Bottom
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .color = bl });
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
+            try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .uv = bl , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .color = tl });
-            try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .color = tr });
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .color = br });
+            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
+            try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .uv = tr , .index = chunk_index});
+            try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br , .index = chunk_index});
             
             //Top
-            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
-            try list.append(.{.pos = .{ x + 1.0, y, z}, .color = tl });
-            try list.append(.{.pos = .{ x, y, z }, .color = tr });
+            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y, z}, .uv = tl , .index = chunk_index});
+            try list.append(.{.pos = .{ x, y, z }, .uv = tr , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x, y, z }, .color = tr });
-            try list.append(.{.pos = .{ x, y, z + 1.0}, .color = br });
-            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .color = bl });
+            try list.append(.{.pos = .{ x, y, z }, .uv = tr , .index = chunk_index});
+            try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br , .index = chunk_index});
+            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl , .index = chunk_index});
             size += 36;
         }
     }
@@ -91,8 +91,8 @@ pub fn cull_mesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList
     var size: u32 = 0;
     const block_count = 2.0;
 
-    try list.ensureUnusedCapacity(2048);
     for (data[0..32768], 0..32768) |val, index| {
+        try list.ensureUnusedCapacity(2048);
         if (val != 0) {
             const step: f32 = 1.0/block_count;
             const uv_index: f32 = step * @as(f32, @floatFromInt(val-1));
@@ -110,95 +110,95 @@ pub fn cull_mesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList
                 const xp = data[index+1];
                 if (xp == 0) {
                     //Right
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
                     
-                    try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
                 }
             } else {
                 //Right
-                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr, .index = chunk_index });
-                try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
                 
-                try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
             }
 
             if (index % 32 > 0) {
                 const xn = data[index-1];
                 if (xn == 0) {
                     //Left
-                    try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y, z }, .uv = bl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = bl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
                     
-                    try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
                 }
             } else {
                 //Left
-                try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
-                try list.append(.{.pos = .{ x, y, z }, .uv = bl, .index = chunk_index });
-                try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = bl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
                 
-                try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
-                try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
-                try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
             }
 
             if (index / 32 / 32 % 32 < 31) {
                 const zp = data[index + 32*32];
                 if (zp == 0) {
                     //Back
-                    try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
                     
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = br, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
                 }
 
             } else {
                 //Back
-                try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
-                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
                 
-                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
-                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = br, .index = chunk_index });
-                try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = br, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
             }
             
             if (index / 32 / 32 % 32 > 0) {
                 const zn = data[index - 32*32];
                 if (zn == 0) {
                     //Front
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index});
-                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tr, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index});
+                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = tr, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
                     
-                    try list.append(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = bl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z }, .uv = bl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
 
                     size += 6;
                 }
             } else {
                 //Front
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tr, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = tr, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
                     
-                    try list.append(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = bl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z }, .uv = bl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
 
                 size += 6;
             }
@@ -207,46 +207,46 @@ pub fn cull_mesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList
                 const yp = data[index + 32];
                 if (yp == 0) {
                     //Bottom
-                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .uv = bl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z}, .uv = bl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
                     
-                    try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .uv = tr, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z + 1.0}, .uv = tr, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
                 }
             } else {
                 //Bottom
-                try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
-                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .uv = bl, .index = chunk_index });
-                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z}, .uv = bl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
                 
-                try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
-                try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .uv = tr, .index = chunk_index });
-                try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z + 1.0}, .uv = tr, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
             }
 
             if (index / 32 % 32 > 0) {
                 const yn  = data[index - 32];
                 if (yn == 0) {
                     //Top
-                    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y, z}, .uv = tl, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z}, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
                     
-                    try list.append(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
-                    try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
-                    try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
                 }
             } else {
                 //Top
-                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                try list.append(.{.pos = .{ x + 1.0, y, z}, .uv = tl, .index = chunk_index });
-                try list.append(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z}, .uv = tl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
                 
-                try list.append(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
-                try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
-                try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
+                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
             }
         }
     }

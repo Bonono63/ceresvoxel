@@ -30,8 +30,10 @@ pub fn get_chunk_data(seed: u64, planet_index: u32, chunk_pos: @Vector(3,u32)) !
     _ = &seed;
 
     for (0..result.len) |index| {
-        result[index] = 2;
+        result[index] = 0;
     }
+
+    result[0] = 1;
 
     return result;
 }

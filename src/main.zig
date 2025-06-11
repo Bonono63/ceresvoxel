@@ -47,10 +47,6 @@ const PlayerState = struct {
     look: zm.Vec = .{ 0.0, 0.0, 1.0, 1.0 },
 };
 
-const PhysicsEntity = struct {
-    pos: @Vector(3, f32) = .{0.0,0.0,0.0},
-};
-
 var player_state = PlayerState{};
 
 const MAX_CONCURRENT_FRAMES = 2;
@@ -89,10 +85,6 @@ const cursor_vertices: [6]vulkan.Vertex = .{
 };
 // 0 to 32768 can fit in u15, but for the sake of making our lives easier we will use a u16
 //var block_selection_index: u32 = 0;
-
-fn pos_to_index(pos: @Vector(3, u8)) u32 {
-    return @as(u32, @intCast(pos[0])) << 24;// & pos[1] << 16 & pos[2] << 8;
-}
 
 const GameState = struct {
     voxel_spaces: []chunk.VoxelSpace = undefined,
@@ -235,7 +227,7 @@ try instance.create_render_pass();
     try instance.create_vertex_buffer(1, @sizeOf(vulkan.Vertex), @intCast(block_selection_cube.len * @sizeOf(vulkan.Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
 
     var game_state = GameState{
-        .voxel_spaces = try instance.allocator.*.alloc(chunk.VoxelSpace, 9),
+        .voxel_spaces = try instance.allocator.*.alloc(chunk.VoxelSpace, 2),
     };
     defer instance.allocator.*.free(game_state.voxel_spaces);
     
@@ -250,8 +242,8 @@ try instance.create_render_pass();
 
     for (game_state.voxel_spaces, 0..game_state.voxel_spaces.len) |vs, index| {
         _ = &vs;
-        game_state.voxel_spaces[index].size = .{2, 2, 2};
-        game_state.voxel_spaces[index].pos = .{@as(f32, @floatFromInt(index * 64 + index * 32)), 0.0, 0.0};
+        game_state.voxel_spaces[index].size = .{1,1,1};
+        game_state.voxel_spaces[index].pos = .{@as(f32, @floatFromInt(index * 2 + index)), 0.0, 0.0};
     }
 
     try instance.render_targets.ensureUnusedCapacity(game_state.voxel_spaces.len);
@@ -264,8 +256,10 @@ try instance.create_render_pass();
 
         for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
             // The goal is for this get chunk to be faster than reading the disk for an unmodified chunk
-            const data = try chunk.get_chunk_data_random(game_state.seed, @intCast(space_index), .{0,0,0});
+            const data = try chunk.get_chunk_data(game_state.seed, @intCast(space_index), .{0,0,0});
+            const mesh_start: f64 = c.glfwGetTime();
             const new_vertices_count = try mesh_generation.cull_mesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
+            std.debug.print("time: {}ms \n", .{(c.glfwGetTime() - mesh_start) * 1000.0});
             _ = &new_vertices_count;
             std.debug.print("Chicken {} \n", .{new_vertices_count});
 
@@ -558,55 +552,6 @@ try instance.create_render_pass();
             player_state.pos += .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
         }
 
-        const player_pos: @Vector(3, f32) = .{@floatCast(player_state.pos[0]), @floatCast(player_state.pos[1]), @floatCast(player_state.pos[2])};
-
-        // TODO fix this function it is ugly as hell
-        var last_intersection_vec: zm.Vec = undefined;
-        //var block_selection_index: u32 = 0;
-        const max_selection_distance: f32 = 20.0;
-        for (game_state.voxel_spaces) |space| {
-            const centeralized_space_pos: @Vector(3, f64) = .{
-                space.pos[0] + space.pos[0] / @as(f64, @floatFromInt(space.size[0])),
-                space.pos[1] + space.pos[1] / @as(f64, @floatFromInt(space.size[1])),
-                space.pos[2] + space.pos[2] / @as(f64, @floatFromInt(space.size[2])),
-            };
-            if (distance_test(&player_state.pos, &centeralized_space_pos, max_selection_distance)) {
-                for (0..space.size[0] * space.size[1] * space.size[2]) |chunk_index| {
-                    _ = &chunk_index;
-                    const chunk_pos: @Vector(3, i32) = .{
-                        @as(i32, @intCast(chunk_index % space.size[0])) * 32,
-                        @as(i32, @intCast(chunk_index / space.size[0] % space.size[1])) * 32,
-                        @as(i32, @intCast(chunk_index / space.size[0] / space.size[1] % space.size[2])) * 32
-                    };
-                    // origin must be the camera position starting 
-                    var origin: @Vector(3, f32) = .{@as(f32, @floatCast(player_pos[0])), @as(f32, @floatCast(player_pos[1])), @as(f32, @floatCast(player_pos[2]))};
-                    origin[0] -= @as(f32, @floatFromInt(@floor(chunk_pos[0])));
-                    origin[1] -= @as(f32, @floatFromInt(@floor(chunk_pos[1])));
-                    origin[2] -= @as(f32, @floatFromInt(@floor(chunk_pos[2])));
-                    const chunk_data = try chunk.get_chunk_data_random(game_state.seed, 0, .{0,0,0});
-                    var intersection_vec: @Vector(3, i32) = undefined;
-                    const success = camera_block_intersection(&chunk_data, look, origin, &intersection_vec);
-
-                    if (success) {
-                        //block_selection_index = temp_block_selection_index;
-                        last_intersection_vec[0] = @as(f32, @floatFromInt(intersection_vec[0]));
-                        last_intersection_vec[1] = @as(f32, @floatFromInt(intersection_vec[1]));
-                        last_intersection_vec[2] = @as(f32, @floatFromInt(intersection_vec[2]));
-
-                        last_intersection_vec[0] -= @as(f32, @floatFromInt(chunk_pos[0]));
-                        last_intersection_vec[1] -= @as(f32, @floatFromInt(chunk_pos[1]));
-                        last_intersection_vec[2] -= @as(f32, @floatFromInt(chunk_pos[2]));
-                        std.debug.print("success {}\n", .{intersection_vec});
-                    }
-                }
-            }
-
-            instance.render_targets.items[space.render_index].rendering_enabled = distance_test(&player_state.pos, &centeralized_space_pos, 300.0);
-        }
-
-        instance.render_targets.items[1].rendering_enabled = true;// block_selection;
-        selector_transform.model = zm.translation(last_intersection_vec[0], last_intersection_vec[1], last_intersection_vec[2]);
-       
         var average_frame_time: f32 = 0;
         for (frame_time_cyclic_buffer) |time|
         {
@@ -614,7 +559,7 @@ try instance.create_render_pass();
         }
         average_frame_time /= 256;
 
-        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {d:.3}ms {d:.1} {d:.1} {d:.1}\r", .{
+        std.debug.print("\t{s} pos:{d:.1} {d:.1} {d:.1} y:{d:.1} p:{d:.1} {d:.3}ms\r", .{
             if (inputs.mouse_capture) "on " else "off",
             player_state.pos[0], 
             player_state.pos[1],
@@ -622,8 +567,6 @@ try instance.create_render_pass();
             player_state.yaw,
             player_state.pitch,
             average_frame_time * 1000.0,
-            //block_selection,
-            last_intersection_vec[0], last_intersection_vec[1], last_intersection_vec[2],
         });
 
         frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
@@ -635,6 +578,10 @@ try instance.create_render_pass();
         
         @memcpy(instance.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
         @memcpy(instance.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+
+        for (game_state.voxel_spaces) |space| {
+            instance.render_targets.items[space.render_index].rendering_enabled = distance_test(&player_state.pos, &space.pos, 200.0);
+        }
 
         _ = c.vmaCopyMemoryToAllocation(instance.vma_allocator, &selector_transform, instance.ubo_allocs.items[current_frame_index], 0, @sizeOf(BlockSelectorTransform));
 
@@ -787,36 +734,37 @@ pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_in
     instance.framebuffer_resized = true;
 }
 
-// TODO eventually shift to OBB instead of AABB test, but rotations aren't implemented so we can ignore that for now
-/// origin must be a vector from the corner of the chunk to the player's position
-fn camera_block_intersection(chunk_data: *const [32768]u8, look: zm.Vec, origin: @Vector(3, f32), intersection: *@Vector(3,i32)) bool
-{
-    const max_distance: f32 = 100.0;
-    var result: bool = false;
-
-    var current_ray: @Vector(3, f32) = .{origin[0], origin[1], origin[2]};
-    var current_pos: @Vector(3, i32) = undefined;
-    var current_distance: f32 = 0.0;
-    while (!result and current_distance < max_distance)
-    {
-        const step_vec: @Vector(3, f32) = .{look[0] * 0.15, look[1] * 0.15, look[2] * 0.15};
-        current_ray += step_vec;
-        current_distance += 0.15;
-        
-        current_pos[0] = @as(i32, @intFromFloat(@floor(current_ray[0])));
-        current_pos[1] = @as(i32, @intFromFloat(@floor(current_ray[1])));
-        current_pos[2] = @as(i32, @intFromFloat(@floor(current_ray[2])));
-        if (current_pos[0] >= 0 and current_pos[0] <= 31 and current_pos[1] >= 0 and current_pos[1] <= 31 and current_pos[2] >= 0 and current_pos[2] <= 31) {
-            const index: u32 = @abs(current_pos[0]) + @abs(current_pos[1]) * 32 + @abs(current_pos[2]) * 32 * 32;
-            if (chunk_data.*[index] != 0) {
-                result = true;
-                intersection.* = current_pos;
-            }
-        }
-    }
-    
-    return result;
-}
+// TODO redo this after we implement physics and stuffsies
+//// TODO eventually shift to OBB instead of AABB test, but rotations aren't implemented so we can ignore that for now
+///// origin must be a vector from the corner of the chunk to the player's position
+//fn camera_block_intersection(chunk_data: *const [32768]u8, look: zm.Vec, camera_origin: @Vector(3, f32), chunk_origin: @Vector(3, f32), intersection: *@Vector(3,i32)) bool
+//{
+//    const max_distance: f32 = 100.0;
+//    var result: bool = false;
+//
+//    var current_ray: @Vector(3, f32) = .{camera_origin[0], camera_origin[1], camera_origin[2]};
+//    var current_pos: @Vector(3, i32) = undefined;
+//    var current_distance: f32 = 0.0;
+//    while (!result and current_distance < max_distance)
+//    {
+//        const step_vec: @Vector(3, f32) = .{look[0] * 0.15, look[1] * 0.15, look[2] * 0.15};
+//        current_ray += step_vec;
+//        current_distance += 0.15;
+//        
+//        current_pos[0] = @as(i32, @intFromFloat(@floor(current_ray[0])));
+//        current_pos[1] = @as(i32, @intFromFloat(@floor(current_ray[1])));
+//        current_pos[2] = @as(i32, @intFromFloat(@floor(current_ray[2])));
+//        if (current_pos[0] >= chunk_origin[0] and current_pos[0] <= chunk_origin[0] + 31 and current_pos[1] >= chunk_origin[1] and current_pos[1] <= chunk_origin[1] + 31 and current_pos[2] >= chunk_origin[2] and current_pos[2] <= chunk_origin[2] + 31) {
+//            const index: u32 = @abs(current_pos[0] - chunk_origin[0]) + @abs(current_pos[1] - chunk_origin[1]) * 32 + @abs(current_pos[2] - chunk_origin[2]) * 32 * 32;
+//            if (chunk_data.*[index] != 0) {
+//                result = true;
+//                intersection.* = current_pos;
+//            }
+//        }
+//    }
+//    
+//    return result;
+//}
 
 pub fn distance_test(player_pos: *const @Vector(3, f64), space_pos: * const @Vector(3, f64), distance: f32) bool {
     var result = false;
