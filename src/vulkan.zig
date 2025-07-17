@@ -177,6 +177,7 @@ pub const Instance = struct {
     depth_image_alloc: c.VmaAllocation = undefined,
     depth_image_view: c.VkImageView = undefined,
 
+    PUSH_CONSTANT_SIZE: u32,
     push_constant_data: []u8 = undefined,
     push_constant_info: c.VkPushConstantRange = undefined,
 

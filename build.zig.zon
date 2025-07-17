@@ -38,7 +38,7 @@
     .dependencies = .{
         .zmath = .{
             .url = "https://github.com/zig-gamedev/zmath/archive/refs/heads/main.zip",
-            .hash = "zmath-0.11.0-dev-wjwivTArAwDIkHSuSiU3KuBvxh7igjJjJMqYRfy3hihO",
+            .hash = "zmath-0.11.0-dev-wjwivU8rAwD9kF3KJhflcYp2SNvx18L_r1XJc17J5nzd",
         },
     },
     .paths = .{
