@@ -45,6 +45,7 @@ const PlayerState = struct {
     pitch: f32 = 0.0,
     rot: zm.Quat = zm.qidentity(),
     up: zm.Vec = .{ 0.0, -1.0, 0.0, 1.0},
+    speed: u32 = 5,
 };
 
 var player_state = PlayerState{};
@@ -166,7 +167,7 @@ pub fn main() !void {
 
     while (!done) {
         std.time.sleep(1);
-        std.debug.print("main thread\n", .{});
+        //std.debug.print("main thread\n", .{});
     }
 
     // CLEANUP
