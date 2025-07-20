@@ -1,6 +1,52 @@
 const std = @import("std");
 const c = @import("clibs.zig");
 const zm = @import("zmath");
+const main = @import("main.zig");
+const chunk = @import("chunk.zig");
+const mesh_generation = @import("mesh_generation.zig");
+
+// TODO There has got to be a better way than this, so much smell...
+const chunk_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/simple.vert.spv")))));
+const chunk_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/simple.frag.spv")))));
+
+const outline_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/outline.vert.spv")))));
+const outline_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/outline.frag.spv")))));
+
+const cursor_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/cursor.vert.spv")))));
+const cursor_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/cursor.frag.spv")))));
+
+const block_selection_cube: [17]Vertex = .{
+    //front
+    .{.pos = .{-0.001,-0.001,-0.001}, .color = .{1.0,1.0,1.0} },
+    .{.pos = .{1.001,-0.001,-0.001}, .color = .{1.0,1.0,1.0} },
+    .{.pos = .{1.001,1.001,-0.001}, .color = .{1.0,1.0,1.0} },
+    .{.pos = .{-0.001,1.001,-0.001}, .color = .{1.0,1.0,1.0} },
+    //left
+    .{.pos = .{-0.001,-0.001,-0.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{-0.001,-0.001,1.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{-0.001,1.001,1.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{-0.001,1.001,-0.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{-0.001,-0.001,-0.001}, .color = .{1.0,1.0,1.0}},
+    //right
+    .{.pos = .{1.001,-0.001,-0.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{1.001,-0.001,1.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{1.001,1.001,1.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{1.001,1.001,-0.001}, .color = .{1.0,1.0,1.0}},
+    //back
+    .{.pos = .{1.001,1.001,1.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{-0.001,1.001,1.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{-0.001,-0.001,1.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{1.001,-0.001,1.001}, .color = .{1.0,1.0,1.0}},
+};
+
+const cursor_vertices: [6]Vertex = .{
+    .{.pos = .{-0.03125,-0.03125,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.03125,0.03125,0.0}, .color = .{1.0,1.0,0.0}},
+    .{.pos = .{-0.03125,0.03125,0.0}, .color = .{0.0,1.0,0.0}},
+    .{.pos = .{-0.03125,-0.03125,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{0.03125,-0.03125,0.0}, .color = .{1.0,0.0,0.0}},
+    .{.pos = .{0.03215,0.03125,0.0}, .color = .{1.0,1.0,0.0}},
+};
 
 // Attempt at descriptive Errors
 pub const VkAbstractionError = error{
@@ -113,9 +159,11 @@ pub const RenderInfo = struct {
 };
 
 // The vulkan/render state
-pub const Instance = struct {
+pub const VulkanState = struct {
     REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
     MAX_CONCURRENT_FRAMES: u32,
+
+    ENGINE_NAME: *const [10:0]u8,
 
     allocator: *const std.mem.Allocator,
 
@@ -183,7 +231,7 @@ pub const Instance = struct {
 
     // TODO move the GLFW code out and make this a vulkan only function
     /// Creates our Vulkan instance and GLFW window
-    pub fn window_setup(self: *Instance, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
+    pub fn window_setup(self: *VulkanState, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
         c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
 
         self.window = c.glfwCreateWindow(800, 600, application_name.ptr, null, null) orelse return VkAbstractionError.NullWindow;
@@ -260,7 +308,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn create_surface(self: *Instance) VkAbstractionError!void {
+    pub fn create_surface(self: *VulkanState) VkAbstractionError!void {
         const success = c.glfwCreateWindowSurface(self.vk_instance, self.window, null, &self.surface);
 
         if (success != c.VK_SUCCESS) {
@@ -269,7 +317,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn pick_physical_device(self: *Instance) VkAbstractionError!void {
+    pub fn pick_physical_device(self: *VulkanState) VkAbstractionError!void {
         var device_count: u32 = 0;
         const physical_device_count_success = c.vkEnumeratePhysicalDevices(self.vk_instance, &device_count, null);
 
@@ -302,7 +350,7 @@ pub const Instance = struct {
         // TODO Check for device extension compatibility
     }
 
-    pub fn create_present_queue(self: *Instance, flags: u32) VkAbstractionError!void {
+    pub fn create_present_queue(self: *VulkanState, flags: u32) VkAbstractionError!void {
         const priority: f32 = 1.0;
 
         var queue_count: u32 = 0;
@@ -358,7 +406,7 @@ pub const Instance = struct {
         c.vkGetDeviceQueue(self.device, first_compatible, 0, &self.present_queue);
     }
 
-    pub fn create_swapchain(self: *Instance) VkAbstractionError!void {
+    pub fn create_swapchain(self: *VulkanState) VkAbstractionError!void {
         const support = try query_swapchain_support(self);
         defer self.allocator.*.free(support.formats);
         defer self.allocator.*.free(support.present_modes);
@@ -458,7 +506,7 @@ pub const Instance = struct {
         std.debug.print("[Info] Swapchain final image count: {}\n", .{self.swapchain_images.len});
     }
 
-    pub fn create_swapchain_image_views(self: *Instance) VkAbstractionError!void {
+    pub fn create_swapchain_image_views(self: *VulkanState) VkAbstractionError!void {
         self.swapchain_image_views = try self.allocator.*.alloc(c.VkImageView, self.swapchain_images.len);
         for (0..self.swapchain_images.len) |i| {
             var create_info = c.VkImageViewCreateInfo{
@@ -488,7 +536,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn create_descriptor_pool(self : *Instance) VkAbstractionError!void {
+    pub fn create_descriptor_pool(self : *VulkanState) VkAbstractionError!void {
         const ubo_pool_size = c.VkDescriptorPoolSize{
             .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .descriptorCount = 10,
@@ -522,7 +570,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn create_descriptor_set_layouts(self : *Instance) VkAbstractionError!void
+    pub fn create_descriptor_set_layouts(self : *VulkanState) VkAbstractionError!void
     {
         // A description of the bindings and their contents
         // Essentially we need one of these per uniform buffer
@@ -570,7 +618,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn create_generic_pipeline(self: *Instance, vert_source: []align(4) u8, frag_source: []align(4) u8, wireframe: bool) VkAbstractionError!c.VkPipeline {
+    pub fn create_generic_pipeline(self: *VulkanState, vert_source: []align(4) u8, frag_source: []align(4) u8, wireframe: bool) VkAbstractionError!c.VkPipeline {
         const vert_index = self.shader_modules.items.len;
         try create_shader_module(self, vert_source);
         const frag_index = self.shader_modules.items.len;
@@ -728,7 +776,7 @@ pub const Instance = struct {
         return pipeline;
     }
 
-    pub fn create_outline_pipeline(self: *Instance, vert_source: []align(4) u8, frag_source: []align(4) u8) VkAbstractionError!c.VkPipeline {
+    pub fn create_outline_pipeline(self: *VulkanState, vert_source: []align(4) u8, frag_source: []align(4) u8) VkAbstractionError!c.VkPipeline {
         const vert_index = self.shader_modules.items.len;
         try create_shader_module(self, vert_source);
         const frag_index = self.shader_modules.items.len;
@@ -887,7 +935,7 @@ pub const Instance = struct {
     }
 
     /// Creates a shader module and appends the handler to the state's shader array list
-    pub fn create_shader_module(self: *Instance, file_source : [] const align(4) u8) VkAbstractionError!void {
+    pub fn create_shader_module(self: *VulkanState, file_source : [] const align(4) u8) VkAbstractionError!void {
         var shader_module: c.VkShaderModule = undefined;
 
         const create_info = c.VkShaderModuleCreateInfo{
@@ -906,7 +954,7 @@ pub const Instance = struct {
         try self.shader_modules.append(shader_module);
     }
 
-    pub fn create_framebuffers(self: *Instance) VkAbstractionError!void {
+    pub fn create_framebuffers(self: *VulkanState) VkAbstractionError!void {
         self.frame_buffers = try self.allocator.*.alloc(c.VkFramebuffer, self.swapchain_image_views.len);
 
         for (self.swapchain_image_views, 0..self.swapchain_image_views.len) |image_view, i| {
@@ -930,7 +978,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn create_command_pool(self: *Instance) VkAbstractionError!void {
+    pub fn create_command_pool(self: *VulkanState) VkAbstractionError!void {
         const command_pool_info = c.VkCommandPoolCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
             .flags = c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
@@ -943,7 +991,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn create_command_buffers(self: *Instance) VkAbstractionError!void {
+    pub fn create_command_buffers(self: *VulkanState) VkAbstractionError!void {
         const allocation_info = c.VkCommandBufferAllocateInfo{
             .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             .commandPool = self.command_pool,
@@ -956,7 +1004,7 @@ pub const Instance = struct {
         }
     }
 
-    fn record_command_buffer(self: *Instance, command_buffer: c.VkCommandBuffer, image_index: u32, frame_index: u32) VkAbstractionError!void {
+    fn record_command_buffer(self: *VulkanState, command_buffer: c.VkCommandBuffer, image_index: u32, frame_index: u32) VkAbstractionError!void {
         _ = &frame_index;
 
         const begin_info = c.VkCommandBufferBeginInfo{
@@ -1036,7 +1084,7 @@ pub const Instance = struct {
         c.vkCmdEndRenderPass(command_buffer);
     }
 
-    pub fn create_pipeline_layout(self: *Instance) VkAbstractionError!void {
+    pub fn create_pipeline_layout(self: *VulkanState) VkAbstractionError!void {
         const pipeline_layout_create_info = c.VkPipelineLayoutCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount = 1,
@@ -1052,7 +1100,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn create_simple_chunk_pipeline(self: *Instance, vert_source: []align(4) u8, frag_source: []align(4) u8, wireframe: bool) VkAbstractionError!c.VkPipeline {
+    pub fn create_simple_chunk_pipeline(self: *VulkanState, vert_source: []align(4) u8, frag_source: []align(4) u8, wireframe: bool) VkAbstractionError!c.VkPipeline {
         const vert_index = self.shader_modules.items.len;
         try create_shader_module(self, vert_source);
         const frag_index = self.shader_modules.items.len;
@@ -1210,7 +1258,7 @@ pub const Instance = struct {
         return pipeline;
     }
 
-    pub fn create_render_pass(self: *Instance) VkAbstractionError!void {
+    pub fn create_render_pass(self: *VulkanState) VkAbstractionError!void {
         const color_attachment = c.VkAttachmentDescription{
             .format = self.swapchain_format.format,
             .samples = c.VK_SAMPLE_COUNT_1_BIT,
@@ -1278,7 +1326,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn create_sync_objects(self: *Instance) VkAbstractionError!void {
+    pub fn create_sync_objects(self: *VulkanState) VkAbstractionError!void {
         const image_available_semaphore_info = c.VkSemaphoreCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
         };
@@ -1303,7 +1351,7 @@ pub const Instance = struct {
         }
     }
 
-    pub fn draw_frame(self: *Instance, frame_index: u32) VkAbstractionError!void {
+    pub fn draw_frame(self: *VulkanState, frame_index: u32) VkAbstractionError!void {
         const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fences[frame_index], c.VK_TRUE, std.math.maxInt(u64));
         if (fence_wait != c.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
@@ -1380,7 +1428,7 @@ pub const Instance = struct {
     }
 
     /// Image format does not matter
-    pub fn create_depth_resources(self: *Instance) VkAbstractionError!void
+    pub fn create_depth_resources(self: *VulkanState) VkAbstractionError!void
     {
         const candidates: [3]c.VkFormat = .{c.VK_FORMAT_D32_SFLOAT, c.VK_FORMAT_D32_SFLOAT_S8_UINT, c.VK_FORMAT_D24_UNORM_S8_UINT};
         const format = try self.depth_texture_format(&candidates, c.VK_IMAGE_TILING_OPTIMAL, c.VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
@@ -1435,7 +1483,7 @@ pub const Instance = struct {
         }
     }
 
-    fn depth_texture_format(self: *Instance, candidates: []const c.VkFormat, tiling: c.VkImageTiling, features: c.VkFormatFeatureFlags) VkAbstractionError!c.VkFormat
+    fn depth_texture_format(self: *VulkanState, candidates: []const c.VkFormat, tiling: c.VkImageTiling, features: c.VkFormatFeatureFlags) VkAbstractionError!c.VkFormat
     {
         for (candidates) |format|
         {
@@ -1455,7 +1503,7 @@ pub const Instance = struct {
         return VkAbstractionError.DepthFormatAvailablityFailure;
     }
 
-    fn cleanup_swapchain(self: *Instance) void {
+    fn cleanup_swapchain(self: *VulkanState) void {
         for (self.frame_buffers) |i| {
             c.vkDestroyFramebuffer(self.device, i, null);
         }
@@ -1469,7 +1517,7 @@ pub const Instance = struct {
         self.allocator.*.free(self.swapchain_images);
     }
 
-    pub fn recreate_swapchain(self: *Instance) VkAbstractionError!void {
+    pub fn recreate_swapchain(self: *VulkanState) VkAbstractionError!void {
         var width: i32 = 0;
         var height: i32 = 0;
         c.glfwGetFramebufferSize(self.window, &width, &height);
@@ -1489,13 +1537,13 @@ pub const Instance = struct {
         try create_framebuffers(self);
     }
 
-    pub fn cleanup_depth_resources(self: *Instance) void
+    pub fn cleanup_depth_resources(self: *VulkanState) void
     {
         c.vkDestroyImageView(self.device, self.depth_image_view, null);
         c.vmaDestroyImage(self.vma_allocator, self.depth_image, self.depth_image_alloc);
     }
 
-    fn copy_data_via_staging_buffer(self: *Instance, final_buffer: *c.VkBuffer, size: u32, data: *anyopaque) VkAbstractionError!void
+    fn copy_data_via_staging_buffer(self: *VulkanState, final_buffer: *c.VkBuffer, size: u32, data: *anyopaque) VkAbstractionError!void
     {
         var staging_buffer : c.VkBuffer = undefined;
 
@@ -1592,7 +1640,7 @@ pub const Instance = struct {
         c.vmaDestroyBuffer(self.vma_allocator, staging_buffer, staging_alloc);
     }
     
-    pub fn create_vertex_buffer(self: *Instance, render_index: u32, stride_size: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void
+    pub fn create_vertex_buffer(self: *VulkanState, render_index: u32, stride_size: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void
     {
         var vertex_buffer : c.VkBuffer = undefined;
         var alloc: c.VmaAllocation = undefined;
@@ -1624,7 +1672,7 @@ pub const Instance = struct {
         self.render_targets.items[render_index].vertex_count = vertex_count;
     }
 
-    pub fn replace_vertex_data(self: *Instance, render_index: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void
+    pub fn replace_vertex_data(self: *VulkanState, render_index: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void
     {
         // needs to occur asynchronously
         var vertex_buffer : c.VkBuffer = undefined;
@@ -1666,7 +1714,7 @@ pub const Instance = struct {
     // of chunk data updates
     // TODO make a way to modify the buffer at all, could replace it or change
     // data based on frequency and size...
-    pub fn create_ssbo(self: *Instance, size: u32, ptr: *anyopaque) VkAbstractionError!void
+    pub fn create_ssbo(self: *VulkanState, size: u32, ptr: *anyopaque) VkAbstractionError!void
     {
         var ssbo: c.VkBuffer = undefined;
         var alloc: c.VmaAllocation = undefined;
@@ -1698,7 +1746,7 @@ pub const Instance = struct {
 
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called
-    pub fn cleanup(self: *Instance) void {
+    pub fn cleanup(self: *VulkanState) void {
         for (0..self.ubo_buffers.items.len) |i|
         {
             c.vmaDestroyBuffer(self.vma_allocator, self.ubo_buffers.items[i], self.ubo_allocs.items[i]);
@@ -1751,7 +1799,7 @@ pub const Instance = struct {
 };
 
 /// Image format must be assigned before this function
-pub fn create_2d_texture(self: *Instance, image_info: *ImageInfo) VkAbstractionError!void
+pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstractionError!void
 {
         const image_size : u64 = @intCast(image_info.width * image_info.height * 4);
         //Create staging buffer
@@ -1917,7 +1965,7 @@ pub fn create_image_view(device: c.VkDevice, image_info: *const ImageInfo) VkAbs
     }
 }
 
-pub fn create_samplers(instance: *Instance, image_info: *ImageInfo, filter: c.VkFilter, repeat_mode: c.VkSamplerAddressMode, anisotropy: bool) VkAbstractionError!void
+pub fn create_samplers(instance: *VulkanState, image_info: *ImageInfo, filter: c.VkFilter, repeat_mode: c.VkSamplerAddressMode, anisotropy: bool) VkAbstractionError!void
 {
     const sampler_info = c.VkSamplerCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -1948,7 +1996,7 @@ pub fn create_samplers(instance: *Instance, image_info: *ImageInfo, filter: c.Vk
     }
 }
 
-pub fn image_cleanup(self: *Instance, info: *ImageInfo) void
+pub fn image_cleanup(self: *VulkanState, info: *ImageInfo) void
 {
     for (0..info.views.len) |i|
     {
@@ -1980,7 +2028,7 @@ fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []cons
 }
 
 /// The formats returned in swapchain_support must be freed later
-fn query_swapchain_support(self: *Instance) VkAbstractionError!swapchain_support {
+fn query_swapchain_support(self: *VulkanState) VkAbstractionError!swapchain_support {
     var result = swapchain_support{};
 
     const surface_capabilities_success = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(self.physical_device, self.surface, &result.capabilities);
@@ -2038,4 +2086,448 @@ pub fn glfw_initialization() VkAbstractionError!void {
 
 pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) void {
     std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });
+}
+
+pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_state: *main.InputState, done: *bool) !void {
+    self.shader_modules = std.ArrayList(c.VkShaderModule).init(self.allocator.*);
+    defer self.shader_modules.deinit();
+
+    self.pipelines = try self.allocator.*.alloc(c.VkPipeline, 3);
+    defer self.allocator.*.free(self.pipelines);
+
+    self.vertex_buffers = std.ArrayList(c.VkBuffer).init(self.allocator.*);
+    defer self.vertex_buffers.deinit();
+    self.vertex_allocs = std.ArrayList(c.VmaAllocation).init(self.allocator.*);
+    defer self.vertex_allocs.deinit();
+    
+    self.render_targets = std.ArrayList(RenderInfo).init(self.allocator.*);
+    defer self.render_targets.deinit();
+
+    self.ubo_buffers = std.ArrayList(c.VkBuffer).init(self.allocator.*);
+    defer self.ubo_buffers.deinit();
+    self.ubo_allocs = std.ArrayList(c.VmaAllocation).init(self.allocator.*);
+    defer self.ubo_allocs.deinit();
+    
+    self.ssbo_buffers = std.ArrayList(c.VkBuffer).init(self.allocator.*);
+    defer self.ssbo_buffers.deinit();
+    self.ssbo_allocs = std.ArrayList(c.VmaAllocation).init(self.allocator.*);
+    defer self.ssbo_allocs.deinit();
+
+    self.command_buffers = try self.allocator.*.alloc(c.VkCommandBuffer, self.MAX_CONCURRENT_FRAMES);
+    defer self.allocator.*.free(self.command_buffers);
+
+    self.descriptor_sets = try self.allocator.*.alloc(c.VkDescriptorSet, self.MAX_CONCURRENT_FRAMES);
+    defer self.allocator.*.free(self.descriptor_sets);
+
+    self.image_available_semaphores = try self.allocator.*.alloc(c.VkSemaphore, self.MAX_CONCURRENT_FRAMES);
+    defer self.allocator.*.free(self.image_available_semaphores);
+    self.image_completion_semaphores = try self.allocator.*.alloc(c.VkSemaphore, self.MAX_CONCURRENT_FRAMES);
+    defer self.allocator.*.free(self.image_completion_semaphores);
+    self.in_flight_fences = try self.allocator.*.alloc(c.VkFence, self.MAX_CONCURRENT_FRAMES);
+    defer self.allocator.*.free(self.in_flight_fences);
+
+    const functions = c.VmaVulkanFunctions{
+        .vkGetInstanceProcAddr = &c.vkGetInstanceProcAddr,
+        .vkGetDeviceProcAddr = &c.vkGetDeviceProcAddr,
+    };
+
+    try self.create_surface();
+    try self.pick_physical_device();
+    c.vkGetPhysicalDeviceMemoryProperties(self.physical_device, &self.mem_properties);
+    try self.create_present_queue(self.REQUIRE_FAMILIES);
+    try self.create_swapchain();
+    try self.create_swapchain_image_views();
+    try self.create_descriptor_pool();
+
+    try self.create_descriptor_set_layouts();
+
+    const vma_allocator_create_info = c.VmaAllocatorCreateInfo{
+        .flags = c.VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
+        .vulkanApiVersion = c.VK_API_VERSION_1_2,
+        .physicalDevice = self.physical_device,
+        .device = self.device,
+        .instance = self.vk_instance,
+        .pVulkanFunctions = &functions,
+    };
+    
+    const vma_allocator_success = c.vmaCreateAllocator(&vma_allocator_create_info, &self.vma_allocator);
+
+    if (vma_allocator_success != c.VK_SUCCESS)
+    {
+        std.debug.print("Unable to create vma allocator {}\n", .{vma_allocator_success});
+    }
+
+    try self.create_depth_resources();
+
+    self.push_constant_info = c.VkPushConstantRange{
+        .stageFlags = c.VK_SHADER_STAGE_ALL,
+        .offset = 0,
+        // must be a multiple of 4
+        .size = self.PUSH_CONSTANT_SIZE,
+    };
+    
+    try self.create_pipeline_layout();
+try self.create_render_pass();
+    // cursor
+    self.pipelines[0] = try self.create_generic_pipeline(cursor_vert_source, cursor_frag_source, false);
+    // outline
+    self.pipelines[1] = try self.create_outline_pipeline(outline_vert_source, outline_frag_source);
+    // simple chunk
+    self.pipelines[2] = try self.create_simple_chunk_pipeline(chunk_vert_source, chunk_frag_source, false);
+    try self.create_framebuffers();
+    try self.create_command_pool();
+    try self.create_command_buffers();
+    try self.create_sync_objects();
+
+    // GLFW INIT
+    c.glfwSetWindowSizeLimits(self.window, 240, 135, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
+
+    // cursor
+    try self.render_targets.append(.{ .vertex_index = 0, .pipeline_index = 0});
+    // outline
+    try self.render_targets.append(.{ .vertex_index = 1, .pipeline_index = 1});
+    
+    try self.create_vertex_buffer(0, @sizeOf(Vertex), @intCast(cursor_vertices.len * @sizeOf(Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
+    try self.create_vertex_buffer(1, @sizeOf(Vertex), @intCast(block_selection_cube.len * @sizeOf(Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
+
+    try self.render_targets.ensureUnusedCapacity(game_state.voxel_spaces.len);
+    
+    const ChunkRenderData = struct {
+        size: @Vector(3, u32),
+        pos: @Vector(3, f32),
+        model: zm.Mat = zm.identity(),
+    };
+    
+    var chunk_render_data: std.ArrayList(ChunkRenderData) = std.ArrayList(ChunkRenderData).init(self.allocator.*);
+    defer chunk_render_data.deinit();
+
+    var last_space_chunk_index: u32 = 0;
+    // TODO add entries in a chunk data storage buffer for chunk pos etc.
+    for (game_state.voxel_spaces, 0..game_state.voxel_spaces.len) |vs, space_index| {
+        var mesh_data = std.ArrayList(ChunkVertex).init(self.allocator.*);
+        defer mesh_data.deinit();
+
+        for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
+            // The goal is for this get chunk to be faster than reading the disk for an unmodified chunk
+            const data = try chunk.get_chunk_data(game_state.seed, @intCast(space_index), .{0,0,0});
+            const mesh_start: f64 = c.glfwGetTime();
+            const new_vertices_count = try mesh_generation.cull_mesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
+            std.debug.print("[Debug] time: {d:.4}ms \n", .{(c.glfwGetTime() - mesh_start) * 1000.0});
+            _ = &new_vertices_count;
+            std.debug.print("[Debug] vertice count: {}\n", .{new_vertices_count});
+
+            try chunk_render_data.append(.{
+                .model = zm.translation(@floatCast(vs.pos[0]), @floatCast(vs.pos[1]), @floatCast(vs.pos[2])),
+                .size = vs.size,
+                .pos = .{
+                    @floatFromInt(chunk_index % vs.size[0] * 32),
+                    @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32),
+                    @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32),
+                },
+            });
+        }
+        last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
+
+        const render_index: u32 = 2 + @as(u32, @intCast(space_index));
+        game_state.voxel_spaces[space_index].render_index = render_index;
+        try self.render_targets.append(.{ .vertex_index = render_index, .pipeline_index = 2, .vertex_render_offset = 0});
+        try self.create_vertex_buffer(render_index, @sizeOf(ChunkVertex), @intCast(mesh_data.items.len * @sizeOf(ChunkVertex)), mesh_data.items.ptr);
+    }
+
+
+    // TODO initialize chunk data appropriately
+    try self.create_ssbo(@intCast(chunk_render_data.items.len * @sizeOf(ChunkRenderData)), &chunk_render_data.items[0]);
+
+    // RENDER INIT
+
+    const BlockSelectorTransform = struct {
+        model: zm.Mat = zm.identity(),
+    };
+    
+    var selector_transform = BlockSelectorTransform{};
+
+    const create_info = c.VkBufferCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = @sizeOf(BlockSelectorTransform),
+        .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+    };
+
+    const ubo_alloc_create_info = c.VmaAllocationCreateInfo{
+        .usage = c.VMA_MEMORY_USAGE_AUTO,
+        .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+    };
+
+    for (0..self.vertex_buffers.items.len*self.MAX_CONCURRENT_FRAMES) |i|
+    {
+        _ = &i;
+         
+        var buffer: c.VkBuffer = undefined;
+        var alloc: c.VmaAllocation = undefined;
+        _ = c.vmaCreateBuffer(self.vma_allocator, &create_info, &ubo_alloc_create_info, &buffer, &alloc, null);
+        
+        _ = c.vmaCopyMemoryToAllocation(self.vma_allocator, &selector_transform, alloc, 0, @sizeOf(BlockSelectorTransform));
+        try self.ubo_allocs.append(alloc);
+        try self.ubo_buffers.append(buffer);
+    }
+
+    var image_info0 = ImageInfo{
+        .depth = 1,
+        .subresource_range = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .views = try self.allocator.*.alloc(c.VkImageView, self.MAX_CONCURRENT_FRAMES),
+        .samplers = try self.allocator.*.alloc(c.VkSampler, self.MAX_CONCURRENT_FRAMES),
+    };
+    defer self.allocator.*.free(image_info0.views);
+    defer self.allocator.*.free(image_info0.samplers);
+   
+    // TODO turn this into a one line conditional
+    const image_data0 = c.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.STBI_rgb_alpha);
+    if (image_data0 == null){
+        std.debug.print("Unable to find image file \n", .{});
+        return;
+    }
+    else
+    {
+        image_info0.data = image_data0;
+    }
+
+    try create_2d_texture(self, &image_info0);
+    c.stbi_image_free(image_info0.data);
+
+    try create_image_view(self.device, &image_info0);
+    try create_samplers(self, &image_info0, c.VK_FILTER_LINEAR, c.VK_SAMPLER_ADDRESS_MODE_REPEAT, true);
+    
+    var image_info1 = ImageInfo{
+        .depth = 1,
+        .subresource_range = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .views = try self.allocator.*.alloc(c.VkImageView, self.MAX_CONCURRENT_FRAMES),
+        .samplers = try self.allocator.*.alloc(c.VkSampler, self.MAX_CONCURRENT_FRAMES),
+    };
+    defer self.allocator.*.free(image_info1.views);
+    defer self.allocator.*.free(image_info1.samplers);
+   
+    // TODO turn this into a one line conditional
+    const image_data1 = c.stbi_load("blocks.png", &image_info1.width, &image_info1.height, &image_info1.channels, c.STBI_rgb_alpha);
+    if (image_data1 == null){
+        std.debug.print("Unable to find image file \n", .{});
+        return;
+    }
+    else
+    {
+        image_info1.data = image_data1;
+    }
+
+    try create_2d_texture(self, &image_info1);
+    c.stbi_image_free(image_info1.data);
+
+    try create_image_view(self.device, &image_info1);
+    try create_samplers(self, &image_info1, c.VK_FILTER_NEAREST, c.VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
+
+    // Descriptor Sets
+    
+    const layouts: [2]c.VkDescriptorSetLayout = .{self.descriptor_set_layout, self.descriptor_set_layout};
+    const descriptor_alloc_info = c.VkDescriptorSetAllocateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = self.descriptor_pool,
+        .descriptorSetCount = self.MAX_CONCURRENT_FRAMES,
+        .pSetLayouts = &layouts,
+    };
+
+    if (c.vkAllocateDescriptorSets(self.device, &descriptor_alloc_info, self.descriptor_sets.ptr) != c.VK_SUCCESS) {
+        std.debug.print("Unable to allocate Descriptor Sets\n", .{});
+    }
+    
+    for (0..self.MAX_CONCURRENT_FRAMES) |i| {
+        const buffers: [2]c.VkDescriptorBufferInfo = .{
+            c.VkDescriptorBufferInfo{
+                .buffer = self.ubo_buffers.items[i],
+                .offset = 0,
+                .range = @sizeOf(BlockSelectorTransform),
+            },
+            c.VkDescriptorBufferInfo{
+                .buffer = self.ssbo_buffers.items[0],
+                .offset = 0,
+                .range = chunk_render_data.items.len * @sizeOf(ChunkRenderData),
+            },
+        };
+        
+        const images: [2]c.VkDescriptorImageInfo = .{
+            c.VkDescriptorImageInfo{
+                .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = image_info0.views[i],
+                .sampler = image_info0.samplers[i],
+            },
+            c.VkDescriptorImageInfo{
+                .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = image_info1.views[i],
+                .sampler = image_info1.samplers[i],
+            }
+        };
+
+        const descriptor_writes: [4]c.VkWriteDescriptorSet = .{
+            c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = self.descriptor_sets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &buffers[0],
+                .pImageInfo = null,
+                .pTexelBufferView = null,
+            },
+            c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = self.descriptor_sets[i],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pBufferInfo = null,
+                .pImageInfo = &images[0],
+                .pTexelBufferView = null,
+            },
+            c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = self.descriptor_sets[i],
+                .dstBinding = 2,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pBufferInfo = null,
+                .pImageInfo = &images[1],
+                .pTexelBufferView = null,
+            },
+            c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = self.descriptor_sets[i],
+                .dstBinding = 3,
+                .dstArrayElement = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &buffers[1],
+                .pImageInfo = null,
+                .pTexelBufferView = null,
+            },
+        };
+
+        c.vkUpdateDescriptorSets(self.device, descriptor_writes.len, &descriptor_writes, 0, null);
+    }
+
+    self.push_constant_data = try self.allocator.*.alloc(u8, self.PUSH_CONSTANT_SIZE);
+    defer self.allocator.*.free(self.push_constant_data);
+
+    var frame_count: u64 = 0;
+    var current_frame_index: u32 = 0;
+    var previous_frame_time: f32 = 0.0;
+
+    var window_height : i32 = 0;
+    var window_width : i32 = 0;
+
+    var frame_time_buffer_index: u32 = 0;
+    var frame_time_cyclic_buffer: [256]f32 = undefined;
+    // TODO replace this with splat?
+    @memset(&frame_time_cyclic_buffer, 0.0);
+
+    while (c.glfwWindowShouldClose(self.window) == 0) {
+        const current_time : f32 = @floatCast(c.glfwGetTime());
+        const frame_delta: f32 = current_time - previous_frame_time;
+        previous_frame_time = current_time;
+        
+        c.glfwPollEvents();
+
+        c.glfwGetWindowSize(self.window, &window_width, &window_height);
+        const aspect_ratio : f32 = @as(f32, @floatFromInt(window_width))/@as(f32, @floatFromInt(window_height));
+
+        if (input_state.mouse_capture)
+        {
+            c.glfwSetInputMode(self.window, c.GLFW_CURSOR, c.GLFW_CURSOR_DISABLED);
+        }
+        else
+        {
+            c.glfwSetInputMode(self.window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
+        }
+
+        //  I think this is better than making the yaw a global state?
+        if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
+            game_state.player_state.yaw += @as(f32, @floatCast(input_state.mouse_dx * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+            input_state.mouse_dx = 0.0;
+        }
+        
+        if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
+            game_state.player_state.pitch -= @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+            input_state.mouse_dy = 0.0;
+        }
+
+        const look = zm.normalize3(@Vector(4, f32){
+            @as(f32, @floatCast(std.math.cos(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
+            @as(f32, @floatCast(std.math.sin(game_state.player_state.pitch))),
+            @as(f32, @floatCast(std.math.sin(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
+            0.0,
+        });
+        const up : zm.Vec = game_state.player_state.up;
+        //const right = zm.cross3(look, up);
+        //const forward = zm.cross3(right, up);
+
+        const view: zm.Mat = zm.lookToLh(.{@floatCast(game_state.player_state.pos[0]), @floatCast(game_state.player_state.pos[1]), @floatCast(game_state.player_state.pos[2]), 0.0}, look, up);
+        const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
+        const view_proj: zm.Mat = zm.mul(view, projection);
+        
+        var average_frame_time: f32 = 0;
+        for (frame_time_cyclic_buffer) |time|
+        {
+            average_frame_time += time;
+        }
+        average_frame_time /= 256;
+
+        std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms\r", .{
+            if (input_state.mouse_capture) "on " else "off",
+            game_state.player_state.pos[0], 
+            game_state.player_state.pos[1],
+            game_state.player_state.pos[2],
+            game_state.player_state.yaw,
+            game_state.player_state.pitch,
+            average_frame_time * 1000.0,
+        });
+
+        frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
+        if (frame_time_buffer_index < 255) {
+            frame_time_buffer_index += 1;
+        } else {
+            frame_time_buffer_index = 0;
+        }
+        
+        @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
+        @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+
+        //for (game_state.voxel_spaces) |space| {
+        //    self.render_targets.items[space.render_index].rendering_enabled = distance_test(&game_state.player_state.pos, &space.pos, 200.0);
+        //}
+
+        //_ = c.vmaCopyMemoryToAllocation(self.vma_allocator, &selector_transform, self.ubo_allocs.items[current_frame_index], 0, @sizeOf(BlockSelectorTransform));
+
+        try self.draw_frame(current_frame_index);
+
+        current_frame_index = (current_frame_index + 1) % self.MAX_CONCURRENT_FRAMES;
+        frame_count += 1;
+    }
+    
+    _ = c.vkDeviceWaitIdle(self.device);
+    
+    image_cleanup(self, &image_info0);
+    image_cleanup(self, &image_info1);
+    self.cleanup();
+    
+    done.* = true;
 }
