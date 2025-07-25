@@ -3,9 +3,12 @@ const zm = @import("zmath");
 
 pub const VoxelSpace = struct {
     size: @Vector(3, u32),
-    pos: @Vector(3, f64),
     rot: zm.Quat = zm.qidentity(),
-    render_index: u32 = undefined,
+    //render_index: u32,
+    visible: bool,
+    vertex_index: u32,
+    vertex_size: u32,
+    physics_index: u32,
 };
 
 /// Either read or generate data live based on whether the chunk has been modified or not etc.

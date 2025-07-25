@@ -148,14 +148,17 @@ pub const ImageInfo = struct{
     samplers: []c.VkSampler = undefined,
 };
 
-/// All the info required to render a vertex buffer
-pub const RenderInfo = struct {
-    vertex_index: u32,
-    pipeline_index: u32,
-    vertex_count: u32 = 0,
-    vertex_buffer_offset: c.VkDeviceSize = 0,
-    vertex_render_offset: u32 = 0,
-    rendering_enabled: bool = true,
+pub const RenderState = struct {
+    object_matrices: []zm.Mat,
+    pipeline_index: []u32,
+    vertex_indices: []u32,
+    vertex_sizes: []u32,
+};
+
+const ChunkRenderData = struct {
+    size: @Vector(3, u32),
+    pos: @Vector(3, f32),
+    model: zm.Mat = zm.identity(),
 };
 
 // The vulkan/render state
@@ -200,7 +203,7 @@ pub const VulkanState = struct {
     pipelines: []c.VkPipeline = undefined,
     frame_buffers: []c.VkFramebuffer = undefined,
     
-    render_targets: std.ArrayList(RenderInfo) = undefined,
+    //render_targets: std.ArrayList(RenderInfo) = undefined,
 
     vertex_buffers: std.ArrayList(c.VkBuffer) = undefined,
     vertex_allocs: std.ArrayList(c.VmaAllocation) = undefined,
@@ -1004,7 +1007,17 @@ pub const VulkanState = struct {
         }
     }
 
-    fn record_command_buffer(self: *VulkanState, command_buffer: c.VkCommandBuffer, image_index: u32, frame_index: u32) VkAbstractionError!void {
+    fn record_command_buffer(
+        self: *VulkanState,
+        command_buffer: c.VkCommandBuffer,
+        image_index: u32,
+        frame_index: u32,
+        pipeline_indices: *[]u32,
+        vertex_data_indices: *[]32,
+        vertex_data_sizes: *[]u32,
+        vertex_offsets: *[]c.VkDeviceSize,
+        ) VkAbstractionError!void {
+
         _ = &frame_index;
 
         const begin_info = c.VkCommandBufferBeginInfo{
@@ -1057,28 +1070,26 @@ pub const VulkanState = struct {
         c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 
         var previous_pipeline_index: u32 = std.math.maxInt(u32);
-        for (self.render_targets.items) |target| {
-            if (target.rendering_enabled) {
-                const pipeline_index = target.pipeline_index;
-                if (pipeline_index != previous_pipeline_index) {
-                    c.vkCmdBindPipeline(
-                        command_buffer,
-                        c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        self.pipelines[pipeline_index]
-                        );
-                    previous_pipeline_index = pipeline_index;
-                }
-                
-                c.vkCmdBindVertexBuffers(
+        for (0..vertex_data_indices.len) |data_index| {
+            const pipeline_index = pipeline_indices[data_index];
+            if (pipeline_index != previous_pipeline_index) {
+                c.vkCmdBindPipeline(
                     command_buffer,
-                    0,
-                    1,
-                    &self.vertex_buffers.items[target.vertex_index],
-                    &target.vertex_buffer_offset
+                    c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    self.pipelines[pipeline_index]
                     );
-                
-                c.vkCmdDraw(command_buffer, target.vertex_count, 1, 0, 0);
+                previous_pipeline_index = pipeline_index;
             }
+            
+            c.vkCmdBindVertexBuffers(
+                command_buffer,
+                0,
+                1,
+                &self.vertex_buffers.items[vertex_data_indices.*[data_index]],
+                &vertex_offsets.*[data_index],
+                );
+            
+            c.vkCmdDraw(command_buffer, vertex_data_sizes.*[data_index], 1, 0, 0);
         }
 
         c.vkCmdEndRenderPass(command_buffer);
@@ -2088,7 +2099,12 @@ pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) 
     std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });
 }
 
+pub fn update_chunk_render_data() !void {
+    
+}
+
 pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_state: *main.InputState, done: *bool) !void {
+    // boiler plate
     self.shader_modules = std.ArrayList(c.VkShaderModule).init(self.allocator.*);
     defer self.shader_modules.deinit();
 
@@ -2100,9 +2116,6 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
     self.vertex_allocs = std.ArrayList(c.VmaAllocation).init(self.allocator.*);
     defer self.vertex_allocs.deinit();
     
-    self.render_targets = std.ArrayList(RenderInfo).init(self.allocator.*);
-    defer self.render_targets.deinit();
-
     self.ubo_buffers = std.ArrayList(c.VkBuffer).init(self.allocator.*);
     defer self.ubo_buffers.deinit();
     self.ubo_allocs = std.ArrayList(c.VmaAllocation).init(self.allocator.*);
@@ -2183,60 +2196,55 @@ try self.create_render_pass();
     c.glfwSetWindowSizeLimits(self.window, 240, 135, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
 
     // cursor
-    try self.render_targets.append(.{ .vertex_index = 0, .pipeline_index = 0});
+    //try self.render_targets.append(.{ .vertex_index = 0, .pipeline_index = 0});
     // outline
-    try self.render_targets.append(.{ .vertex_index = 1, .pipeline_index = 1});
+    //try self.render_targets.append(.{ .vertex_index = 1, .pipeline_index = 1});
     
     try self.create_vertex_buffer(0, @sizeOf(Vertex), @intCast(cursor_vertices.len * @sizeOf(Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
     try self.create_vertex_buffer(1, @sizeOf(Vertex), @intCast(block_selection_cube.len * @sizeOf(Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
 
-    try self.render_targets.ensureUnusedCapacity(game_state.voxel_spaces.len);
+    //try self.render_targets.ensureUnusedCapacity(game_state.voxel_spaces.items.len);
     
-    const ChunkRenderData = struct {
-        size: @Vector(3, u32),
-        pos: @Vector(3, f32),
-        model: zm.Mat = zm.identity(),
-    };
     
-    var chunk_render_data: std.ArrayList(ChunkRenderData) = std.ArrayList(ChunkRenderData).init(self.allocator.*);
-    defer chunk_render_data.deinit();
+    //var chunk_render_data: std.ArrayList(ChunkRenderData) = std.ArrayList(ChunkRenderData).init(self.allocator.*);
+    //defer chunk_render_data.deinit();
 
-    var last_space_chunk_index: u32 = 0;
-    // TODO add entries in a chunk data storage buffer for chunk pos etc.
-    for (game_state.voxel_spaces, 0..game_state.voxel_spaces.len) |vs, space_index| {
-        var mesh_data = std.ArrayList(ChunkVertex).init(self.allocator.*);
-        defer mesh_data.deinit();
+    //var last_space_chunk_index: u32 = 0;
+    //// TODO add entries in a chunk data storage buffer for chunk pos etc.
+    //for (game_state.voxel_spaces.items, 0..game_state.voxel_spaces.items.len) |vs, space_index| {
+    //    var mesh_data = std.ArrayList(ChunkVertex).init(self.allocator.*);
+    //    defer mesh_data.deinit();
 
-        for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
-            // The goal is for this get chunk to be faster than reading the disk for an unmodified chunk
-            const data = try chunk.get_chunk_data(game_state.seed, @intCast(space_index), .{0,0,0});
-            const mesh_start: f64 = c.glfwGetTime();
-            const new_vertices_count = try mesh_generation.cull_mesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
-            std.debug.print("[Debug] time: {d:.4}ms \n", .{(c.glfwGetTime() - mesh_start) * 1000.0});
-            _ = &new_vertices_count;
-            std.debug.print("[Debug] vertice count: {}\n", .{new_vertices_count});
+    //    for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
+    //        // The goal is for this get chunk to be faster than reading the disk for an unmodified chunk
+    //        const data = try chunk.get_chunk_data_random(game_state.seed, @intCast(space_index), .{0,0,0});
+    //        const mesh_start: f64 = c.glfwGetTime();
+    //        const new_vertices_count = try mesh_generation.cull_mesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
+    //        std.debug.print("[Debug] time: {d:.4}ms \n", .{(c.glfwGetTime() - mesh_start) * 1000.0});
+    //        _ = &new_vertices_count;
+    //        std.debug.print("[Debug] vertice count: {}\n", .{new_vertices_count});
 
-            try chunk_render_data.append(.{
-                .model = zm.translation(@floatCast(vs.pos[0]), @floatCast(vs.pos[1]), @floatCast(vs.pos[2])),
-                .size = vs.size,
-                .pos = .{
-                    @floatFromInt(chunk_index % vs.size[0] * 32),
-                    @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32),
-                    @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32),
-                },
-            });
-        }
-        last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
+    //        try chunk_render_data.append(.{
+    //            .model = zm.translation(@floatCast(vs.pos[0]), @floatCast(vs.pos[1]), @floatCast(vs.pos[2])),
+    //            .size = vs.size,
+    //            .pos = .{
+    //                @floatFromInt(chunk_index % vs.size[0] * 32),
+    //                @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32),
+    //                @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32),
+    //            },
+    //        });
+    //    }
+    //    last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
 
-        const render_index: u32 = 2 + @as(u32, @intCast(space_index));
-        game_state.voxel_spaces[space_index].render_index = render_index;
-        try self.render_targets.append(.{ .vertex_index = render_index, .pipeline_index = 2, .vertex_render_offset = 0});
-        try self.create_vertex_buffer(render_index, @sizeOf(ChunkVertex), @intCast(mesh_data.items.len * @sizeOf(ChunkVertex)), mesh_data.items.ptr);
-    }
+    //    const render_index: u32 = 2 + @as(u32, @intCast(space_index));
+    //    game_state.voxel_spaces[space_index].render_index = render_index;
+    //    try self.render_targets.append(.{ .vertex_index = render_index, .pipeline_index = 2, .vertex_render_offset = 0});
+    //    try self.create_vertex_buffer(render_index, @sizeOf(ChunkVertex), @intCast(mesh_data.items.len * @sizeOf(ChunkVertex)), mesh_data.items.ptr);
+    //}
 
 
     // TODO initialize chunk data appropriately
-    try self.create_ssbo(@intCast(chunk_render_data.items.len * @sizeOf(ChunkRenderData)), &chunk_render_data.items[0]);
+    //try self.create_ssbo(@intCast(chunk_render_data.items.len * @sizeOf(ChunkRenderData)), &chunk_render_data.items[0]);
 
     // RENDER INIT
 
@@ -2440,6 +2448,9 @@ try self.create_render_pass();
     // TODO replace this with splat?
     @memset(&frame_time_cyclic_buffer, 0.0);
 
+    var render_states: [2]RenderState = .{};
+    var most_recent_state_index: u8 = 0;
+
     while (c.glfwWindowShouldClose(self.window) == 0) {
         const current_time : f32 = @floatCast(c.glfwGetTime());
         const frame_delta: f32 = current_time - previous_frame_time;
@@ -2477,13 +2488,21 @@ try self.create_render_pass();
             0.0,
         });
         const up : zm.Vec = game_state.player_state.up;
-        //const right = zm.cross3(look, up);
-        //const forward = zm.cross3(right, up);
 
-        const view: zm.Mat = zm.lookToLh(.{@floatCast(game_state.player_state.pos[0]), @floatCast(game_state.player_state.pos[1]), @floatCast(game_state.player_state.pos[2]), 0.0}, look, up);
+        //const view: zm.Mat = zm.lookToLh(.{@floatCast(game_state.player_state.pos[0]), @floatCast(game_state.player_state.pos[1]), @floatCast(game_state.player_state.pos[2]), 0.0}, look, up);
+        const view: zm.Mat = zm.lookToLh(.{0.0, 0.0, 0.0, 0.0}, look, up);
         const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
         const view_proj: zm.Mat = zm.mul(view, projection);
         
+        
+        // Render constants
+        @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
+        @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+
+        // draw
+        try self.draw_frame(current_frame_index, render_states[most_recent_state_index]);
+       
+        // stats
         var average_frame_time: f32 = 0;
         for (frame_time_cyclic_buffer) |time|
         {
@@ -2507,17 +2526,6 @@ try self.create_render_pass();
         } else {
             frame_time_buffer_index = 0;
         }
-        
-        @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
-        @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
-
-        //for (game_state.voxel_spaces) |space| {
-        //    self.render_targets.items[space.render_index].rendering_enabled = distance_test(&game_state.player_state.pos, &space.pos, 200.0);
-        //}
-
-        //_ = c.vmaCopyMemoryToAllocation(self.vma_allocator, &selector_transform, self.ubo_allocs.items[current_frame_index], 0, @sizeOf(BlockSelectorTransform));
-
-        try self.draw_frame(current_frame_index);
 
         current_frame_index = (current_frame_index + 1) % self.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
