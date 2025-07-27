@@ -29,29 +29,13 @@ const PlayerState = struct {
     up: zm.Vec = .{ 0.0, -1.0, 0.0, 1.0},
     //camera_rot: zm.Quat,
     speed: u32 = 5,
-    physics_index: u32 = undefined,
 };
 
 pub const GameState = struct {
-    voxel_spaces: std.ArrayList(chunk.VoxelSpace),//[]chunk.VoxelSpace = undefined,
-    seed: u64,
+    voxel_spaces: []chunk.VoxelSpace = undefined,
+    seed: u64 = 0,
     player_state: PlayerState,
     completion_signal: bool,
-
-    pub fn add_voxel_space(self: *GameState, physics_state: physics.PhysicsState, size: @Vector(3, u32)) !void {
-        try physics_state.particles.append(.{
-            .inverse_mass = 1/30,
-            .position = .{0.0,0.0,0.0},
-            .velocity = .{0.0,0.0,0.0,0.0},
-            .force_accumulation = .{0.0,0.0,0.0,0.0},
-        });
-
-        try self.voxel_spaces.append(.{
-            .size = size,
-            .physics_index = physics_state.particles.items.len,
-            .visible = true,
-        });
-    }
 };
 
 
@@ -133,32 +117,23 @@ pub fn main() !void {
     //{
     //    player_state.pos += .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
     //}
-   
-    // state initialization
+    
     var game_state = GameState{
-        .voxel_spaces = std.ArrayList(chunk.VoxelSpace).init(allocator),
-        .seed = 0,
+        .voxel_spaces = try allocator.alloc(chunk.VoxelSpace, 2),
         .player_state = PlayerState{},
         .completion_signal = true,
     };
-    defer game_state.voxel_spaces.deinit();
-    
+    defer allocator.free(game_state.voxel_spaces);
+
+    for (0..game_state.voxel_spaces.len) |index| {
+        game_state.voxel_spaces[index].size = .{1,1,1};
+        game_state.voxel_spaces[index].pos = .{@as(f32, @floatFromInt(index * 2 + index)), 0.0, 0.0};
+    }
+
     var physics_state = physics.PhysicsState{
         .particles = std.ArrayList(physics.Particle).init(allocator)
     };
-    defer physics_state.particles.deinit();
 
-    // First physics object is the player
-    try physics_state.particles.append(.{
-        .inverse_mass = 1/30,
-        .position = .{0.0,0.0,0.0},
-        .velocity = .{0.0,0.0,0.0,0.0},
-        .force_accumulation = .{0.0,0.0,0.0,0.0},
-    });
-    game_state.player_state.physics_index = @intCast(physics_state.particles.items.len);
-
-
-    // thread initialization
     var render_done: bool = false;
     var render_thread = try std.Thread.spawn(.{}, vulkan.render_thread, .{&vulkan_state, &game_state, &input_state, &render_done});
     defer render_thread.join();
@@ -169,6 +144,7 @@ pub fn main() !void {
     defer physics_thread.join();
     _ = &physics_thread;
 
+    // not sure this is the best way to keep the main thread alive *shrug*
     while (!render_done or !physics_done) {
         if (render_done) {
             game_state.completion_signal = false;
@@ -265,10 +241,8 @@ pub fn cursor_pos_callback(window: ?*c.GLFWwindow, _xpos: f64, _ypos: f64) callc
     xpos = _xpos;
     ypos = _ypos;
 
-    if (input_state.mouse_capture) {
-        input_state.mouse_dx += dx;
-        input_state.mouse_dy += dy;
-    }
+    input_state.mouse_dx += dx;
+    input_state.mouse_dy += dy;
 }
 
 pub fn mouse_button_input_callback(window: ?*c.GLFWwindow, button: i32, action: i32, mods: i32) callconv(.C) void {
