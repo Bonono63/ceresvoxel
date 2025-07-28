@@ -23,16 +23,19 @@ pub const InputState = packed struct {
 };
 
 const PlayerState = struct {
-    pos: @Vector(3, f64) = .{ 0.0, 0.0, -1.0 },
+    // TODO switch to quat for camera dir
     yaw: f32 = std.math.pi/2.0,
     pitch: f32 = 0.0,
-    up: zm.Vec = .{ 0.0, -1.0, 0.0, 1.0},
+    up: zm.Vec = .{ 0.0, -1.0, 0.0, 0.0},
+    // Unit vector of player input
+    input_vec: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
     //camera_rot: zm.Quat,
-    speed: u32 = 5,
+    speed: f32 = 5.0,
+    physics_index: u32,
 };
 
 pub const GameState = struct {
-    voxel_spaces: []chunk.VoxelSpace = undefined,
+    voxel_spaces: std.ArrayList(chunk.VoxelSpace),
     seed: u64 = 0,
     player_state: PlayerState,
     completion_signal: bool,
@@ -119,33 +122,92 @@ pub fn main() !void {
     //}
     
     var game_state = GameState{
-        .voxel_spaces = try allocator.alloc(chunk.VoxelSpace, 2),
-        .player_state = PlayerState{},
+        .voxel_spaces = std.ArrayList(chunk.VoxelSpace).init(allocator),
+        .player_state = undefined,
         .completion_signal = true,
     };
-    defer allocator.free(game_state.voxel_spaces);
-
-    for (0..game_state.voxel_spaces.len) |index| {
-        game_state.voxel_spaces[index].size = .{1,1,1};
-        game_state.voxel_spaces[index].pos = .{@as(f32, @floatFromInt(index * 2 + index)), 0.0, 0.0};
-    }
-
+    defer game_state.voxel_spaces.deinit();
+    
     var physics_state = physics.PhysicsState{
         .particles = std.ArrayList(physics.Particle).init(allocator)
     };
+    defer physics_state.particles.deinit();
+
+    for (0..2) |index| {
+        try physics_state.particles.append(.{
+            .position = .{@as(f128, @floatFromInt(index * 2 + index)), 0.0, 0.0},
+            .inverse_mass = (1.0/32.0),
+        });
+        try game_state.voxel_spaces.append(.{
+            .size = .{1,1,1},
+            .physics_index = @intCast(physics_state.particles.items.len - 1),
+        });
+    }
+
+    try physics_state.particles.append(.{
+        .position = .{0.0, 0.0, -1.0},
+        .inverse_mass = (1.0/32.0),
+    });
+
+    game_state.player_state.physics_index = @intCast(physics_state.particles.items.len - 1);
+
+    std.debug.print("{any}\n", .{physics_state.particles.items});
 
     var render_done: bool = false;
-    var render_thread = try std.Thread.spawn(.{}, vulkan.render_thread, .{&vulkan_state, &game_state, &input_state, &render_done});
+    var render_thread = try std.Thread.spawn(.{}, vulkan.render_thread, .{&vulkan_state, &game_state, &input_state, &physics_state, &render_done});
     defer render_thread.join();
-    _ = &render_thread;
 
     var physics_done: bool = false;
-    var physics_thread = try std.Thread.spawn(.{}, physics.physics_thread, .{&physics_state, &input_state, &game_state.completion_signal, &physics_done});
+    var physics_thread = try std.Thread.spawn(.{}, physics.physics_thread, .{&physics_state, &game_state, &game_state.completion_signal, &physics_done});
     defer physics_thread.join();
-    _ = &physics_thread;
 
     // not sure this is the best way to keep the main thread alive *shrug*
     while (!render_done or !physics_done) {
+
+        // TODO this will need to put elsewhere if multiplayer is implemented
+        if (input_state.control) {
+            game_state.player_state.speed = 10.0;
+        } else {
+            game_state.player_state.speed = 5.0;
+        }
+        
+        const look = zm.normalize3(@Vector(4, f32){
+            @as(f32, @floatCast(std.math.cos(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
+            @as(f32, @floatCast(std.math.sin(game_state.player_state.pitch))),
+            @as(f32, @floatCast(std.math.sin(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
+            0.0,
+        });
+
+        if (input_state.space or input_state.shift) {
+            if (input_state.space) {
+                game_state.player_state.input_vec[1] = 1.0 * game_state.player_state.speed;
+            }
+            if (input_state.shift) {
+                game_state.player_state.input_vec[1] = -1.0 * game_state.player_state.speed;
+            }
+        } else {
+            game_state.player_state.input_vec[1] = 0.0;
+        }
+        
+        if (input_state.w or input_state.s) {
+            if (input_state.w) {
+                game_state.player_state.input_vec[0] = look[0] * game_state.player_state.speed;
+                game_state.player_state.input_vec[2] = look[2] * game_state.player_state.speed;
+            }
+            //if (input_state.s) {
+            //    game_state.player_state.input_vec[1] = -1.0 * game_state.player_state.speed;
+            //}
+        } else {
+            game_state.player_state.input_vec[0] = 0.0;
+            game_state.player_state.input_vec[2] = 0.0;
+        }
+        //    if (input_state.shift) {
+        //        game_state.player_state.input_vec -= game_state.player_state.up;
+        //    }
+        //} else {
+        //    game_state.player_state.input_vec = .{0.0, 0.0, 0.0, 0.0};
+        //}
+
         if (render_done) {
             game_state.completion_signal = false;
         }

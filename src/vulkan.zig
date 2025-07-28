@@ -4,6 +4,7 @@ const zm = @import("zmath");
 const main = @import("main.zig");
 const chunk = @import("chunk.zig");
 const mesh_generation = @import("mesh_generation.zig");
+const physics = @import("physics.zig");
 
 // TODO There has got to be a better way than this, so much smell...
 const chunk_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/simple.vert.spv")))));
@@ -1004,7 +1005,7 @@ pub const VulkanState = struct {
         }
     }
 
-    fn record_command_buffer(self: *VulkanState, command_buffer: c.VkCommandBuffer, image_index: u32, frame_index: u32) VkAbstractionError!void {
+    fn record_command_buffer(self: *VulkanState, command_buffer: c.VkCommandBuffer, render_state: *[]RenderInfo, image_index: u32, frame_index: u32) VkAbstractionError!void {
         _ = &frame_index;
 
         const begin_info = c.VkCommandBufferBeginInfo{
@@ -1057,7 +1058,7 @@ pub const VulkanState = struct {
         c.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 
         var previous_pipeline_index: u32 = std.math.maxInt(u32);
-        for (self.render_targets.items) |target| {
+        for (render_state.*) |target| {
             if (target.rendering_enabled) {
                 const pipeline_index = target.pipeline_index;
                 if (pipeline_index != previous_pipeline_index) {
@@ -1351,7 +1352,7 @@ pub const VulkanState = struct {
         }
     }
 
-    pub fn draw_frame(self: *VulkanState, frame_index: u32) VkAbstractionError!void {
+    pub fn draw_frame(self: *VulkanState, frame_index: u32, render_state: *[]RenderInfo) VkAbstractionError!void {
         const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fences[frame_index], c.VK_TRUE, std.math.maxInt(u64));
         if (fence_wait != c.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
@@ -1378,7 +1379,7 @@ pub const VulkanState = struct {
             return VkAbstractionError.OutOfMemory;
         }
 
-        try record_command_buffer(self, self.command_buffers[frame_index], image_index, frame_index);
+        try record_command_buffer(self, self.command_buffers[frame_index], render_state, image_index, frame_index);
 
         const end_recording_success = c.vkEndCommandBuffer(self.command_buffers[frame_index]);
         if (end_recording_success != c.VK_SUCCESS) {
@@ -2088,7 +2089,7 @@ pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) 
     std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });
 }
 
-pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_state: *main.InputState, done: *bool) !void {
+pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_state: *main.InputState, physics_state: *physics.PhysicsState, done: *bool) !void {
     self.shader_modules = std.ArrayList(c.VkShaderModule).init(self.allocator.*);
     defer self.shader_modules.deinit();
 
@@ -2190,8 +2191,6 @@ try self.create_render_pass();
     try self.create_vertex_buffer(0, @sizeOf(Vertex), @intCast(cursor_vertices.len * @sizeOf(Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
     try self.create_vertex_buffer(1, @sizeOf(Vertex), @intCast(block_selection_cube.len * @sizeOf(Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
 
-    try self.render_targets.ensureUnusedCapacity(game_state.voxel_spaces.len);
-    
     const ChunkRenderData = struct {
         size: @Vector(3, u32),
         pos: @Vector(3, f32),
@@ -2203,7 +2202,7 @@ try self.create_render_pass();
 
     var last_space_chunk_index: u32 = 0;
     // TODO add entries in a chunk data storage buffer for chunk pos etc.
-    for (game_state.voxel_spaces, 0..game_state.voxel_spaces.len) |vs, space_index| {
+    for (game_state.voxel_spaces.items, 0..game_state.voxel_spaces.items.len) |vs, space_index| {
         var mesh_data = std.ArrayList(ChunkVertex).init(self.allocator.*);
         defer mesh_data.deinit();
 
@@ -2215,9 +2214,16 @@ try self.create_render_pass();
             std.debug.print("[Debug] time: {d:.4}ms \n", .{(c.glfwGetTime() - mesh_start) * 1000.0});
             _ = &new_vertices_count;
             std.debug.print("[Debug] vertice count: {}\n", .{new_vertices_count});
+            
+            const pos: @Vector(4, f32) = .{
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[0])),
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[1])),
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[2])),
+                0.0,
+            };
 
             try chunk_render_data.append(.{
-                .model = zm.translation(@floatCast(vs.pos[0]), @floatCast(vs.pos[1]), @floatCast(vs.pos[2])),
+                .model = zm.translationV(pos),//zm.translation(@as(f32, @floatFromInt(space_index * 2 + space_index)), 0.0, 0.0),
                 .size = vs.size,
                 .pos = .{
                     @floatFromInt(chunk_index % vs.size[0] * 32),
@@ -2229,7 +2235,7 @@ try self.create_render_pass();
         last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
 
         const render_index: u32 = 2 + @as(u32, @intCast(space_index));
-        game_state.voxel_spaces[space_index].render_index = render_index;
+        game_state.voxel_spaces.items[space_index].render_index = render_index;
         try self.render_targets.append(.{ .vertex_index = render_index, .pipeline_index = 2, .vertex_render_offset = 0});
         try self.create_vertex_buffer(render_index, @sizeOf(ChunkVertex), @intCast(mesh_data.items.len * @sizeOf(ChunkVertex)), mesh_data.items.ptr);
     }
@@ -2440,6 +2446,10 @@ try self.create_render_pass();
     // TODO replace this with splat?
     @memset(&frame_time_cyclic_buffer, 0.0);
 
+    var render_state: []RenderInfo = try self.allocator.alloc(RenderInfo, self.render_targets.items.len);
+    defer self.allocator.free(render_state);
+    @memcpy(render_state, self.render_targets.items);
+
     while (c.glfwWindowShouldClose(self.window) == 0) {
         const current_time : f32 = @floatCast(c.glfwGetTime());
         const frame_delta: f32 = current_time - previous_frame_time;
@@ -2459,6 +2469,10 @@ try self.create_render_pass();
             c.glfwSetInputMode(self.window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
         }
 
+        render_state = try self.allocator.realloc(render_state, self.render_targets.items.len);
+        @memcpy(render_state, self.render_targets.items);
+
+        // TODO move this out of the render loop somehow
         //  I think this is better than making the yaw a global state?
         if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
             game_state.player_state.yaw += @as(f32, @floatCast(input_state.mouse_dx * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
@@ -2470,19 +2484,32 @@ try self.create_render_pass();
             input_state.mouse_dy = 0.0;
         }
 
+        //// TODO make this based on a quaternion in player state
         const look = zm.normalize3(@Vector(4, f32){
             @as(f32, @floatCast(std.math.cos(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
             @as(f32, @floatCast(std.math.sin(game_state.player_state.pitch))),
             @as(f32, @floatCast(std.math.sin(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
             0.0,
         });
-        const up : zm.Vec = game_state.player_state.up;
-        //const right = zm.cross3(look, up);
-        //const forward = zm.cross3(right, up);
+        //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
+        //const up : zm.Vec = game_state.player_state.up;
 
-        const view: zm.Mat = zm.lookToLh(.{@floatCast(game_state.player_state.pos[0]), @floatCast(game_state.player_state.pos[1]), @floatCast(game_state.player_state.pos[2]), 0.0}, look, up);
+        const player_pos: zm.Vec = .{
+            @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[0]),
+            @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[1]),
+            @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[2]),
+            0.0,
+        };
+        const view: zm.Mat = zm.lookToLh(player_pos, look, .{0.0,-1.0,0.0,0.0});
         const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
         const view_proj: zm.Mat = zm.mul(view, projection);
+        
+        
+        @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
+        @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+
+        // DRAW
+        try self.draw_frame(current_frame_index, &render_state);
         
         var average_frame_time: f32 = 0;
         for (frame_time_cyclic_buffer) |time|
@@ -2491,11 +2518,13 @@ try self.create_render_pass();
         }
         average_frame_time /= 256;
 
+
+        //std.debug.print("render state size: {} {any}\n", .{render_state.len, render_state});
         std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms\r", .{
             if (input_state.mouse_capture) "on " else "off",
-            game_state.player_state.pos[0], 
-            game_state.player_state.pos[1],
-            game_state.player_state.pos[2],
+            @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[0])), 
+            @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[1])),
+            @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[2])),
             game_state.player_state.yaw,
             game_state.player_state.pitch,
             average_frame_time * 1000.0,
@@ -2507,17 +2536,6 @@ try self.create_render_pass();
         } else {
             frame_time_buffer_index = 0;
         }
-        
-        @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
-        @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
-
-        //for (game_state.voxel_spaces) |space| {
-        //    self.render_targets.items[space.render_index].rendering_enabled = distance_test(&game_state.player_state.pos, &space.pos, 200.0);
-        //}
-
-        //_ = c.vmaCopyMemoryToAllocation(self.vma_allocator, &selector_transform, self.ubo_allocs.items[current_frame_index], 0, @sizeOf(BlockSelectorTransform));
-
-        try self.draw_frame(current_frame_index);
 
         current_frame_index = (current_frame_index + 1) % self.MAX_CONCURRENT_FRAMES;
         frame_count += 1;
