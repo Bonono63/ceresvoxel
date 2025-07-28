@@ -130,6 +130,12 @@ pub const ChunkVertex = packed struct {
     pos: @Vector(3, f32), // 3 * u5 + 1 bit
 };
 
+const ChunkRenderData = struct {
+    size: @Vector(3, u32),
+    pos: @Vector(3, f32),
+    model: zm.Mat = zm.identity(),
+};
+
 /// image_views size should be of size MAX_CONCURRENT_FRAMES
 /// Current implementation also assumes 2D texture
 /// Defaults to 2D image view type
@@ -2089,6 +2095,34 @@ pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) 
     std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });
 }
 
+pub fn update_chunk_ssbo(self: *VulkanState, physics_state: *physics.PhysicsState, voxel_spaces: []chunk.VoxelSpace, ssbo_index: u32) VkAbstractionError!void {
+    var data = std.ArrayList(ChunkRenderData).init(self.allocator.*);
+    try data.ensureUnusedCapacity(voxel_spaces.len); // TODO maybe we do more later
+    defer data.deinit();
+    for (voxel_spaces) |vs| {
+        for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
+            const pos: @Vector(4, f32) = .{
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[0])),
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[1])),
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[2])),
+                0.0,
+            };
+
+            try data.append(.{
+                .model = zm.translationV(pos),
+                .size = vs.size,
+                .pos = .{
+                    @floatFromInt(chunk_index % vs.size[0] * 32),
+                    @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32),
+                    @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32),
+                },
+            });
+        }
+    }
+    
+    try self.copy_data_via_staging_buffer(&self.ssbo_buffers.items[ssbo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
+}
+
 pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_state: *main.InputState, physics_state: *physics.PhysicsState, done: *bool) !void {
     self.shader_modules = std.ArrayList(c.VkShaderModule).init(self.allocator.*);
     defer self.shader_modules.deinit();
@@ -2191,14 +2225,8 @@ try self.create_render_pass();
     try self.create_vertex_buffer(0, @sizeOf(Vertex), @intCast(cursor_vertices.len * @sizeOf(Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
     try self.create_vertex_buffer(1, @sizeOf(Vertex), @intCast(block_selection_cube.len * @sizeOf(Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
 
-    const ChunkRenderData = struct {
-        size: @Vector(3, u32),
-        pos: @Vector(3, f32),
-        model: zm.Mat = zm.identity(),
-    };
-    
-    var chunk_render_data: std.ArrayList(ChunkRenderData) = std.ArrayList(ChunkRenderData).init(self.allocator.*);
-    defer chunk_render_data.deinit();
+    //var chunk_render_data: std.ArrayList(ChunkRenderData) = std.ArrayList(ChunkRenderData).init(self.allocator.*);
+    //defer chunk_render_data.deinit();
 
     var last_space_chunk_index: u32 = 0;
     // TODO add entries in a chunk data storage buffer for chunk pos etc.
@@ -2215,22 +2243,22 @@ try self.create_render_pass();
             _ = &new_vertices_count;
             std.debug.print("[Debug] vertice count: {}\n", .{new_vertices_count});
             
-            const pos: @Vector(4, f32) = .{
-                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[0])),
-                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[1])),
-                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[2])),
-                0.0,
-            };
+            //const pos: @Vector(4, f32) = .{
+            //    @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[0])),
+            //    @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[1])),
+            //    @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[2])),
+            //    0.0,
+            //};
 
-            try chunk_render_data.append(.{
-                .model = zm.translationV(pos),//zm.translation(@as(f32, @floatFromInt(space_index * 2 + space_index)), 0.0, 0.0),
-                .size = vs.size,
-                .pos = .{
-                    @floatFromInt(chunk_index % vs.size[0] * 32),
-                    @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32),
-                    @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32),
-                },
-            });
+            //try chunk_render_data.append(.{
+            //    .model = zm.translationV(pos),//zm.translation(@as(f32, @floatFromInt(space_index * 2 + space_index)), 0.0, 0.0),
+            //    .size = vs.size,
+            //    .pos = .{
+            //        @floatFromInt(chunk_index % vs.size[0] * 32),
+            //        @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32),
+            //        @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32),
+            //    },
+            //});
         }
         last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
 
@@ -2242,7 +2270,34 @@ try self.create_render_pass();
 
 
     // TODO initialize chunk data appropriately
-    try self.create_ssbo(@intCast(chunk_render_data.items.len * @sizeOf(ChunkRenderData)), &chunk_render_data.items[0]);
+    //try self.create_ssbo(@intCast(2 * @sizeOf(ChunkRenderData)), &chunk_render_data.items[0]);
+    
+    var ssbo: c.VkBuffer = undefined;
+    var ssbo_alloc: c.VmaAllocation = undefined;
+    
+    var buffer_create_info = c.VkBufferCreateInfo{
+        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = 2 * @sizeOf(ChunkRenderData),
+        .usage = c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    }; 
+    
+    const alloc_create_info = c.VmaAllocationCreateInfo{
+        .usage = c.VMA_MEMORY_USAGE_AUTO,
+        .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+    };
+    
+    const buffer_success = c.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &ssbo, &ssbo_alloc, null);
+    
+    if (buffer_success != c.VK_SUCCESS)
+    {
+        std.debug.print("success: {}\n", .{buffer_success});
+        return VkAbstractionError.VertexBufferCreationFailure;
+    }
+
+    try self.ssbo_buffers.append(ssbo);
+    try self.ssbo_allocs.append(ssbo_alloc);
+    
+    try update_chunk_ssbo(self, physics_state, game_state.voxel_spaces.items, 0);
 
     // RENDER INIT
 
@@ -2364,7 +2419,7 @@ try self.create_render_pass();
             c.VkDescriptorBufferInfo{
                 .buffer = self.ssbo_buffers.items[0],
                 .offset = 0,
-                .range = chunk_render_data.items.len * @sizeOf(ChunkRenderData),
+                .range = 2 * @sizeOf(ChunkRenderData),
             },
         };
         
@@ -2492,7 +2547,7 @@ try self.create_render_pass();
             0.0,
         });
         //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
-        //const up : zm.Vec = game_state.player_state.up;
+        const up : zm.Vec = game_state.player_state.up;
 
         const player_pos: zm.Vec = .{
             @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[0]),
@@ -2500,14 +2555,16 @@ try self.create_render_pass();
             @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[2]),
             0.0,
         };
-        const view: zm.Mat = zm.lookToLh(player_pos, look, .{0.0,-1.0,0.0,0.0});
+        const view: zm.Mat = zm.lookToLh(player_pos, look, up);
         const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
         const view_proj: zm.Mat = zm.mul(view, projection);
         
         
         @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
         @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
-
+        
+        try update_chunk_ssbo(self, physics_state, game_state.voxel_spaces.items, 0);
+        
         // DRAW
         try self.draw_frame(current_frame_index, &render_state);
         

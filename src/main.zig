@@ -5,6 +5,7 @@ const vulkan = @import("vulkan.zig");
 const zm = @import("zmath");
 const chunk = @import("chunk.zig");
 const physics = @import("physics.zig");
+const cm = @import("ceresmath.zig");
 
 pub const InputState = packed struct {
     MOUSE_SENSITIVITY : f64 = 0.1,
@@ -146,12 +147,12 @@ pub fn main() !void {
 
     try physics_state.particles.append(.{
         .position = .{0.0, 0.0, -1.0},
-        .inverse_mass = (1.0/32.0),
+        .inverse_mass = (1.0/10000.0),
     });
-
-    game_state.player_state.physics_index = @intCast(physics_state.particles.items.len - 1);
+    game_state.player_state = PlayerState{.physics_index = @intCast(physics_state.particles.items.len - 1)};
 
     std.debug.print("{any}\n", .{physics_state.particles.items});
+    std.debug.print("{}\n", .{game_state.player_state.up});
 
     var render_done: bool = false;
     var render_thread = try std.Thread.spawn(.{}, vulkan.render_thread, .{&vulkan_state, &game_state, &input_state, &physics_state, &render_done});
@@ -178,35 +179,28 @@ pub fn main() !void {
             0.0,
         });
 
-        if (input_state.space or input_state.shift) {
-            if (input_state.space) {
-                game_state.player_state.input_vec[1] = 1.0 * game_state.player_state.speed;
-            }
-            if (input_state.shift) {
-                game_state.player_state.input_vec[1] = -1.0 * game_state.player_state.speed;
-            }
-        } else {
-            game_state.player_state.input_vec[1] = 0.0;
+        const right = zm.normalize3(zm.cross3(look, game_state.player_state.up));
+
+        game_state.player_state.input_vec = .{0.0, 0.0, 0.0, 0.0};
+
+        if (input_state.space) {
+            game_state.player_state.input_vec -= cm.scale3(game_state.player_state.up, game_state.player_state.speed);
         }
-        
-        if (input_state.w or input_state.s) {
-            if (input_state.w) {
-                game_state.player_state.input_vec[0] = look[0] * game_state.player_state.speed;
-                game_state.player_state.input_vec[2] = look[2] * game_state.player_state.speed;
-            }
-            //if (input_state.s) {
-            //    game_state.player_state.input_vec[1] = -1.0 * game_state.player_state.speed;
-            //}
-        } else {
-            game_state.player_state.input_vec[0] = 0.0;
-            game_state.player_state.input_vec[2] = 0.0;
+        if (input_state.shift) {
+            game_state.player_state.input_vec += cm.scale3(game_state.player_state.up, game_state.player_state.speed);
         }
-        //    if (input_state.shift) {
-        //        game_state.player_state.input_vec -= game_state.player_state.up;
-        //    }
-        //} else {
-        //    game_state.player_state.input_vec = .{0.0, 0.0, 0.0, 0.0};
-        //}
+        if (input_state.w) {
+            game_state.player_state.input_vec += cm.scale3(look, game_state.player_state.speed);
+        }
+        if (input_state.s) {
+            game_state.player_state.input_vec -= cm.scale3(look, game_state.player_state.speed);
+        }
+        if (input_state.d) {
+            game_state.player_state.input_vec -= cm.scale3(right, game_state.player_state.speed);
+        }
+        if (input_state.a) {
+            game_state.player_state.input_vec += cm.scale3(right, game_state.player_state.speed);
+        }
 
         if (render_done) {
             game_state.completion_signal = false;
