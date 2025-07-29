@@ -79,7 +79,7 @@ fn physics_tick(delta_time: f64, particles: []Particle) void {
         //    }
         //}
         //particles[index].force_accumulation += sum_gravity_force;
-        particles[index].force_accumulation += .{0.0,-1000000000.0,0.0,0.0};
+        particles[index].force_accumulation += .{0.0,-1.0 * 1 / particles[index].inverse_mass,0.0,0.0};
     }
 
     // Bouyancy
@@ -98,7 +98,7 @@ fn physics_tick(delta_time: f64, particles: []Particle) void {
             };
             var resulting_acceleration = scale_f32(particles[index].acceleration, @floatCast(delta_time));
             // acceleration integration
-            resulting_acceleration += scale_f32(particles[index].force_accumulation, particles[index].inverse_mass);
+            resulting_acceleration += scale_f32(particles[index].force_accumulation, 1.0 / particles[index].inverse_mass);
             particles[index].velocity += scale_f32(resulting_acceleration, @floatCast(delta_time));
 
             // damping

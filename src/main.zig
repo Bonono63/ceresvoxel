@@ -137,7 +137,7 @@ pub fn main() !void {
     for (0..2) |index| {
         try physics_state.particles.append(.{
             .position = .{@as(f128, @floatFromInt(index * 2 + index)), 0.0, 0.0},
-            .inverse_mass = (1.0/32.0),
+            .inverse_mass = (1.0/10000.0),
         });
         try game_state.voxel_spaces.append(.{
             .size = .{1,1,1},
