@@ -17,7 +17,11 @@ pub const Particle = struct {
     // Sum accelerations of the forces acting on the particle
     force_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
     // Helps with simulation stability, but for space it doesn't make much sense
-    damp: f32 = 0.00001,
+    damp: f32 = 0.99999,
+    // if its a planet it must have a parent (n-body gravity also only applies to non planets)
+    planet: bool = false,
+    // Index of a parent object (used for planets and moons)
+    parent_physics_index: u32 = std.math.maxInt(u32),
 };
 
 pub const PhysicsState = struct {
@@ -38,7 +42,7 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
         if (delta_time > minimum_delta_time) {
             const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
 
-            physics_state.particles.items[game_state.player_state.physics_index].velocity += game_state.player_state.input_vec;
+            physics_state.particles.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
 
             physics_tick(delta_time_float, physics_state.particles.items);
             last_interval = current_time;
@@ -56,6 +60,8 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
 
 // TODO abstract the voxel spaces and entities to one type of physics entity
 fn physics_tick(delta_time: f64, particles: []Particle) void {
+    
+
     // Gravity
     for (0..particles.len) |index| {
         //const particle = particles[index];
@@ -79,7 +85,7 @@ fn physics_tick(delta_time: f64, particles: []Particle) void {
         //    }
         //}
         //particles[index].force_accumulation += sum_gravity_force;
-        particles[index].force_accumulation += .{0.0,-1.0 * 1 / particles[index].inverse_mass,0.0,0.0};
+        particles[index].force_accumulation += .{0.0,-1.0 / particles[index].inverse_mass,0.0,0.0};
     }
 
     // Bouyancy
@@ -98,11 +104,13 @@ fn physics_tick(delta_time: f64, particles: []Particle) void {
             };
             var resulting_acceleration = scale_f32(particles[index].acceleration, @floatCast(delta_time));
             // acceleration integration
-            resulting_acceleration += scale_f32(particles[index].force_accumulation, 1.0 / particles[index].inverse_mass);
+            resulting_acceleration += scale_f32(particles[index].force_accumulation, particles[index].inverse_mass);
             particles[index].velocity += scale_f32(resulting_acceleration, @floatCast(delta_time));
 
             // damping
             particles[index].velocity = scale_f32(particles[index].velocity, particles[index].damp);
+
+            std.debug.print("v: {} a: {} ra: {}\n", .{particles[index].velocity, particles[index].acceleration, resulting_acceleration});
 
             particles[index].force_accumulation = .{0.0,0.0,0.0,0.0};
         }
