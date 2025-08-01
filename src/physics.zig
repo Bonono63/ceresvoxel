@@ -18,14 +18,21 @@ pub const Particle = struct {
     force_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
     // Helps with simulation stability, but for space it doesn't make much sense
     damp: f32 = 0.99999,
-    // if its a planet it must have a parent (n-body gravity also only applies to non planets)
+
     planet: bool = false,
-    // Index of a parent object (used for planets and moons)
-    parent_physics_index: u32 = std.math.maxInt(u32),
+    orbit_center_position: @Vector(3, f128) = .{0.0,0.0,0.0},
+    eccentricity: f32 = 1.0,
+    orbit_radius: f128 = 10.0,
+    period: f32 = 1000.0,
+    // the plane the ellipse is mapped to
+    plane: @Vector(2, f32) = .{1.0,1.0}
 };
 
+// TODO maybe planets belong in a different array or structure, but for now they are the same
 pub const PhysicsState = struct {
-    particles: std.ArrayList(Particle)
+    particles: std.ArrayList(Particle),
+    // TODO make sure this is initialized properly when loading from disk 
+    physics_tick_count: u32 = 0,
 };
 
 pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState, complete_signal: *bool, done: *bool) void {
@@ -43,8 +50,9 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
             const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
 
             physics_state.particles.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
-
-            physics_tick(delta_time_float, physics_state.particles.items);
+            
+            physics_tick(delta_time_float, physics_state.physics_tick_count, physics_state.particles.items);
+            
             last_interval = current_time;
             std.debug.print("{:2} {d:3}ms\r", .{counter, delta_time_float});
             if (counter >= counter_max) {
@@ -52,6 +60,7 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
             } else {
                 counter += 1;
             }
+            physics_state.physics_tick_count += 1;
         }
     }
 
@@ -59,8 +68,16 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
 }
 
 // TODO abstract the voxel spaces and entities to one type of physics entity
-fn physics_tick(delta_time: f64, particles: []Particle) void {
-    
+fn physics_tick(delta_time: f64, physics_tick_count: u32, particles: []Particle) void {
+    // Planetary Motion
+    for (0..particles.len) |index| {
+        if (particles[index].planet) {
+            const x: f128 = particles[index].orbit_radius * @cos(@as(f32, @floatFromInt(physics_tick_count)) / particles[index].period) + particles[index].orbit_center_position[0]; // parameterization of x in an ellipse
+            const z: f128 = particles[index].orbit_radius * @sin(@as(f32, @floatFromInt(physics_tick_count)) / particles[index].period) + particles[index].orbit_center_position[2]; // plug in a plane
+            const y: f128 = 0.3 * x + 0.2 * z + particles[index].orbit_center_position[1]; // parameterization of y in an ellipse
+            particles[index].position = .{x,y,z};
+        }
+    }
 
     // Gravity
     for (0..particles.len) |index| {
@@ -85,17 +102,17 @@ fn physics_tick(delta_time: f64, particles: []Particle) void {
         //    }
         //}
         //particles[index].force_accumulation += sum_gravity_force;
-        particles[index].force_accumulation += .{0.0,-1.0 / particles[index].inverse_mass,0.0,0.0};
+        if (!particles[index].planet) {
+            particles[index].force_accumulation += .{0.0,-1.0 / particles[index].inverse_mass,0.0,0.0};
+        }
     }
 
     // Bouyancy
     // Magnetism
 
-    //std.debug.print("{any}\n", .{particles});
-
-    // Integrator (basically actually do the physics)
+    // Classical Mechanics (Integrator) 
     for (0..particles.len) |index| {
-        if (particles[index].inverse_mass > 0.0) {
+        if (particles[index].inverse_mass > 0.0 and !particles[index].planet) {
             // velocity integration
             particles[index].position += .{
                 particles[index].velocity[0] * delta_time,
@@ -110,7 +127,7 @@ fn physics_tick(delta_time: f64, particles: []Particle) void {
             // damping
             particles[index].velocity = scale_f32(particles[index].velocity, particles[index].damp);
 
-            std.debug.print("v: {} a: {} ra: {}\n", .{particles[index].velocity, particles[index].acceleration, resulting_acceleration});
+            //std.debug.print("v: {} a: {} ra: {}\n", .{particles[index].velocity, particles[index].acceleration, resulting_acceleration});
 
             particles[index].force_accumulation = .{0.0,0.0,0.0,0.0};
         }

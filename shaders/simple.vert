@@ -13,7 +13,7 @@ struct chunk {
     uint size_x;
     uint size_y;
     uint size_z;
-    vec3 pos;
+//    vec3 pos;
     mat4 model;
 };
 
@@ -29,7 +29,7 @@ layout(location = 0) out vec2 uv_out;
 
 void main()
 {
-    gl_Position = pc.view_proj * cd.data[chunk_index].model * vec4(in_pos + cd.data[chunk_index].pos, 1.0);
+    gl_Position = pc.view_proj * cd.data[chunk_index].model * vec4(in_pos, 1.0);
     //gl_Position = pc.view_proj * vec4(in_pos, 1.0);
     uv_out = uv;
 }

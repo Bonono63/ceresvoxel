@@ -144,8 +144,35 @@ pub fn main() !void {
             .physics_index = @intCast(physics_state.particles.items.len - 1),
         });
     }
-
-
+    
+    // "Earth"
+    try physics_state.particles.append(.{
+        .position = .{0.0, 0.0, -4.0},
+        .inverse_mass = (1.0/10000.0),
+        .planet = true,
+        .orbit_radius = 10.0,
+        .period = 1200.0,
+        .plane = .{0.2, 0.1},
+    });
+    
+    try game_state.voxel_spaces.append(.{
+        .size = .{1,1,1},
+        .physics_index = @intCast(physics_state.particles.items.len - 1),
+    });
+    
+    try physics_state.particles.append(.{
+        .position = .{0.0, 0.0, -4.0},
+        .inverse_mass = (1.0/10000.0),
+        .planet = true,
+        .orbit_radius = 11.5,
+        .period = 1000.0,
+        .plane = .{0.2, 0.15},
+    });
+    
+    try game_state.voxel_spaces.append(.{
+        .size = .{1,1,1},
+        .physics_index = @intCast(physics_state.particles.items.len - 1),
+    });
 
     // player
     try physics_state.particles.append(.{
@@ -300,8 +327,10 @@ pub fn cursor_pos_callback(window: ?*c.GLFWwindow, _xpos: f64, _ypos: f64) callc
     xpos = _xpos;
     ypos = _ypos;
 
-    input_state.mouse_dx += dx;
-    input_state.mouse_dy += dy;
+    if (input_state.mouse_capture) {
+        input_state.mouse_dx += dx;
+        input_state.mouse_dy += dy;
+    }
 }
 
 pub fn mouse_button_input_callback(window: ?*c.GLFWwindow, button: i32, action: i32, mods: i32) callconv(.C) void {

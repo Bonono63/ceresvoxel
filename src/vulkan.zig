@@ -132,7 +132,6 @@ pub const ChunkVertex = packed struct {
 
 const ChunkRenderData = struct {
     size: @Vector(3, u32),
-    pos: @Vector(3, f32),
     model: zm.Mat = zm.identity(),
 };
 
@@ -2102,20 +2101,18 @@ pub fn update_chunk_ssbo(self: *VulkanState, physics_state: *physics.PhysicsStat
     for (voxel_spaces) |vs| {
         for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
             const pos: @Vector(4, f32) = .{
-                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[0])),
-                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[1])),
-                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[2])),
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[0])) +
+                    @as(f32, @floatFromInt(chunk_index % vs.size[0] * 32)),
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[1])) +
+                    @as(f32, @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32)),
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[2])) +
+                    @as(f32, @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32)),
                 0.0,
             };
 
             try data.append(.{
                 .model = zm.translationV(pos),
                 .size = vs.size,
-                .pos = .{
-                    @floatFromInt(chunk_index % vs.size[0] * 32),
-                    @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32),
-                    @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32),
-                },
             });
         }
     }
@@ -2419,7 +2416,7 @@ try self.create_render_pass();
             c.VkDescriptorBufferInfo{
                 .buffer = self.ssbo_buffers.items[0],
                 .offset = 0,
-                .range = 2 * @sizeOf(ChunkRenderData),
+                .range = 4 * @sizeOf(ChunkRenderData),
             },
         };
         
