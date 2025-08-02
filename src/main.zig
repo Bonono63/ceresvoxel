@@ -173,6 +173,20 @@ pub fn main() !void {
         .size = .{1,1,1},
         .physics_index = @intCast(physics_state.particles.items.len - 1),
     });
+    
+    try physics_state.particles.append(.{
+        .position = .{0.0, 0.0, -4.0},
+        .inverse_mass = (1.0/10000.0),
+        .planet = true,
+        .orbit_radius = 30.0,
+        .period = 2000.0,
+        .plane = .{0.2, -0.3},
+    });
+    
+    try game_state.voxel_spaces.append(.{
+        .size = .{1,1,1},
+        .physics_index = @intCast(physics_state.particles.items.len - 1),
+    });
 
     // player
     try physics_state.particles.append(.{

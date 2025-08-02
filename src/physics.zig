@@ -13,9 +13,9 @@ pub const Particle = struct {
     velocity: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
     acceleration: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
     // TODO decide whether a f32 is sufficient precision for mass calculations
-    inverse_mass: f32,
+    inverse_mass: f64,
     // Sum accelerations of the forces acting on the particle
-    force_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
+    force_accumulation: @Vector(3, f64) = .{0.0, 0.0, 0.0},
     // Helps with simulation stability, but for space it doesn't make much sense
     damp: f32 = 0.99999,
 
@@ -74,7 +74,7 @@ fn physics_tick(delta_time: f64, physics_tick_count: u32, particles: []Particle)
         if (particles[index].planet) {
             const x: f128 = particles[index].orbit_radius * @cos(@as(f32, @floatFromInt(physics_tick_count)) / particles[index].period) + particles[index].orbit_center_position[0]; // parameterization of x in an ellipse
             const z: f128 = particles[index].orbit_radius * @sin(@as(f32, @floatFromInt(physics_tick_count)) / particles[index].period) + particles[index].orbit_center_position[2]; // plug in a plane
-            const y: f128 = 0.3 * x + 0.2 * z + particles[index].orbit_center_position[1]; // parameterization of y in an ellipse
+            const y: f128 = particles[index].plane[0] * x + particles[index].plane[1] * z + particles[index].orbit_center_position[1]; // parameterization of y in an ellipse
             particles[index].position = .{x,y,z};
         }
     }
@@ -103,7 +103,7 @@ fn physics_tick(delta_time: f64, physics_tick_count: u32, particles: []Particle)
         //}
         //particles[index].force_accumulation += sum_gravity_force;
         if (!particles[index].planet) {
-            particles[index].force_accumulation += .{0.0,-1.0 / particles[index].inverse_mass,0.0,0.0};
+            particles[index].force_accumulation += .{0.0, -1.0 / particles[index].inverse_mass, 0.0};
         }
     }
 
@@ -119,17 +119,23 @@ fn physics_tick(delta_time: f64, physics_tick_count: u32, particles: []Particle)
                 particles[index].velocity[1] * delta_time,
                 particles[index].velocity[2] * delta_time,
             };
-            var resulting_acceleration = scale_f32(particles[index].acceleration, @floatCast(delta_time));
+            //var resulting_acceleration = scale_f64(particles[index].acceleration, @floatCast(delta_time));
             // acceleration integration
-            resulting_acceleration += scale_f32(particles[index].force_accumulation, particles[index].inverse_mass);
-            particles[index].velocity += scale_f32(resulting_acceleration, @floatCast(delta_time));
+            var resulting_acceleration = scale_f64(particles[index].force_accumulation, particles[index].inverse_mass);
+            resulting_acceleration = scale_f64(resulting_acceleration, @floatCast(delta_time));
+            particles[index].velocity += .{
+                @as(f32, @floatCast(resulting_acceleration[0])),
+                @as(f32, @floatCast(resulting_acceleration[1])),
+                @as(f32, @floatCast(resulting_acceleration[2])),
+                0.0,
+            };
 
             // damping
             particles[index].velocity = scale_f32(particles[index].velocity, particles[index].damp);
 
             //std.debug.print("v: {} a: {} ra: {}\n", .{particles[index].velocity, particles[index].acceleration, resulting_acceleration});
 
-            particles[index].force_accumulation = .{0.0,0.0,0.0,0.0};
+            particles[index].force_accumulation = .{0.0,0.0,0.0};
         }
     }
 }
@@ -145,6 +151,10 @@ pub fn scale_f32(vec: @Vector(4, f32), scale: f32) @Vector(4, f32){
     return .{vec[0] * scale, vec[1] * scale, vec[2] * scale, vec[3] * scale};
 }
 
-pub fn scale_128(vec: @Vector(3, f128), scale: f32) @Vector(3, f128){
+pub fn scale_f64(vec: @Vector(3, f64), scale: f64) @Vector(3, f64){
+    return .{vec[0] * scale, vec[1] * scale, vec[2] * scale};
+}
+
+pub fn scale_f128(vec: @Vector(3, f128), scale: f32) @Vector(3, f128){
     return .{vec[0] * scale, vec[1] * scale, vec[2] * scale};
 }

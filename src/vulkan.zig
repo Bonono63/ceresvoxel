@@ -2416,7 +2416,7 @@ try self.create_render_pass();
             c.VkDescriptorBufferInfo{
                 .buffer = self.ssbo_buffers.items[0],
                 .offset = 0,
-                .range = 4 * @sizeOf(ChunkRenderData),
+                .range = 1000 * @sizeOf(ChunkRenderData),
             },
         };
         
@@ -2574,7 +2574,7 @@ try self.create_render_pass();
 
 
         //std.debug.print("render state size: {} {any}\n", .{render_state.len, render_state});
-        std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms\r", .{
+        std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps\r", .{
             if (input_state.mouse_capture) "on " else "off",
             @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[0])), 
             @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[1])),
@@ -2582,6 +2582,7 @@ try self.create_render_pass();
             game_state.player_state.yaw,
             game_state.player_state.pitch,
             average_frame_time * 1000.0,
+            1.0/average_frame_time,
         });
 
         frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
