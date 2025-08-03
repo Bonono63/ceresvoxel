@@ -133,26 +133,27 @@ pub fn main() !void {
         .particles = std.ArrayList(physics.Particle).init(allocator)
     };
     defer physics_state.particles.deinit();
-
-    for (0..2) |index| {
-        try physics_state.particles.append(.{
-            .position = .{@as(f128, @floatFromInt(index * 2 + index)), 0.0, 0.0},
-            .inverse_mass = (1.0/100.0),
-        });
-        try game_state.voxel_spaces.append(.{
-            .size = .{1,1,1},
-            .physics_index = @intCast(physics_state.particles.items.len - 1),
-        });
-    }
+    
+    // "Sun"
+    try physics_state.particles.append(.{
+        .position = .{0.0, 0.0, 0.0},
+        .inverse_mass = 1.0 / 1.98892e30,//(1.0/10000.0),
+        .planet = false,
+        .gravity = false,
+    });
+    
+    try game_state.voxel_spaces.append(.{
+        .size = .{1,1,1},
+        .physics_index = @intCast(physics_state.particles.items.len - 1),
+    });
+    physics_state.sun_index = @intCast(physics_state.particles.items.len - 1);
     
     // "Earth"
     try physics_state.particles.append(.{
-        .position = .{0.0, 0.0, -4.0},
-        .inverse_mass = (1.0/10000.0),
+        .position = .{physics.AU, 0.0, 0.0},//physics.AU, 0.0, 0.0},
+        .inverse_mass = 1.0 / 5.9722e24,
+        .velocity = .{0.0, 0.0, 29.783e3, 0.0},
         .planet = true,
-        .orbit_radius = 10.0,
-        .period = 1200.0,
-        .plane = .{0.2, 0.1},
     });
     
     try game_state.voxel_spaces.append(.{
@@ -160,33 +161,33 @@ pub fn main() !void {
         .physics_index = @intCast(physics_state.particles.items.len - 1),
     });
     
-    try physics_state.particles.append(.{
-        .position = .{0.0, 0.0, -4.0},
-        .inverse_mass = (1.0/10000.0),
-        .planet = true,
-        .orbit_radius = 11.5,
-        .period = 1000.0,
-        .plane = .{0.2, 0.15},
-    });
+    //try physics_state.particles.append(.{
+    //    .position = .{0.0, 0.0, -4.0},
+    //    .inverse_mass = (1.0/10000.0),
+    //    .planet = true,
+    //    .orbit_radius = 11.5,
+    //    .period = 1000.0,
+    //    .plane = .{0.2, 0.15},
+    //});
+    //
+    //try game_state.voxel_spaces.append(.{
+    //    .size = .{1,1,1},
+    //    .physics_index = @intCast(physics_state.particles.items.len - 1),
+    //});
     
-    try game_state.voxel_spaces.append(.{
-        .size = .{1,1,1},
-        .physics_index = @intCast(physics_state.particles.items.len - 1),
-    });
-    
-    try physics_state.particles.append(.{
-        .position = .{0.0, 0.0, -4.0},
-        .inverse_mass = (1.0/10000.0),
-        .planet = true,
-        .orbit_radius = 30.0,
-        .period = 2000.0,
-        .plane = .{0.2, -0.3},
-    });
-    
-    try game_state.voxel_spaces.append(.{
-        .size = .{1,1,1},
-        .physics_index = @intCast(physics_state.particles.items.len - 1),
-    });
+    //try physics_state.particles.append(.{
+    //    .position = .{0.0, 0.0, -4.0},
+    //    .inverse_mass = (1.0/10000.0),
+    //    .planet = true,
+    //    .orbit_radius = 30.0,
+    //    .period = 2000.0,
+    //    .plane = .{0.2, -0.3},
+    //});
+    //
+    //try game_state.voxel_spaces.append(.{
+    //    .size = .{1,1,1},
+    //    .physics_index = @intCast(physics_state.particles.items.len - 1),
+    //});
 
     // player
     try physics_state.particles.append(.{
