@@ -6,7 +6,7 @@ const main = @import("main.zig");
 
 const GRAVITATIONAL_CONSTANT: f128 = 6.67428e-11;
 pub const AU: f128 = 149.6e9;
-pub const SCALE: f32 = 10.0;
+pub const SCALE: f32 = 50.0;
 
 pub const Particle = struct {
     // This should be sufficient for space exploration at a solar system level
@@ -28,17 +28,24 @@ pub const Particle = struct {
     /// Position divided by one AU
     pub fn pos_d_au(self: *Particle) @Vector(3, f32) {
         return .{
-            @as(f32, @floatCast(self.position[0] / AU)),
-            @as(f32, @floatCast(self.position[1] / AU)),
-            @as(f32, @floatCast(self.position[2] / AU)),
+            @as(f32, @floatCast(self.position[0] / AU)) * SCALE,
+            @as(f32, @floatCast(self.position[1] / AU)) * SCALE,
+            @as(f32, @floatCast(self.position[2] / AU)) * SCALE,
         };
     }
+};
+
+const OrbitStyle = enum {
+    BABY,
+    NIELDTYSON,
 };
 
 // TODO maybe planets belong in a different array or structure, but for now they are the same
 pub const PhysicsState = struct {
     particles: std.ArrayList(Particle),
     sun_index: u32 = 0,
+
+    //orbit_style: u32 = OrbitStyle.BABY,
 };
 
 pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState, complete_signal: *bool, done: *bool) void {
@@ -60,7 +67,7 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
             physics_tick(delta_time_float, physics_state.particles.items, physics_state);
             
             last_interval = current_time;
-            std.debug.print("{any}\n", .{physics_state.particles.items[1]});
+            //std.debug.print("{any}\n", .{physics_state.particles.items[1]});
             std.debug.print("{d:3}ms {} particles\r", .{delta_time, physics_state.particles.items.len});
             if (counter >= counter_max) {
                 counter = 0;
@@ -78,29 +85,35 @@ fn physics_tick(delta_time: f64, particles: []Particle, physics_state: *PhysicsS
     // Planetary Motion
     for (0..particles.len) |index| {
         if (particles[index].planet) {
+            const sun_position: @Vector(3, f128) = .{0.0,0.0,0.0};
             // F = G * m1 * m2 / d**2
-            const d = distance_vector_128_squared(particles[index].position, .{0.0 ,0.0, 0.0});
-            const inverse_d: @Vector(3, f128) = .{
-                1.0 / d[0],
-                1.0 / d[1],
-                1.0 / d[2],
-            };
-            const gravity_coefficient = GRAVITATIONAL_CONSTANT * (1.0/particles[index].inverse_mass) * (1.0/particles[physics_state.*.sun_index].inverse_mass);
-            const scaled_d: f64 = @as(f64, @floatCast((inverse_d[0] + inverse_d[1] + inverse_d[2]) * gravity_coefficient));
+            const d = 1.0 / distance_f128(particles[index].position, sun_position);
+            const force_coefficient: f128 = GRAVITATIONAL_CONSTANT * (1.0/particles[index].inverse_mass) * (1.0/particles[physics_state.*.sun_index].inverse_mass) * d * d;
             
-            const theta: f64 = std.math.atan2(@as(f64, @floatCast(inverse_d[0])), @as(f64, @floatCast(inverse_d[2])));
-            const force_direction: @Vector(3, f64) = .{@cos(theta), 0.0, @sin(theta)};
+            const difference: @Vector(3, f64) = .{
+                @as(f64, @floatCast(sun_position[0]-particles[index].position[0])),
+                @as(f64, @floatCast(sun_position[1]-particles[index].position[1])),
+                @as(f64, @floatCast(sun_position[2]-particles[index].position[2])),
+            };
+            const theta: f64 = std.math.atan2(difference[2], difference[0]);
+            const fx = @cos(theta) * @as(f64, @floatCast(force_coefficient));
+            const fy = @sin(theta) * @as(f64, @floatCast(force_coefficient));
 
-            const final_vector: @Vector(3, f64) = scale_f64(force_direction, scaled_d);
+            //const final_vector: @Vector(3, f128) = scale_f128(force_direction, force_coefficient);
+            const final_f64: @Vector(3, f64) = .{
+                fx,
+                0.0,
+                fy,
+            };
 
-            std.debug.print("{}\n ", .{d});
+            //std.debug.print("d: {} gc: {} fv: {} f64 {}\n ", .{d, force_coefficient, final_vector, final_f64});
 
             //const final_vector: @Vector(3, f64) = .{
             //    @as(f64, @floatCast(scaled_d[0])),
             //    @as(f64, @floatCast(scaled_d[1])),
             //    @as(f64, @floatCast(scaled_d[2])),
             //};
-            particles[index].force_accumulation += final_vector;
+            particles[index].force_accumulation += final_f64;
         }
     }
 
@@ -159,32 +172,22 @@ fn physics_tick(delta_time: f64, particles: []Particle, physics_state: *PhysicsS
             // damping
             particles[index].velocity = scale_f32(particles[index].velocity, particles[index].damp);
 
-            //std.debug.print("v: {} a: {} ra: {}\n", .{particles[index].velocity, particles[index].acceleration, resulting_acceleration});
+            std.debug.print("p: {d:.3} {d:.3} {d:.3} v: {} fa: {}\n", .{
+                particles[index].position[0],
+                particles[index].position[1],
+                particles[index].position[2],
+                particles[index].velocity, resulting_acceleration});
 
             particles[index].force_accumulation = .{0.0,0.0,0.0};
         }
     }
 }
 
-pub fn distance_128(a: @Vector(3, f128), b: @Vector(3, f128)) f128 {
+pub fn distance_f128(a: @Vector(3, f128), b: @Vector(3, f128)) f128 {
     const x = a[0] - b[0];
     const y = a[1] - b[1];
     const z = a[2] - b[2];
-    return std.math.sqrt(x * x + y * y + z * z);
-}
-
-pub fn distance_128_squared(a: @Vector(3, f128), b: @Vector(3, f128)) f128 {
-    const x = a[0] - b[0];
-    const y = a[1] - b[1];
-    const z = a[2] - b[2];
-    return x * x + y * y + z * z;
-}
-
-pub fn distance_vector_128_squared(a: @Vector(3, f128), b: @Vector(3, f128)) @Vector(3, f128) {
-    const x = a[0] - b[0];
-    const y = a[1] - b[1];
-    const z = a[2] - b[2];
-    return .{x * x, y * y, z * z};
+    return std.math.sqrt(x * x) + std.math.sqrt(y * y) + std.math.sqrt(z * z);
 }
 
 pub fn scale_f32(vec: @Vector(4, f32), scale: f32) @Vector(4, f32){
@@ -197,4 +200,9 @@ pub fn scale_f64(vec: @Vector(3, f64), scale: f64) @Vector(3, f64){
 
 pub fn scale_f128(vec: @Vector(3, f128), scale: f128) @Vector(3, f128){
     return .{vec[0] * scale, vec[1] * scale, vec[2] * scale};
+}
+
+pub fn normalize_f128(a: @Vector(3, f128)) @Vector(3, f128) {
+    const d = distance_f128(a, .{0.0,0.0,0.0});
+    return .{a[0]/d, a[1]/d, a[2]/d};
 }
