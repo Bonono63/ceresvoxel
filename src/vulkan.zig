@@ -2100,7 +2100,11 @@ pub fn update_chunk_ssbo(self: *VulkanState, physics_state: *physics.PhysicsStat
     defer data.deinit();
     for (voxel_spaces) |vs| {
         for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
-            const physics_pos = physics_state.particles.items[vs.physics_index].pos_d_au();
+            const physics_pos = .{
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[0])),
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[1])),
+                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[2])),
+            };
             const pos: @Vector(4, f32) = .{
                 physics_pos[0] +
                     @as(f32, @floatFromInt(chunk_index % vs.size[0] * 32)),

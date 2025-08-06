@@ -22,8 +22,10 @@ pub const Particle = struct {
 
     gravity: bool = true,
     planet: bool = false,
-    orbit_center_position: @Vector(3, f128) = .{0.0,0.0,0.0},
+    orbit_radius: f128 = 0.0,
+    barocenter: @Vector(3, f128) = .{0.0,0.0,0.0}, // center of the object's orbit
     eccentricity: f32 = 1.0,
+    eccliptic_offset: @Vector(2, f32) = .{0.0, 0.0},
 
     /// Position divided by one AU
     pub fn pos_d_au(self: *Particle) @Vector(3, f32) {
@@ -35,17 +37,18 @@ pub const Particle = struct {
     }
 };
 
-const OrbitStyle = enum {
-    BABY,
-    NIELDTYSON,
+const PlanetaryMotionStyle = enum {
+    DETERMINISTIC,
+    NONDETERMINISTIC,
 };
 
 // TODO maybe planets belong in a different array or structure, but for now they are the same
 pub const PhysicsState = struct {
     particles: std.ArrayList(Particle),
     sun_index: u32 = 0,
+    sim_start_time: i64,
 
-    //orbit_style: u32 = OrbitStyle.BABY,
+    motion_style: PlanetaryMotionStyle = PlanetaryMotionStyle.DETERMINISTIC,
 };
 
 pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState, complete_signal: *bool, done: *bool) void {
@@ -85,35 +88,41 @@ fn physics_tick(delta_time: f64, particles: []Particle, physics_state: *PhysicsS
     // Planetary Motion
     for (0..particles.len) |index| {
         if (particles[index].planet) {
-            const sun_position: @Vector(3, f128) = .{0.0,0.0,0.0};
-            // F = G * m1 * m2 / d**2
-            const d = 1.0 / distance_f128(particles[index].position, sun_position);
-            const force_coefficient: f128 = GRAVITATIONAL_CONSTANT * (1.0/particles[index].inverse_mass) * (1.0/particles[physics_state.*.sun_index].inverse_mass) * d * d;
-            
-            const difference: @Vector(3, f64) = .{
-                @as(f64, @floatCast(sun_position[0]-particles[index].position[0])),
-                @as(f64, @floatCast(sun_position[1]-particles[index].position[1])),
-                @as(f64, @floatCast(sun_position[2]-particles[index].position[2])),
-            };
-            const theta: f64 = std.math.atan2(difference[2], difference[0]);
-            const fx = @cos(theta) * @as(f64, @floatCast(force_coefficient));
-            const fy = @sin(theta) * @as(f64, @floatCast(force_coefficient));
+            switch (physics_state.motion_style) {
+                PlanetaryMotionStyle.DETERMINISTIC => {
+                    //const prev_position = particles[index].position;
+                    const time = @as(f64, @floatFromInt(std.time.milliTimestamp() - physics_state.sim_start_time));
+                    const x: f128 = particles[index].orbit_radius * @cos(time / particles[index].orbit_radius / particles[index].orbit_radius);
+                    const y: f128 = 0.0;
+                    const z: f128 = particles[index].orbit_radius * @sin(time / particles[index].orbit_radius / particles[index].orbit_radius);
 
-            //const final_vector: @Vector(3, f128) = scale_f128(force_direction, force_coefficient);
-            const final_f64: @Vector(3, f64) = .{
-                fx,
-                0.0,
-                fy,
-            };
+                    particles[index].position = .{x,y,z};
+                },
+                PlanetaryMotionStyle.NONDETERMINISTIC => {
+                    const sun_position: @Vector(3, f128) = .{0.0,0.0,0.0};
+                    // F = G * m1 * m2 / d**2
+                    const d = 1.0 / distance_f128(particles[index].position, sun_position);
+                    const force_coefficient: f128 = GRAVITATIONAL_CONSTANT * (1.0/particles[index].inverse_mass) * (1.0/particles[physics_state.*.sun_index].inverse_mass) * d * d;
+                    
+                    const difference: @Vector(3, f64) = .{
+                        @as(f64, @floatCast(sun_position[0]-particles[index].position[0])),
+                        @as(f64, @floatCast(sun_position[1]-particles[index].position[1])),
+                        @as(f64, @floatCast(sun_position[2]-particles[index].position[2])),
+                    };
+                    const theta: f64 = std.math.atan2(difference[2], difference[0]);
+                    const fx = @cos(theta) * @as(f64, @floatCast(force_coefficient));
+                    const fy = @sin(theta) * @as(f64, @floatCast(force_coefficient));
 
-            //std.debug.print("d: {} gc: {} fv: {} f64 {}\n ", .{d, force_coefficient, final_vector, final_f64});
+                    const final_f64: @Vector(3, f64) = .{
+                        fx,
+                        0.0,
+                        fy,
+                    };
 
-            //const final_vector: @Vector(3, f64) = .{
-            //    @as(f64, @floatCast(scaled_d[0])),
-            //    @as(f64, @floatCast(scaled_d[1])),
-            //    @as(f64, @floatCast(scaled_d[2])),
-            //};
-            particles[index].force_accumulation += final_f64;
+                    //std.debug.print("d: {} gc: {} fv: {} f64 {}\n ", .{d, force_coefficient, final_vector, final_f64});
+                    particles[index].force_accumulation += final_f64;
+                },
+            }
         }
     }
 
@@ -172,11 +181,11 @@ fn physics_tick(delta_time: f64, particles: []Particle, physics_state: *PhysicsS
             // damping
             particles[index].velocity = scale_f32(particles[index].velocity, particles[index].damp);
 
-            std.debug.print("p: {d:.3} {d:.3} {d:.3} v: {} fa: {}\n", .{
-                particles[index].position[0],
-                particles[index].position[1],
-                particles[index].position[2],
-                particles[index].velocity, resulting_acceleration});
+            //std.debug.print("p: {d:.3} {d:.3} {d:.3} v: {} fa: {}\n", .{
+            //    particles[index].position[0],
+            //    particles[index].position[1],
+            //    particles[index].position[2],
+            //    particles[index].velocity, resulting_acceleration});
 
             particles[index].force_accumulation = .{0.0,0.0,0.0};
         }
