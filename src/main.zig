@@ -220,7 +220,7 @@ pub fn main() !void {
 
     // player
     try physics_state.particles.append(.{
-        .position = .{0.0, 60, 0.0},
+        .position = .{0.0, 200, 0.0},
         .inverse_mass = (1.0/100.0),
     });
     game_state.player_state = PlayerState{.physics_index = @intCast(physics_state.particles.items.len - 1)};
