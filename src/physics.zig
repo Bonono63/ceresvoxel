@@ -8,7 +8,7 @@ const GRAVITATIONAL_CONSTANT: f128 = 6.67428e-11;
 pub const AU: f128 = 149.6e9;
 pub const SCALE: f32 = 50.0;
 
-pub const Particle = struct {
+pub const Body = struct {
     // This should be sufficient for space exploration at a solar system level
     position: @Vector(3, f128),
     // There is phyicsally no reason to be able to go above a speed or acceleration of 2.4 billion meters a second
@@ -18,7 +18,7 @@ pub const Particle = struct {
     // Sum accelerations of the forces acting on the particle
     force_accumulation: @Vector(3, f64) = .{0.0, 0.0, 0.0},
     // Helps with simulation stability, but for space it doesn't make much sense
-    damp: f32 = 0.99999,
+    linear_damping: f32 = 0.99999,
 
     gravity: bool = true,
     planet: bool = false,
@@ -27,8 +27,12 @@ pub const Particle = struct {
     eccentricity: f32 = 1.0,
     eccliptic_offset: @Vector(2, f32) = .{0.0, 0.0},
 
+    orientation: zm.Quat = zm.qidentity(),
+    angular_velocity: zm.Vec = .{0.0,0.0,0.0,0.0},
+    transform: zm.Mat = zm.identity(), // Current body transform, can be used for rendering as well
+
     /// Position divided by one AU
-    pub fn pos_d_au(self: *Particle) @Vector(3, f32) {
+    pub fn pos_d_au(self: *Body) @Vector(3, f32) {
         return .{
             @as(f32, @floatCast(self.position[0] / AU)) * SCALE,
             @as(f32, @floatCast(self.position[1] / AU)) * SCALE,
@@ -44,7 +48,7 @@ const PlanetaryMotionStyle = enum {
 
 // TODO maybe planets belong in a different array or structure, but for now they are the same
 pub const PhysicsState = struct {
-    particles: std.ArrayList(Particle),
+    particles: std.ArrayList(Body),
     sun_index: u32 = 0,
     sim_start_time: i64,
 
@@ -65,6 +69,7 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
         if (delta_time > minimum_delta_time) {
             const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
 
+            // TODO replace this with linear impulses later
             physics_state.particles.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
             
             physics_tick(delta_time_float, physics_state.particles.items, physics_state);
@@ -84,20 +89,22 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
 }
 
 // TODO abstract the voxel spaces and entities to one type of physics entity
-fn physics_tick(delta_time: f64, particles: []Particle, physics_state: *PhysicsState) void {
+fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState) void {
     // Planetary Motion
     for (0..particles.len) |index| {
         if (particles[index].planet) {
             switch (physics_state.motion_style) {
+
                 PlanetaryMotionStyle.DETERMINISTIC => {
                     //const prev_position = particles[index].position;
                     const time = @as(f64, @floatFromInt(std.time.milliTimestamp() - physics_state.sim_start_time));
                     const x: f128 = particles[index].orbit_radius * @cos(time / particles[index].orbit_radius / particles[index].orbit_radius);
-                    const y: f128 = 0.0;
                     const z: f128 = particles[index].orbit_radius * @sin(time / particles[index].orbit_radius / particles[index].orbit_radius);
+                    const y: f128 = particles[index].eccliptic_offset[0] * x + particles[index].eccliptic_offset[1] * z;
 
                     particles[index].position = .{x,y,z};
                 },
+
                 PlanetaryMotionStyle.NONDETERMINISTIC => {
                     const sun_position: @Vector(3, f128) = .{0.0,0.0,0.0};
                     // F = G * m1 * m2 / d**2
@@ -178,8 +185,8 @@ fn physics_tick(delta_time: f64, particles: []Particle, physics_state: *PhysicsS
                 0.0,
             };
 
-            // damping
-            particles[index].velocity = scale_f32(particles[index].velocity, particles[index].damp);
+            // linear_damping
+            particles[index].velocity = scale_f32(particles[index].velocity, particles[index].linear_damping);
 
             //std.debug.print("p: {d:.3} {d:.3} {d:.3} v: {} fa: {}\n", .{
             //    particles[index].position[0],

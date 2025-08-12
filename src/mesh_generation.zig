@@ -7,14 +7,15 @@ const vulkan = @import("vulkan.zig");
 // TODO add a lattice algorithm
 // TODO add a glass panes algorithm
 
+const BLOCK_COUNT: f32 = 4.0;
+
 pub fn basic_mesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList(vulkan.ChunkVertex)) !u32
 {
     var size: u32 = 0;
-    const block_count = 2.0;
 
     for (data[0..32768], 0..32768) |val, index| {
         if (val != 0) {
-            const step: f32 = 1.0/block_count;
+            const step: f32 = 1.0/BLOCK_COUNT;
             const uv_index: f32 = step * @as(f32, @floatFromInt(val-1));
             const tl = .{0.0,uv_index};
             const bl = .{0.0,uv_index+step};
@@ -89,12 +90,11 @@ pub fn cull_mesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList
 {
     _ = &chunk_index;
     var size: u32 = 0;
-    const block_count = 2.0;
 
     for (data[0..32768], 0..32768) |val, index| {
         try list.ensureUnusedCapacity(2048);
         if (val != 0) {
-            const step: f32 = 1.0/block_count;
+            const step: f32 = 1.0/BLOCK_COUNT;
             const uv_index: f32 = step * @as(f32, @floatFromInt(val-1));
             const tl = .{0.0,uv_index};
             const bl = .{0.0,uv_index+step};

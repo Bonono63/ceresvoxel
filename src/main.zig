@@ -130,7 +130,7 @@ pub fn main() !void {
     defer game_state.voxel_spaces.deinit();
     
     var physics_state = physics.PhysicsState{
-        .particles = std.ArrayList(physics.Particle).init(allocator),
+        .particles = std.ArrayList(physics.Body).init(allocator),
         .sim_start_time = std.time.milliTimestamp(),
     };
     defer physics_state.particles.deinit();
@@ -150,6 +150,7 @@ pub fn main() !void {
     physics_state.sun_index = @intCast(physics_state.particles.items.len - 1);
     
     for (2..9) |index| {
+        const rand = std.crypto.random;
         try physics_state.particles.append(.{
             .position = .{0.0, 0.0, 0.0},
             .inverse_mass = 1.0,
@@ -157,7 +158,7 @@ pub fn main() !void {
             .gravity = false,
             .orbit_radius = @as(f128, @floatFromInt(index * index * index * 3)),
             .eccentricity = 1.0,
-            .eccliptic_offset = .{0.01, 0.0},
+            .eccliptic_offset = .{rand.float(f32) / 10.0, rand.float(f32) / 10.0},
         });
         
         try game_state.voxel_spaces.append(.{
@@ -166,61 +167,9 @@ pub fn main() !void {
         });
     }
 
-    //// "Mars"
-    //try physics_state.particles.append(.{
-    //    .position = .{1.666 * physics.AU, 0.0, 0.0},
-    //    .inverse_mass = 1.0 / 6.4171e23,
-    //    .velocity = .{0.0, 0.0, 24.07e3, 0.0},
-    //    .planet = true,
-    //});
-    //
-    //try game_state.voxel_spaces.append(.{
-    //    .size = .{1,1,1},
-    //    .physics_index = @intCast(physics_state.particles.items.len - 1),
-    //});
-    //
-    //// "Earth"
-    //try physics_state.particles.append(.{
-    //    .position = .{physics.AU, 0.0, 0.0},
-    //    .inverse_mass = 1.0 / 5.9722e24,
-    //    .velocity = .{0.0, 0.0, 29.783e3, 0.0},
-    //    .planet = true,
-    //});
-    //
-    //try game_state.voxel_spaces.append(.{
-    //    .size = .{1,1,1},
-    //    .physics_index = @intCast(physics_state.particles.items.len - 1),
-    //});
-    //
-    //// "Venus"
-    //try physics_state.particles.append(.{
-    //    .position = .{0.728 * physics.AU, 0.0, 0.0},
-    //    .inverse_mass = 1.0 / 4.8675e24,
-    //    .velocity = .{0.0, 0.0, 35.02e3, 0.0},
-    //    .planet = true,
-    //});
-    //
-    //try game_state.voxel_spaces.append(.{
-    //    .size = .{1,1,1},
-    //    .physics_index = @intCast(physics_state.particles.items.len - 1),
-    //});
-    //
-    //// "Mercury"
-    //try physics_state.particles.append(.{
-    //    .position = .{0.466697 * physics.AU, 0.0, 0.0},
-    //    .inverse_mass = 1.0 / 3.3011e23,
-    //    .velocity = .{0.0, 0.0, 47.36e3, 0.0},
-    //    .planet = true,
-    //});
-    //
-    //try game_state.voxel_spaces.append(.{
-    //    .size = .{1,1,1},
-    //    .physics_index = @intCast(physics_state.particles.items.len - 1),
-    //});
-
     // player
     try physics_state.particles.append(.{
-        .position = .{0.0, 200, 0.0},
+        .position = .{0.0, 100, 0.0},
         .inverse_mass = (1.0/100.0),
     });
     game_state.player_state = PlayerState{.physics_index = @intCast(physics_state.particles.items.len - 1)};
@@ -241,7 +190,7 @@ pub fn main() !void {
 
         // TODO this will need to put elsewhere if multiplayer is implemented
         if (input_state.control) {
-            game_state.player_state.speed = 10.0;
+            game_state.player_state.speed = 30.0;
         } else {
             game_state.player_state.speed = 5.0;
         }

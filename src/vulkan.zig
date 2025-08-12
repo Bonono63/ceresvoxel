@@ -2538,6 +2538,12 @@ try self.create_render_pass();
         
         if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
             game_state.player_state.pitch -= @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+            if (game_state.player_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
+                game_state.player_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
+            }
+            if (game_state.player_state.pitch < - std.math.pi / 2.0 + std.math.pi / 256.0) {
+                game_state.player_state.pitch =  - std.math.pi / 2.0 + std.math.pi / 256.0;
+            }
             input_state.mouse_dy = 0.0;
         }
 
