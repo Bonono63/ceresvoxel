@@ -207,22 +207,22 @@ pub fn main() !void {
         game_state.player_state.input_vec = .{0.0, 0.0, 0.0, 0.0};
 
         if (input_state.space) {
-            game_state.player_state.input_vec -= cm.scale3(game_state.player_state.up, game_state.player_state.speed);
+            game_state.player_state.input_vec -= cm.scale_f32(game_state.player_state.up, game_state.player_state.speed);
         }
         if (input_state.shift) {
-            game_state.player_state.input_vec += cm.scale3(game_state.player_state.up, game_state.player_state.speed);
+            game_state.player_state.input_vec += cm.scale_f32(game_state.player_state.up, game_state.player_state.speed);
         }
         if (input_state.w) {
-            game_state.player_state.input_vec += cm.scale3(look, game_state.player_state.speed);
+            game_state.player_state.input_vec += cm.scale_f32(look, game_state.player_state.speed);
         }
         if (input_state.s) {
-            game_state.player_state.input_vec -= cm.scale3(look, game_state.player_state.speed);
+            game_state.player_state.input_vec -= cm.scale_f32(look, game_state.player_state.speed);
         }
         if (input_state.d) {
-            game_state.player_state.input_vec -= cm.scale3(right, game_state.player_state.speed);
+            game_state.player_state.input_vec -= cm.scale_f32(right, game_state.player_state.speed);
         }
         if (input_state.a) {
-            game_state.player_state.input_vec += cm.scale3(right, game_state.player_state.speed);
+            game_state.player_state.input_vec += cm.scale_f32(right, game_state.player_state.speed);
         }
 
         if (render_done) {

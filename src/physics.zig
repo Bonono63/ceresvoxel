@@ -1,6 +1,7 @@
 //! Physics runtime and algorithm
 const std = @import("std");
 const zm = @import("zmath");
+const cm = @import("ceresmath.zig");
 const chunk = @import("chunk.zig");
 const main = @import("main.zig");
 
@@ -14,9 +15,9 @@ pub const Body = struct {
     // There is phyicsally no reason to be able to go above a speed or acceleration of 2.4 billion meters a second
     velocity: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, // meters per second
     // TODO decide whether a f32 is sufficient precision for mass calculations
-    inverse_mass: f64,
+    inverse_mass: f32,
     // Sum accelerations of the forces acting on the particle
-    force_accumulation: @Vector(3, f64) = .{0.0, 0.0, 0.0},
+    force_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
     // Helps with simulation stability, but for space it doesn't make much sense
     linear_damping: f32 = 0.99999,
 
@@ -28,17 +29,12 @@ pub const Body = struct {
     eccliptic_offset: @Vector(2, f32) = .{0.0, 0.0},
 
     orientation: zm.Quat = zm.qidentity(),
-    angular_velocity: zm.Vec = .{0.0,0.0,0.0,0.0},
+    angular_velocity: zm.Vec = .{0.0,0.0,0.0,0.0}, // axis-angle representation
+    angular_damping: f32 = 0.99999,
     transform: zm.Mat = zm.identity(), // Current body transform, can be used for rendering as well
-
-    /// Position divided by one AU
-    pub fn pos_d_au(self: *Body) @Vector(3, f32) {
-        return .{
-            @as(f32, @floatCast(self.position[0] / AU)) * SCALE,
-            @as(f32, @floatCast(self.position[1] / AU)) * SCALE,
-            @as(f32, @floatCast(self.position[2] / AU)) * SCALE,
-        };
-    }
+    inverse_inertia_tensor_world: cm.Mat3 = cm.identity(),
+    inverse_inertia_tensor: cm.Mat3 = cm.identity(),
+    torque_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, // the first 3 values are position, the 4th value is the strength of the torque
 };
 
 const PlanetaryMotionStyle = enum {
@@ -108,26 +104,27 @@ fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState
                 PlanetaryMotionStyle.NONDETERMINISTIC => {
                     const sun_position: @Vector(3, f128) = .{0.0,0.0,0.0};
                     // F = G * m1 * m2 / d**2
-                    const d = 1.0 / distance_f128(particles[index].position, sun_position);
+                    const d = 1.0 / cm.distance_f128(particles[index].position, sun_position);
                     const force_coefficient: f128 = GRAVITATIONAL_CONSTANT * (1.0/particles[index].inverse_mass) * (1.0/particles[physics_state.*.sun_index].inverse_mass) * d * d;
                     
-                    const difference: @Vector(3, f64) = .{
-                        @as(f64, @floatCast(sun_position[0]-particles[index].position[0])),
-                        @as(f64, @floatCast(sun_position[1]-particles[index].position[1])),
-                        @as(f64, @floatCast(sun_position[2]-particles[index].position[2])),
+                    const difference: @Vector(3, f32) = .{
+                        @as(f32, @floatCast(sun_position[0]-particles[index].position[0])),
+                        @as(f32, @floatCast(sun_position[1]-particles[index].position[1])),
+                        @as(f32, @floatCast(sun_position[2]-particles[index].position[2])),
                     };
-                    const theta: f64 = std.math.atan2(difference[2], difference[0]);
-                    const fx = @cos(theta) * @as(f64, @floatCast(force_coefficient));
-                    const fy = @sin(theta) * @as(f64, @floatCast(force_coefficient));
+                    const theta: f32 = std.math.atan2(difference[2], difference[0]);
+                    const fx = @cos(theta) * @as(f32, @floatCast(force_coefficient));
+                    const fy = @sin(theta) * @as(f32, @floatCast(force_coefficient));
 
-                    const final_f64: @Vector(3, f64) = .{
+                    const final: zm.Vec = .{
                         fx,
                         0.0,
                         fy,
+                        0.0,
                     };
 
                     //std.debug.print("d: {} gc: {} fv: {} f64 {}\n ", .{d, force_coefficient, final_vector, final_f64});
-                    particles[index].force_accumulation += final_f64;
+                    particles[index].force_accumulation += final;
                 },
             }
         }
@@ -169,6 +166,23 @@ fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState
     // Classical Mechanics (Integrator) 
     for (0..particles.len) |index| {
         if (particles[index].inverse_mass > 0.0) {
+            // linear acceleration integration
+            const resulting_linear_acceleration = cm.scale_f32(particles[index].force_accumulation, particles[index].inverse_mass * @as(f32, @floatCast(delta_time)));
+            particles[index].velocity += .{
+                @as(f32, @floatCast(resulting_linear_acceleration[0])),
+                @as(f32, @floatCast(resulting_linear_acceleration[1])),
+                @as(f32, @floatCast(resulting_linear_acceleration[2])),
+                0.0,
+            };
+
+            //const resulting_angular_acceleration = 
+
+            // linear damping
+            particles[index].velocity = cm.scale_f32(particles[index].velocity, particles[index].linear_damping);
+            
+            // angular damping
+            particles[index].angular_velocity = cm.scale_f32(particles[index].angular_velocity, particles[index].angular_damping);
+
             // velocity integration
             particles[index].position += .{
                 particles[index].velocity[0] * delta_time,
@@ -176,49 +190,10 @@ fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState
                 particles[index].velocity[2] * delta_time,
             };
 
-            // acceleration integration
-            const resulting_acceleration = scale_f64(particles[index].force_accumulation, particles[index].inverse_mass * delta_time);
-            particles[index].velocity += .{
-                @as(f32, @floatCast(resulting_acceleration[0])),
-                @as(f32, @floatCast(resulting_acceleration[1])),
-                @as(f32, @floatCast(resulting_acceleration[2])),
-                0.0,
-            };
-
-            // linear_damping
-            particles[index].velocity = scale_f32(particles[index].velocity, particles[index].linear_damping);
-
-            //std.debug.print("p: {d:.3} {d:.3} {d:.3} v: {} fa: {}\n", .{
-            //    particles[index].position[0],
-            //    particles[index].position[1],
-            //    particles[index].position[2],
-            //    particles[index].velocity, resulting_acceleration});
-
-            particles[index].force_accumulation = .{0.0,0.0,0.0};
+            // reset forces
+            particles[index].force_accumulation = .{0.0, 0.0, 0.0, 0.0};
+            particles[index].torque_accumulation = .{0.0, 0.0, 0.0, 0.0};
         }
     }
 }
 
-pub fn distance_f128(a: @Vector(3, f128), b: @Vector(3, f128)) f128 {
-    const x = a[0] - b[0];
-    const y = a[1] - b[1];
-    const z = a[2] - b[2];
-    return std.math.sqrt(x * x) + std.math.sqrt(y * y) + std.math.sqrt(z * z);
-}
-
-pub fn scale_f32(vec: @Vector(4, f32), scale: f32) @Vector(4, f32){
-    return .{vec[0] * scale, vec[1] * scale, vec[2] * scale, vec[3] * scale};
-}
-
-pub fn scale_f64(vec: @Vector(3, f64), scale: f64) @Vector(3, f64){
-    return .{vec[0] * scale, vec[1] * scale, vec[2] * scale};
-}
-
-pub fn scale_f128(vec: @Vector(3, f128), scale: f128) @Vector(3, f128){
-    return .{vec[0] * scale, vec[1] * scale, vec[2] * scale};
-}
-
-pub fn normalize_f128(a: @Vector(3, f128)) @Vector(3, f128) {
-    const d = distance_f128(a, .{0.0,0.0,0.0});
-    return .{a[0]/d, a[1]/d, a[2]/d};
-}
