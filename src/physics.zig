@@ -184,7 +184,7 @@ fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState
             // calculate cached data
             particles[index].orientation = cm.qnormalize(particles[index].orientation);
 
-            std.debug.print("q: {any} omega: {any} t: {any}\n", .{particles[index].orientation, particles[index].angular_velocity, particles[index].torque_accumulation});
+            //std.debug.print("q: {any} omega: {any} t: {any}\n", .{particles[index].orientation, particles[index].angular_velocity, particles[index].torque_accumulation});
 
             // reset forces
             particles[index].force_accumulation = .{0.0, 0.0, 0.0, 0.0};

@@ -90,38 +90,6 @@ pub fn main() !void {
     _ = c.glfwSetFramebufferSizeCallback(vulkan_state.window, window_resize_callback);
     _ = c.glfwSetMouseButtonCallback(vulkan_state.window, mouse_button_input_callback);
 
-    // TODO move input and character movement into physics thread 
-    //var speed : f32 = 5;
-    //if (input_state.control)
-    //{
-    //    speed = 100;
-    //}
-    //
-    //if (input_state.space)
-    //{
-    //    player_state.pos -= .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
-    //}
-    //if (input_state.shift)
-    //{
-    //    player_state.pos += .{ up[0] * frame_delta * speed, up[1] * frame_delta * speed, up[2] * frame_delta * speed };
-    //}
-    //if (input_state.a)
-    //{
-    //    player_state.pos += .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
-    //}
-    //if (input_state.d)
-    //{
-    //    player_state.pos -= .{ right[0] * frame_delta * speed, right[1] * frame_delta * speed, right[2] * frame_delta * speed };
-    //}
-    //if (input_state.w)
-    //{
-    //    player_state.pos -= .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
-    //}
-    //if (input_state.s)
-    //{
-    //    player_state.pos += .{ forward[0] * frame_delta * speed, forward[1] * frame_delta * speed, forward[2] * frame_delta * speed };
-    //}
-    
     var game_state = GameState{
         .voxel_spaces = std.ArrayList(chunk.VoxelSpace).init(allocator),
         .player_state = undefined,
@@ -189,10 +157,8 @@ pub fn main() !void {
     var physics_thread = try std.Thread.spawn(.{}, physics.physics_thread, .{&physics_state, &game_state, &game_state.completion_signal, &physics_done});
     defer physics_thread.join();
 
-    // not sure this is the best way to keep the main thread alive *shrug*
     while (!render_done or !physics_done) {
 
-        // TODO this will need to put elsewhere if multiplayer is implemented
         if (input_state.control) {
             game_state.player_state.speed = 30.0;
         } else {

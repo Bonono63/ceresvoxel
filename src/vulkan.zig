@@ -2479,10 +2479,10 @@ try self.create_render_pass();
 
     var frame_count: u64 = 0;
     var current_frame_index: u32 = 0;
-    var previous_frame_time: f32 = 0.0;
+    var previous_frame_time: f32 = @floatCast(c.glfwGetTime());
 
-    var window_height : i32 = 0;
-    var window_width : i32 = 0;
+    var window_height: i32 = 0;
+    var window_width: i32 = 0;
 
     var frame_time_buffer_index: u32 = 0;
     var frame_time_cyclic_buffer: [256]f32 = undefined;
@@ -2493,104 +2493,113 @@ try self.create_render_pass();
     defer self.allocator.free(render_state);
     @memcpy(render_state, self.render_targets.items);
 
+    // Time in milliseconds in between frames, 60 is 16.666, 0.0 is 
+    var fps_limit: f32 = 8.333;
+    _ = &fps_limit;
+
+    std.debug.print("{} {}\n", .{previous_frame_time, fps_limit});
+
     while (c.glfwWindowShouldClose(self.window) == 0) {
-        const current_time : f32 = @floatCast(c.glfwGetTime());
+        const current_time: f32 = @floatCast(c.glfwGetTime());
         const frame_delta: f32 = current_time - previous_frame_time;
-        previous_frame_time = current_time;
         
         c.glfwPollEvents();
 
-        c.glfwGetWindowSize(self.window, &window_width, &window_height);
-        const aspect_ratio : f32 = @as(f32, @floatFromInt(window_width))/@as(f32, @floatFromInt(window_height));
+        if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
+            previous_frame_time = current_time;
 
-        if (input_state.mouse_capture)
-        {
-            c.glfwSetInputMode(self.window, c.GLFW_CURSOR, c.GLFW_CURSOR_DISABLED);
-        }
-        else
-        {
-            c.glfwSetInputMode(self.window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
-        }
+            c.glfwGetWindowSize(self.window, &window_width, &window_height);
+            const aspect_ratio : f32 = @as(f32, @floatFromInt(window_width))/@as(f32, @floatFromInt(window_height));
 
-        render_state = try self.allocator.realloc(render_state, self.render_targets.items.len);
-        @memcpy(render_state, self.render_targets.items);
-
-        // TODO move this out of the render loop somehow
-        //  I think this is better than making the yaw a global state?
-        if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
-            game_state.player_state.yaw += @as(f32, @floatCast(input_state.mouse_dx * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
-            input_state.mouse_dx = 0.0;
-        }
-        
-        if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
-            game_state.player_state.pitch -= @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
-            if (game_state.player_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
-                game_state.player_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
+            if (input_state.mouse_capture)
+            {
+                c.glfwSetInputMode(self.window, c.GLFW_CURSOR, c.GLFW_CURSOR_DISABLED);
             }
-            if (game_state.player_state.pitch < - std.math.pi / 2.0 + std.math.pi / 256.0) {
-                game_state.player_state.pitch =  - std.math.pi / 2.0 + std.math.pi / 256.0;
+            else
+            {
+                c.glfwSetInputMode(self.window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
             }
-            input_state.mouse_dy = 0.0;
+
+            render_state = try self.allocator.realloc(render_state, self.render_targets.items.len);
+            @memcpy(render_state, self.render_targets.items);
+
+            // TODO move this out of the render loop somehow
+            //  I think this is better than making the yaw a global state?
+            if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
+                game_state.player_state.yaw += @as(f32, @floatCast(input_state.mouse_dx * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+                input_state.mouse_dx = 0.0;
+            }
+            
+            if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
+                game_state.player_state.pitch -= @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+                if (game_state.player_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
+                    game_state.player_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
+                }
+                if (game_state.player_state.pitch < - std.math.pi / 2.0 + std.math.pi / 256.0) {
+                    game_state.player_state.pitch =  - std.math.pi / 2.0 + std.math.pi / 256.0;
+                }
+                input_state.mouse_dy = 0.0;
+            }
+
+            //// TODO make this based on a quaternion in player state
+            const look = zm.normalize3(@Vector(4, f32){
+                @as(f32, @floatCast(std.math.cos(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
+                @as(f32, @floatCast(std.math.sin(game_state.player_state.pitch))),
+                @as(f32, @floatCast(std.math.sin(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
+                0.0,
+            });
+            //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
+            const up : zm.Vec = game_state.player_state.up;
+
+            const player_pos: zm.Vec = .{
+                @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[0]),
+                @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[1]),
+                @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[2]),
+                0.0,
+            };
+            const view: zm.Mat = zm.lookToLh(player_pos, look, up);
+            const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
+            const view_proj: zm.Mat = zm.mul(view, projection);
+            
+            
+            @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
+            @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+            
+            try update_chunk_ssbo(self, physics_state, game_state.voxel_spaces.items, 0);
+            
+            // DRAW
+            try self.draw_frame(current_frame_index, &render_state);
+            
+            var average_frame_time: f32 = 0;
+            for (frame_time_cyclic_buffer) |time|
+            {
+                average_frame_time += time;
+            }
+            average_frame_time /= 256;
+
+
+            //std.debug.print("render state size: {} {any}\n", .{render_state.len, render_state});
+            std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps\r", .{
+                if (input_state.mouse_capture) "on " else "off",
+                @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[0])), 
+                @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[1])),
+                @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[2])),
+                game_state.player_state.yaw,
+                game_state.player_state.pitch,
+                average_frame_time * 1000.0,
+                1.0/average_frame_time,
+            });
+
+            frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
+            if (frame_time_buffer_index < 255) {
+                frame_time_buffer_index += 1;
+            } else {
+                frame_time_buffer_index = 0;
+            }
+
+            current_frame_index = (current_frame_index + 1) % self.MAX_CONCURRENT_FRAMES;
+            frame_count += 1;
         }
-
-        //// TODO make this based on a quaternion in player state
-        const look = zm.normalize3(@Vector(4, f32){
-            @as(f32, @floatCast(std.math.cos(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
-            @as(f32, @floatCast(std.math.sin(game_state.player_state.pitch))),
-            @as(f32, @floatCast(std.math.sin(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
-            0.0,
-        });
-        //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
-        const up : zm.Vec = game_state.player_state.up;
-
-        const player_pos: zm.Vec = .{
-            @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[0]),
-            @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[1]),
-            @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[2]),
-            0.0,
-        };
-        const view: zm.Mat = zm.lookToLh(player_pos, look, up);
-        const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
-        const view_proj: zm.Mat = zm.mul(view, projection);
-        
-        
-        @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
-        @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
-        
-        try update_chunk_ssbo(self, physics_state, game_state.voxel_spaces.items, 0);
-        
-        // DRAW
-        try self.draw_frame(current_frame_index, &render_state);
-        
-        var average_frame_time: f32 = 0;
-        for (frame_time_cyclic_buffer) |time|
-        {
-            average_frame_time += time;
-        }
-        average_frame_time /= 256;
-
-
-        //std.debug.print("render state size: {} {any}\n", .{render_state.len, render_state});
-        std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps\r", .{
-            if (input_state.mouse_capture) "on " else "off",
-            @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[0])), 
-            @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[1])),
-            @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[2])),
-            game_state.player_state.yaw,
-            game_state.player_state.pitch,
-            average_frame_time * 1000.0,
-            1.0/average_frame_time,
-        });
-
-        frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
-        if (frame_time_buffer_index < 255) {
-            frame_time_buffer_index += 1;
-        } else {
-            frame_time_buffer_index = 0;
-        }
-
-        current_frame_index = (current_frame_index + 1) % self.MAX_CONCURRENT_FRAMES;
-        frame_count += 1;
     }
     
     _ = c.vkDeviceWaitIdle(self.device);
