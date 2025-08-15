@@ -40,13 +40,14 @@ const block_selection_cube: [17]Vertex = .{
     .{.pos = .{1.001,-0.001,1.001}, .color = .{1.0,1.0,1.0}},
 };
 
+const CURSOR_SCALE: f32 = 1.0 / 64.0;
 const cursor_vertices: [6]Vertex = .{
-    .{.pos = .{-0.03125,-0.03125,0.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{0.03125,0.03125,0.0}, .color = .{1.0,1.0,0.0}},
-    .{.pos = .{-0.03125,0.03125,0.0}, .color = .{0.0,1.0,0.0}},
-    .{.pos = .{-0.03125,-0.03125,0.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{0.03125,-0.03125,0.0}, .color = .{1.0,0.0,0.0}},
-    .{.pos = .{0.03215,0.03125,0.0}, .color = .{1.0,1.0,0.0}},
+    .{.pos = .{-CURSOR_SCALE,-CURSOR_SCALE,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{CURSOR_SCALE,CURSOR_SCALE,0.0}, .color = .{1.0,1.0,0.0}},
+    .{.pos = .{-CURSOR_SCALE,CURSOR_SCALE,0.0}, .color = .{0.0,1.0,0.0}},
+    .{.pos = .{-CURSOR_SCALE,-CURSOR_SCALE,0.0}, .color = .{0.0,0.0,0.0}},
+    .{.pos = .{CURSOR_SCALE,-CURSOR_SCALE,0.0}, .color = .{1.0,0.0,0.0}},
+    .{.pos = .{CURSOR_SCALE,CURSOR_SCALE,0.0}, .color = .{1.0,1.0,0.0}},
 };
 
 // Attempt at descriptive Errors
@@ -2115,8 +2116,10 @@ pub fn update_chunk_ssbo(self: *VulkanState, physics_state: *physics.PhysicsStat
                 0.0,
             };
 
+            const model = zm.mul(zm.quatToMat(physics_state.particles.items[vs.physics_index].orientation), zm.translationV(pos));
+
             try data.append(.{
-                .model = zm.translationV(pos),
+                .model = model,
                 .size = vs.size,
             });
         }
@@ -2244,23 +2247,6 @@ try self.create_render_pass();
             std.debug.print("[Debug] time: {d:.4}ms \n", .{(c.glfwGetTime() - mesh_start) * 1000.0});
             _ = &new_vertices_count;
             std.debug.print("[Debug] vertice count: {}\n", .{new_vertices_count});
-            
-            //const pos: @Vector(4, f32) = .{
-            //    @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[0])),
-            //    @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[1])),
-            //    @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[2])),
-            //    0.0,
-            //};
-
-            //try chunk_render_data.append(.{
-            //    .model = zm.translationV(pos),//zm.translation(@as(f32, @floatFromInt(space_index * 2 + space_index)), 0.0, 0.0),
-            //    .size = vs.size,
-            //    .pos = .{
-            //        @floatFromInt(chunk_index % vs.size[0] * 32),
-            //        @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32),
-            //        @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32),
-            //    },
-            //});
         }
         last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
 

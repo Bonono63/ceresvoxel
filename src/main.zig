@@ -131,9 +131,13 @@ pub fn main() !void {
     
     var physics_state = physics.PhysicsState{
         .particles = std.ArrayList(physics.Body).init(allocator),
+        .broad_contact_list = std.ArrayList([2]*physics.Body).init(allocator),
         .sim_start_time = std.time.milliTimestamp(),
     };
     defer physics_state.particles.deinit();
+    defer physics_state.broad_contact_list.deinit();
+
+    try physics_state.broad_contact_list.ensureUnusedCapacity(100);
     
     // "Sun"
     try physics_state.particles.append(.{

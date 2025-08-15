@@ -39,6 +39,20 @@ pub fn distance_f128(a: @Vector(3, f128), b: @Vector(3, f128)) f128 {
 }
 
 pub fn qnormalize(a: zm.Quat) zm.Quat {
-    const length = std.math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2] + a[3] + a[3]);
-    return .{a[0] / length, a[1] / length, a[2] / length, a[3] / length};
+    const length = a[0] * a[0] + a[1] * a[1] + a[2] * a[2] + a[3] * a[3];
+    if (length == 0) {
+        return zm.qidentity();
+    } else {
+        const d = 1.0 / std.math.sqrt(length);
+        return .{a[0] * d, a[1] * d, a[2] * d, a[3] * d};
+    }
 }
+
+pub fn q_add_vector(q: *zm.Quat, vec: zm.Vec) void {
+    const temp: zm.Quat = zm.qmul(q.*, .{0, vec[0], vec[1], vec[2]});
+    q.* += .{temp[0] * 0.5, temp[1] * 0.5, temp[2] * 0.5, temp[3] * 0.5};
+}
+
+///// Inverse for inertia tensors
+//pub fn inverse_mat3(m: Mat3) Mat3 {
+//}

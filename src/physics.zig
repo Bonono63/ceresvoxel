@@ -29,12 +29,11 @@ pub const Body = struct {
     eccliptic_offset: @Vector(2, f32) = .{0.0, 0.0},
 
     orientation: zm.Quat = zm.qidentity(),
-    angular_velocity: zm.Vec = .{0.0,0.0,0.0,0.0}, // axis-angle representation
+    angular_velocity: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, // axis-angle representation
     angular_damping: f32 = 0.99999,
     transform: zm.Mat = zm.identity(), // Current body transform, can be used for rendering as well
-    inverse_inertia_tensor_world: cm.Mat3 = cm.identity(),
-    inverse_inertia_tensor: cm.Mat3 = cm.identity(),
-    torque_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, // the first 3 values are position, the 4th value is the strength of the torque
+    inverse_inertia_tensor: zm.Mat = zm.inverse(zm.identity()),
+    torque_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, //change in axis is based on direction, strength the the coefficient from if it was a unit vector
 };
 
 const PlanetaryMotionStyle = enum {
@@ -42,9 +41,16 @@ const PlanetaryMotionStyle = enum {
     NONDETERMINISTIC,
 };
 
+pub const Contact = struct {
+    force: @Vector(3, f32),
+    contact_pos: @Vector(3, f32), // used to derive torque
+    pair: [2]*Body, // particle pair
+};
+
 // TODO maybe planets belong in a different array or structure, but for now they are the same
 pub const PhysicsState = struct {
     particles: std.ArrayList(Body),
+    broad_contact_list: std.ArrayList([2]*Body),
     sun_index: u32 = 0,
     sim_start_time: i64,
 
@@ -83,6 +89,7 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
 
     done.* = true;
 }
+
 
 // TODO abstract the voxel spaces and entities to one type of physics entity
 fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState) void {
@@ -133,31 +140,6 @@ fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState
     // Gravity
     for (0..particles.len) |index| {
         _ = &index;
-        //const particle = particles[index];
-        //var sum_gravity_force: zm.Vec = .{0.0,0.0,0.0,0.0};
-        //for (particles) |other_particle| {
-        //    if (&other_particle != &particle) {
-        //        const distance = distance_128(particle.position, other_particle.position);
-        //        const gravity_strength = GRAVITATIONAL_CONSTANT / @as(f32, @floatCast((distance * distance * (1 / particle.inverse_mass * other_particle.inverse_mass))));
-        //        const gravity_direction: zm.Vec = zm.normalize3(.{
-        //            @as(f32, @floatCast(particle.position[0] - other_particle.position[0])),
-        //            @as(f32, @floatCast(particle.position[1] - other_particle.position[1])),
-        //            @as(f32, @floatCast(particle.position[2] - other_particle.position[2])),
-        //            0.0,
-        //        });
-        //        sum_gravity_force += .{
-        //            gravity_direction[0] * gravity_strength,
-        //            gravity_direction[1] * gravity_strength,
-        //            gravity_direction[2] * gravity_strength,
-        //            0.0,
-        //        };
-        //    }
-        //}
-        //particles[index].force_accumulation += sum_gravity_force;
-        
-        //if (!particles[index].planet) {
-        //    particles[index].force_accumulation += .{0.0, -1.0 / particles[index].inverse_mass, 0.0};
-        //}
     }
 
     // Bouyancy
@@ -169,13 +151,14 @@ fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState
             // linear acceleration integration
             const resulting_linear_acceleration = cm.scale_f32(particles[index].force_accumulation, particles[index].inverse_mass * @as(f32, @floatCast(delta_time)));
             particles[index].velocity += .{
-                @as(f32, @floatCast(resulting_linear_acceleration[0])),
-                @as(f32, @floatCast(resulting_linear_acceleration[1])),
-                @as(f32, @floatCast(resulting_linear_acceleration[2])),
+                resulting_linear_acceleration[0],
+                resulting_linear_acceleration[1],
+                resulting_linear_acceleration[2],
                 0.0,
             };
 
-            //const resulting_angular_acceleration = 
+            const resulting_angular_acceleration: zm.Vec = zm.mul(particles[index].inverse_inertia_tensor, particles[index].torque_accumulation);
+            particles[index].angular_velocity += cm.scale_f32(resulting_angular_acceleration, @as(f32, @floatCast(delta_time)));
 
             // linear damping
             particles[index].velocity = cm.scale_f32(particles[index].velocity, particles[index].linear_damping);
@@ -189,6 +172,19 @@ fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState
                 particles[index].velocity[1] * delta_time,
                 particles[index].velocity[2] * delta_time,
             };
+
+            // angular velocity integration
+            cm.q_add_vector(&particles[index].orientation, .{
+                    particles[index].angular_velocity[0] * @as(f32, @floatCast(delta_time)),
+                    particles[index].angular_velocity[1] * @as(f32, @floatCast(delta_time)),
+                    particles[index].angular_velocity[2] * @as(f32, @floatCast(delta_time)),
+                    0,
+            });
+
+            // calculate cached data
+            particles[index].orientation = cm.qnormalize(particles[index].orientation);
+
+            std.debug.print("q: {any} omega: {any} t: {any}\n", .{particles[index].orientation, particles[index].angular_velocity, particles[index].torque_accumulation});
 
             // reset forces
             particles[index].force_accumulation = .{0.0, 0.0, 0.0, 0.0};
