@@ -13,6 +13,7 @@ pub const InputState = packed struct {
     a : bool = false,
     s : bool = false,
     d : bool = false,
+    e : bool = false,
     space : bool = false,
     shift : bool = false,
     control : bool = false,
@@ -40,6 +41,7 @@ pub const GameState = struct {
     seed: u64 = 0,
     player_state: PlayerState,
     completion_signal: bool,
+    allocator: *std.mem.Allocator,
 };
 
 
@@ -94,6 +96,7 @@ pub fn main() !void {
         .voxel_spaces = std.ArrayList(chunk.VoxelSpace).init(allocator),
         .player_state = undefined,
         .completion_signal = true,
+        .allocator = &allocator,
     };
     defer game_state.voxel_spaces.deinit();
     
@@ -101,6 +104,7 @@ pub fn main() !void {
         .particles = std.ArrayList(physics.Body).init(allocator),
         .broad_contact_list = std.ArrayList([2]*physics.Body).init(allocator),
         .sim_start_time = std.time.milliTimestamp(),
+        .mutex = std.Thread.Mutex{},
     };
     defer physics_state.particles.deinit();
     defer physics_state.broad_contact_list.deinit();
@@ -110,9 +114,10 @@ pub fn main() !void {
     // "Sun"
     try physics_state.particles.append(.{
         .position = .{0.0, 0.0, 0.0},
-        .inverse_mass = 1.0,
+        .inverse_mass = 0.0,
         .planet = false,
         .gravity = false,
+        .torque_accumulation = .{std.math.pi, 0.0, 0.0, 0.0},
     });
     
     try game_state.voxel_spaces.append(.{
@@ -125,7 +130,7 @@ pub fn main() !void {
         const rand = std.crypto.random;
         try physics_state.particles.append(.{
             .position = .{0.0, 0.0, 0.0},
-            .inverse_mass = 1.0,
+            .inverse_mass = 0.0,
             .planet = true,
             .gravity = false,
             .orbit_radius = @as(f128, @floatFromInt(index * index * index * 3)),
@@ -154,7 +159,7 @@ pub fn main() !void {
     defer render_thread.join();
 
     var physics_done: bool = false;
-    var physics_thread = try std.Thread.spawn(.{}, physics.physics_thread, .{&physics_state, &game_state, &game_state.completion_signal, &physics_done});
+    var physics_thread: std.Thread = try std.Thread.spawn(.{}, physics.physics_thread, .{ &physics_state, &game_state, &game_state.completion_signal, &physics_done});
     defer physics_thread.join();
 
     while (!render_done or !physics_done) {
@@ -193,6 +198,27 @@ pub fn main() !void {
         }
         if (input_state.a) {
             game_state.player_state.input_vec += cm.scale_f32(right, game_state.player_state.speed);
+        }
+
+        // TODO be more clever about the mutexes: Mutexes should only be for buffered state changes instead of 
+        // essentially halting the thread
+        if (input_state.e) {
+            if (physics_state.mutex.tryLock()) {
+                try physics_state.particles.append(.{
+                    .position = physics_state.particles.items[game_state.player_state.physics_index].position,
+                    .inverse_mass = 1.0 / 32.0,
+                });
+                
+                
+                physics_state.mutex.unlock();
+            }
+
+            //if () {
+            //    try game_state.voxel_spaces.append(.{
+            //        .size = .{1,1,1},
+            //        .physics_index = @intCast(physics_state.particles.items.len - 1),
+            //    });
+            //}
         }
 
         if (render_done) {
@@ -264,6 +290,14 @@ pub fn key_callback(window: ?*c.GLFWwindow, key: i32, scancode: i32, action: i32
             }
             if (action == c.GLFW_RELEASE) {
                 input_state.d = false;
+            }
+        },
+        c.GLFW_KEY_E => {
+            if (action == c.GLFW_PRESS) {
+                input_state.e = true;
+            }
+            if (action == c.GLFW_RELEASE) {
+                input_state.e = false;
             }
         },
         c.GLFW_KEY_T => {

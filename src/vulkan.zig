@@ -2494,10 +2494,10 @@ try self.create_render_pass();
     @memcpy(render_state, self.render_targets.items);
 
     // Time in milliseconds in between frames, 60 is 16.666, 0.0 is 
-    var fps_limit: f32 = 8.333;
+    var fps_limit: f32 = 3.03;//8.333;
     _ = &fps_limit;
 
-    std.debug.print("{} {}\n", .{previous_frame_time, fps_limit});
+    std.debug.print("fps limit: {}\n", .{fps_limit});
 
     while (c.glfwWindowShouldClose(self.window) == 0) {
         const current_time: f32 = @floatCast(c.glfwGetTime());
@@ -2579,7 +2579,7 @@ try self.create_render_pass();
 
 
             //std.debug.print("render state size: {} {any}\n", .{render_state.len, render_state});
-            std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps\r", .{
+            std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
                 if (input_state.mouse_capture) "on " else "off",
                 @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[0])), 
                 @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[1])),

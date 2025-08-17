@@ -54,10 +54,11 @@ pub const PhysicsState = struct {
     sun_index: u32 = 0,
     sim_start_time: i64,
 
+    mutex: std.Thread.Mutex,
     motion_style: PlanetaryMotionStyle = PlanetaryMotionStyle.DETERMINISTIC,
 };
 
-pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState, complete_signal: *bool, done: *bool) void {
+pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState, complete_signal: *bool, done: *bool) !void {
     _ = &game_state;
 
     var last_interval: i64 = std.time.milliTimestamp();
@@ -69,20 +70,24 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
         const current_time = std.time.milliTimestamp();
         const delta_time = current_time - last_interval;
         if (delta_time > minimum_delta_time) {
-            const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
+            if (physics_state.mutex.tryLock()) {
+                const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
 
-            // TODO replace this with linear impulses later
-            physics_state.particles.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
-            
-            physics_tick(delta_time_float, physics_state.particles.items, physics_state);
-            
-            last_interval = current_time;
-            //std.debug.print("{any}\n", .{physics_state.particles.items[1]});
-            std.debug.print("{d:3}ms {} particles\r", .{delta_time, physics_state.particles.items.len});
-            if (counter >= counter_max) {
-                counter = 0;
-            } else {
-                counter += 1;
+                // TODO replace this with linear impulses later
+                physics_state.particles.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
+                
+                physics_tick(delta_time_float, physics_state.particles.items, physics_state);
+                
+                last_interval = current_time;
+                //std.debug.print("{any}\n", .{physics_state.particles.items[1]});
+                std.debug.print("{d:3}ms {} particles\r", .{delta_time, physics_state.particles.items.len});
+                if (counter >= counter_max) {
+                    counter = 0;
+                } else {
+                    counter += 1;
+                }
+
+                physics_state.mutex.unlock();
             }
         }
     }
