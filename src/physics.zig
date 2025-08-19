@@ -47,19 +47,44 @@ pub const Contact = struct {
     pair: [2]*Body, // particle pair
 };
 
+pub const PhysicsErrors = error {
+    OutOfMemory,
+    BodyAppendFailure,
+};
+
 // TODO maybe planets belong in a different array or structure, but for now they are the same
 pub const PhysicsState = struct {
-    particles: std.ArrayList(Body),
+    bodies: std.ArrayList(Body),
     broad_contact_list: std.ArrayList([2]*Body),
     sun_index: u32 = 0,
     sim_start_time: i64,
 
-    mutex: std.Thread.Mutex,
+    // Should only ever be used for writes from the logic thread
+    new_bodies: [2]std.ArrayList(Body) = undefined,
+    new_index: u32 = 0,
+
+    // Copies the current bodies to a double buffer and swaps between the two for the most recent data
+    // Should only ever be used for reads
+    display_bodies: [2][]Body = undefined,
+    display_index: u32 = 0,
+
+    mutex: std.Thread.Mutex = std.Thread.Mutex{},
+    display_mutex: std.Thread.Mutex = std.Thread.Mutex{},
     motion_style: PlanetaryMotionStyle = PlanetaryMotionStyle.DETERMINISTIC,
 };
 
 pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState, complete_signal: *bool, done: *bool) !void {
-    _ = &game_state;
+
+
+    physics_state.display_bodies[0] = try game_state.allocator.alloc(Body, 0);
+    physics_state.display_bodies[1] = try game_state.allocator.alloc(Body, 0);
+    defer game_state.allocator.free(physics_state.display_bodies[0]);
+    defer game_state.allocator.free(physics_state.display_bodies[1]);
+
+    physics_state.new_bodies[0] = std.ArrayList(Body).init(game_state.allocator.*);
+    physics_state.new_bodies[1] = std.ArrayList(Body).init(game_state.allocator.*);
+    defer physics_state.new_bodies[0].deinit();
+    defer physics_state.new_bodies[1].deinit();
 
     var last_interval: i64 = std.time.milliTimestamp();
     var counter: u8 = 1;
@@ -72,20 +97,30 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
         if (delta_time > minimum_delta_time) {
             if (physics_state.mutex.tryLock()) {
                 const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
+               
+                const next_new_index: u32 = (physics_state.new_index + 1) % 2;
+                try physics_state.bodies.appendSlice(physics_state.new_bodies[next_new_index].items);
+                physics_state.new_bodies[next_new_index].clearRetainingCapacity();
+                physics_state.new_index = next_new_index;
 
                 // TODO replace this with linear impulses later
-                physics_state.particles.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
+                physics_state.bodies.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
                 
-                physics_tick(delta_time_float, physics_state.particles.items, physics_state);
+                physics_tick(delta_time_float, physics_state.bodies.items, physics_state);
                 
                 last_interval = current_time;
-                //std.debug.print("{any}\n", .{physics_state.particles.items[1]});
-                std.debug.print("{d:3}ms {} particles\r", .{delta_time, physics_state.particles.items.len});
+                //std.debug.print("{any}\n", .{physics_state.bodies.items[1]});
+                std.debug.print("{d:3}ms {} bodies\r", .{delta_time, physics_state.bodies.items.len});
                 if (counter >= counter_max) {
                     counter = 0;
                 } else {
                     counter += 1;
                 }
+
+                const next_display_index = (physics_state.display_index + 1) % 2;
+                physics_state.display_bodies[next_display_index] = try game_state.allocator.realloc(physics_state.display_bodies[next_display_index], physics_state.bodies.items.len);
+                @memcpy(physics_state.display_bodies[next_display_index], physics_state.bodies.items);
+                physics_state.display_index = next_display_index;
 
                 physics_state.mutex.unlock();
             }
@@ -97,32 +132,32 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
 
 
 // TODO abstract the voxel spaces and entities to one type of physics entity
-fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState) void {
+fn physics_tick(delta_time: f64, bodies: []Body, physics_state: *PhysicsState) void {
     // Planetary Motion
-    for (0..particles.len) |index| {
-        if (particles[index].planet) {
+    for (0..bodies.len) |index| {
+        if (bodies[index].planet) {
             switch (physics_state.motion_style) {
 
                 PlanetaryMotionStyle.DETERMINISTIC => {
-                    //const prev_position = particles[index].position;
+                    //const prev_position = bodies[index].position;
                     const time = @as(f64, @floatFromInt(std.time.milliTimestamp() - physics_state.sim_start_time));
-                    const x: f128 = particles[index].orbit_radius * @cos(time / particles[index].orbit_radius / particles[index].orbit_radius);
-                    const z: f128 = particles[index].orbit_radius * @sin(time / particles[index].orbit_radius / particles[index].orbit_radius);
-                    const y: f128 = particles[index].eccliptic_offset[0] * x + particles[index].eccliptic_offset[1] * z;
+                    const x: f128 = bodies[index].orbit_radius * @cos(time / bodies[index].orbit_radius / bodies[index].orbit_radius);
+                    const z: f128 = bodies[index].orbit_radius * @sin(time / bodies[index].orbit_radius / bodies[index].orbit_radius);
+                    const y: f128 = bodies[index].eccliptic_offset[0] * x + bodies[index].eccliptic_offset[1] * z;
 
-                    particles[index].position = .{x,y,z};
+                    bodies[index].position = .{x,y,z};
                 },
 
                 PlanetaryMotionStyle.NONDETERMINISTIC => {
                     const sun_position: @Vector(3, f128) = .{0.0,0.0,0.0};
                     // F = G * m1 * m2 / d**2
-                    const d = 1.0 / cm.distance_f128(particles[index].position, sun_position);
-                    const force_coefficient: f128 = GRAVITATIONAL_CONSTANT * (1.0/particles[index].inverse_mass) * (1.0/particles[physics_state.*.sun_index].inverse_mass) * d * d;
+                    const d = 1.0 / cm.distance_f128(bodies[index].position, sun_position);
+                    const force_coefficient: f128 = GRAVITATIONAL_CONSTANT * (1.0/bodies[index].inverse_mass) * (1.0/bodies[physics_state.*.sun_index].inverse_mass) * d * d;
                     
                     const difference: @Vector(3, f32) = .{
-                        @as(f32, @floatCast(sun_position[0]-particles[index].position[0])),
-                        @as(f32, @floatCast(sun_position[1]-particles[index].position[1])),
-                        @as(f32, @floatCast(sun_position[2]-particles[index].position[2])),
+                        @as(f32, @floatCast(sun_position[0]-bodies[index].position[0])),
+                        @as(f32, @floatCast(sun_position[1]-bodies[index].position[1])),
+                        @as(f32, @floatCast(sun_position[2]-bodies[index].position[2])),
                     };
                     const theta: f32 = std.math.atan2(difference[2], difference[0]);
                     const fx = @cos(theta) * @as(f32, @floatCast(force_coefficient));
@@ -136,14 +171,14 @@ fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState
                     };
 
                     //std.debug.print("d: {} gc: {} fv: {} f64 {}\n ", .{d, force_coefficient, final_vector, final_f64});
-                    particles[index].force_accumulation += final;
+                    bodies[index].force_accumulation += final;
                 },
             }
         }
     }
 
     // Gravity
-    for (0..particles.len) |index| {
+    for (0..bodies.len) |index| {
         _ = &index;
     }
 
@@ -151,49 +186,49 @@ fn physics_tick(delta_time: f64, particles: []Body, physics_state: *PhysicsState
     // Magnetism
 
     // Classical Mechanics (Integrator) 
-    for (0..particles.len) |index| {
-        if (particles[index].inverse_mass > 0.0) {
+    for (0..bodies.len) |index| {
+        if (bodies[index].inverse_mass > 0.0) {
             // linear acceleration integration
-            const resulting_linear_acceleration = cm.scale_f32(particles[index].force_accumulation, particles[index].inverse_mass * @as(f32, @floatCast(delta_time)));
-            particles[index].velocity += .{
+            const resulting_linear_acceleration = cm.scale_f32(bodies[index].force_accumulation, bodies[index].inverse_mass * @as(f32, @floatCast(delta_time)));
+            bodies[index].velocity += .{
                 resulting_linear_acceleration[0],
                 resulting_linear_acceleration[1],
                 resulting_linear_acceleration[2],
                 0.0,
             };
 
-            const resulting_angular_acceleration: zm.Vec = zm.mul(particles[index].inverse_inertia_tensor, particles[index].torque_accumulation);
-            particles[index].angular_velocity += cm.scale_f32(resulting_angular_acceleration, @as(f32, @floatCast(delta_time)));
+            const resulting_angular_acceleration: zm.Vec = zm.mul(bodies[index].inverse_inertia_tensor, bodies[index].torque_accumulation);
+            bodies[index].angular_velocity += cm.scale_f32(resulting_angular_acceleration, @as(f32, @floatCast(delta_time)));
 
             // linear damping
-            particles[index].velocity = cm.scale_f32(particles[index].velocity, particles[index].linear_damping);
+            bodies[index].velocity = cm.scale_f32(bodies[index].velocity, bodies[index].linear_damping);
             
             // angular damping
-            particles[index].angular_velocity = cm.scale_f32(particles[index].angular_velocity, particles[index].angular_damping);
+            bodies[index].angular_velocity = cm.scale_f32(bodies[index].angular_velocity, bodies[index].angular_damping);
 
             // velocity integration
-            particles[index].position += .{
-                particles[index].velocity[0] * delta_time,
-                particles[index].velocity[1] * delta_time,
-                particles[index].velocity[2] * delta_time,
+            bodies[index].position += .{
+                bodies[index].velocity[0] * delta_time,
+                bodies[index].velocity[1] * delta_time,
+                bodies[index].velocity[2] * delta_time,
             };
 
             // angular velocity integration
-            cm.q_add_vector(&particles[index].orientation, .{
-                    particles[index].angular_velocity[0] * @as(f32, @floatCast(delta_time)),
-                    particles[index].angular_velocity[1] * @as(f32, @floatCast(delta_time)),
-                    particles[index].angular_velocity[2] * @as(f32, @floatCast(delta_time)),
+            cm.q_add_vector(&bodies[index].orientation, .{
+                    bodies[index].angular_velocity[0] * @as(f32, @floatCast(delta_time)),
+                    bodies[index].angular_velocity[1] * @as(f32, @floatCast(delta_time)),
+                    bodies[index].angular_velocity[2] * @as(f32, @floatCast(delta_time)),
                     0,
             });
 
             // calculate cached data
-            particles[index].orientation = cm.qnormalize(particles[index].orientation);
+            bodies[index].orientation = cm.qnormalize(bodies[index].orientation);
 
-            //std.debug.print("q: {any} omega: {any} t: {any}\n", .{particles[index].orientation, particles[index].angular_velocity, particles[index].torque_accumulation});
+            //std.debug.print("q: {any} omega: {any} t: {any}\n", .{bodies[index].orientation, bodies[index].angular_velocity, bodies[index].torque_accumulation});
 
             // reset forces
-            particles[index].force_accumulation = .{0.0, 0.0, 0.0, 0.0};
-            particles[index].torque_accumulation = .{0.0, 0.0, 0.0, 0.0};
+            bodies[index].force_accumulation = .{0.0, 0.0, 0.0, 0.0};
+            bodies[index].torque_accumulation = .{0.0, 0.0, 0.0, 0.0};
         }
     }
 }

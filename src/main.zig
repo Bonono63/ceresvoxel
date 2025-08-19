@@ -67,7 +67,8 @@ pub fn main() !void {
             std.debug.print("[Info] Memory leaked during runtime: {}\n", .{heap_status});
     }
 
-    var allocator = arena.allocator();
+    _ = &arena;
+    var allocator = gpa.allocator();//arena.allocator();
 
     if (std.debug.runtime_safety)
     {
@@ -101,18 +102,17 @@ pub fn main() !void {
     defer game_state.voxel_spaces.deinit();
     
     var physics_state = physics.PhysicsState{
-        .particles = std.ArrayList(physics.Body).init(allocator),
+        .bodies = std.ArrayList(physics.Body).init(allocator),
         .broad_contact_list = std.ArrayList([2]*physics.Body).init(allocator),
         .sim_start_time = std.time.milliTimestamp(),
-        .mutex = std.Thread.Mutex{},
     };
-    defer physics_state.particles.deinit();
+    defer physics_state.bodies.deinit();
     defer physics_state.broad_contact_list.deinit();
 
     try physics_state.broad_contact_list.ensureUnusedCapacity(100);
     
     // "Sun"
-    try physics_state.particles.append(.{
+    try physics_state.bodies.append(.{
         .position = .{0.0, 0.0, 0.0},
         .inverse_mass = 0.0,
         .planet = false,
@@ -122,13 +122,13 @@ pub fn main() !void {
     
     try game_state.voxel_spaces.append(.{
         .size = .{1,1,1},
-        .physics_index = @intCast(physics_state.particles.items.len - 1),
+        .physics_index = @intCast(physics_state.bodies.items.len - 1),
     });
-    physics_state.sun_index = @intCast(physics_state.particles.items.len - 1);
+    physics_state.sun_index = @intCast(physics_state.bodies.items.len - 1);
     
     for (2..9) |index| {
         const rand = std.crypto.random;
-        try physics_state.particles.append(.{
+        try physics_state.bodies.append(.{
             .position = .{0.0, 0.0, 0.0},
             .inverse_mass = 0.0,
             .planet = true,
@@ -140,18 +140,18 @@ pub fn main() !void {
         
         try game_state.voxel_spaces.append(.{
             .size = .{1,1,1},
-            .physics_index = @intCast(physics_state.particles.items.len - 1),
+            .physics_index = @intCast(physics_state.bodies.items.len - 1),
         });
     }
 
     // player
-    try physics_state.particles.append(.{
+    try physics_state.bodies.append(.{
         .position = .{0.0, 100, 0.0},
         .inverse_mass = (1.0/100.0),
     });
-    game_state.player_state = PlayerState{.physics_index = @intCast(physics_state.particles.items.len - 1)};
+    game_state.player_state = PlayerState{.physics_index = @intCast(physics_state.bodies.items.len - 1)};
 
-    std.debug.print("{any}\n", .{physics_state.particles.items});
+    std.debug.print("{any}\n", .{physics_state.bodies.items});
     std.debug.print("{}\n", .{game_state.player_state.up});
 
     var render_done: bool = false;
@@ -203,20 +203,16 @@ pub fn main() !void {
         // TODO be more clever about the mutexes: Mutexes should only be for buffered state changes instead of 
         // essentially halting the thread
         if (input_state.e) {
-            if (physics_state.mutex.tryLock()) {
-                try physics_state.particles.append(.{
-                    .position = physics_state.particles.items[game_state.player_state.physics_index].position,
+
+            try physics_state.new_bodies[physics_state.new_index].append(.{
+                    .position = physics_state.display_bodies[physics_state.display_index][game_state.player_state.physics_index].position,
                     .inverse_mass = 1.0 / 32.0,
-                });
-                
-                
-                physics_state.mutex.unlock();
-            }
+            });
 
             //if () {
             //    try game_state.voxel_spaces.append(.{
             //        .size = .{1,1,1},
-            //        .physics_index = @intCast(physics_state.particles.items.len - 1),
+            //        .physics_index = @intCast(physics_state.bodies.items.len - 1),
             //    });
             //}
         }

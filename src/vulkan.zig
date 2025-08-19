@@ -2095,16 +2095,16 @@ pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) 
     std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });
 }
 
-pub fn update_chunk_ssbo(self: *VulkanState, physics_state: *physics.PhysicsState, voxel_spaces: []chunk.VoxelSpace, ssbo_index: u32) VkAbstractionError!void {
+pub fn update_chunk_ssbo(self: *VulkanState, bodies: []physics.Body, voxel_spaces: []chunk.VoxelSpace, ssbo_index: u32) VkAbstractionError!void {
     var data = std.ArrayList(ChunkRenderData).init(self.allocator.*);
     try data.ensureUnusedCapacity(voxel_spaces.len); // TODO maybe we do more later
     defer data.deinit();
     for (voxel_spaces) |vs| {
         for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
             const physics_pos = .{
-                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[0])),
-                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[1])),
-                @as(f32, @floatCast(physics_state.particles.items[vs.physics_index].position[2])),
+                @as(f32, @floatCast(bodies[vs.physics_index].position[0])),
+                @as(f32, @floatCast(bodies[vs.physics_index].position[1])),
+                @as(f32, @floatCast(bodies[vs.physics_index].position[2])),
             };
             const pos: @Vector(4, f32) = .{
                 physics_pos[0] +
@@ -2116,7 +2116,7 @@ pub fn update_chunk_ssbo(self: *VulkanState, physics_state: *physics.PhysicsStat
                 0.0,
             };
 
-            const model = zm.mul(zm.quatToMat(physics_state.particles.items[vs.physics_index].orientation), zm.translationV(pos));
+            const model = zm.mul(zm.quatToMat(bodies[vs.physics_index].orientation), zm.translationV(pos));
 
             try data.append(.{
                 .model = model,
@@ -2285,7 +2285,7 @@ try self.create_render_pass();
     try self.ssbo_buffers.append(ssbo);
     try self.ssbo_allocs.append(ssbo_alloc);
     
-    try update_chunk_ssbo(self, physics_state, game_state.voxel_spaces.items, 0);
+    //try update_chunk_ssbo(self, physics_state, game_state.voxel_spaces.items, 0);
 
     // RENDER INIT
 
@@ -2489,12 +2489,14 @@ try self.create_render_pass();
     // TODO replace this with splat?
     @memset(&frame_time_cyclic_buffer, 0.0);
 
-    var render_state: []RenderInfo = try self.allocator.alloc(RenderInfo, self.render_targets.items.len);
+    var render_state: []RenderInfo = try self.allocator.alloc(RenderInfo, 0);
     defer self.allocator.free(render_state);
-    @memcpy(render_state, self.render_targets.items);
+
+    var bodies: []physics.Body = try self.allocator.alloc(physics.Body, 0);
+    defer self.allocator.free(bodies);
 
     // Time in milliseconds in between frames, 60 is 16.666, 0.0 is 
-    var fps_limit: f32 = 3.03;//8.333;
+    var fps_limit: f32 = 0.0;//3.03030303;//8.333;
     _ = &fps_limit;
 
     std.debug.print("fps limit: {}\n", .{fps_limit});
@@ -2506,6 +2508,12 @@ try self.create_render_pass();
         c.glfwPollEvents();
 
         if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
+            render_state = try self.allocator.realloc(render_state, self.render_targets.items.len);
+            @memcpy(render_state, self.render_targets.items);
+
+            bodies = try self.allocator.realloc(bodies, physics_state.display_bodies[physics_state.display_index].len);
+            @memcpy(bodies, physics_state.display_bodies[physics_state.display_index]);
+
             previous_frame_time = current_time;
 
             c.glfwGetWindowSize(self.window, &window_width, &window_height);
@@ -2519,9 +2527,6 @@ try self.create_render_pass();
             {
                 c.glfwSetInputMode(self.window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
             }
-
-            render_state = try self.allocator.realloc(render_state, self.render_targets.items.len);
-            @memcpy(render_state, self.render_targets.items);
 
             // TODO move this out of the render loop somehow
             //  I think this is better than making the yaw a global state?
@@ -2552,9 +2557,9 @@ try self.create_render_pass();
             const up : zm.Vec = game_state.player_state.up;
 
             const player_pos: zm.Vec = .{
-                @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[0]),
-                @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[1]),
-                @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[2]),
+                @floatCast(bodies[game_state.player_state.physics_index].position[0]),
+                @floatCast(bodies[game_state.player_state.physics_index].position[1]),
+                @floatCast(bodies[game_state.player_state.physics_index].position[2]),
                 0.0,
             };
             const view: zm.Mat = zm.lookToLh(player_pos, look, up);
@@ -2565,7 +2570,7 @@ try self.create_render_pass();
             @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
             @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
             
-            try update_chunk_ssbo(self, physics_state, game_state.voxel_spaces.items, 0);
+            try update_chunk_ssbo(self, bodies, game_state.voxel_spaces.items, 0);
             
             // DRAW
             try self.draw_frame(current_frame_index, &render_state);
@@ -2581,9 +2586,9 @@ try self.create_render_pass();
             //std.debug.print("render state size: {} {any}\n", .{render_state.len, render_state});
             std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
                 if (input_state.mouse_capture) "on " else "off",
-                @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[0])), 
-                @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[1])),
-                @as(f32, @floatCast(physics_state.particles.items[game_state.player_state.physics_index].position[2])),
+                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[0])), 
+                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[1])),
+                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[2])),
                 game_state.player_state.yaw,
                 game_state.player_state.pitch,
                 average_frame_time * 1000.0,
