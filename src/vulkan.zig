@@ -208,6 +208,8 @@ pub const VulkanState = struct {
     frame_buffers: []c.VkFramebuffer = undefined,
     
     render_targets: std.ArrayList(RenderInfo) = undefined,
+    new_render_targets: [2]std.ArrayList(RenderInfo) = undefined,
+    new_index: u32 = 0,
 
     vertex_buffers: std.ArrayList(c.VkBuffer) = undefined,
     vertex_allocs: std.ArrayList(c.VmaAllocation) = undefined,
@@ -2489,8 +2491,13 @@ try self.create_render_pass();
     // TODO replace this with splat?
     @memset(&frame_time_cyclic_buffer, 0.0);
 
-    var render_state: []RenderInfo = try self.allocator.alloc(RenderInfo, 0);
-    defer self.allocator.free(render_state);
+    //var render_state: []RenderInfo = try self.allocator.alloc(RenderInfo, 0);
+    //defer self.allocator.free(render_state);
+
+    self.new_render_targets[0] = std.ArrayList(RenderInfo).init(self.allocator.*);
+    self.new_render_targets[1] = std.ArrayList(RenderInfo).init(self.allocator.*);
+    defer self.new_render_targets[0].deinit();
+    defer self.new_render_targets[1].deinit();
 
     var bodies: []physics.Body = try self.allocator.alloc(physics.Body, 0);
     defer self.allocator.free(bodies);
@@ -2508,8 +2515,14 @@ try self.create_render_pass();
         c.glfwPollEvents();
 
         if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
-            render_state = try self.allocator.realloc(render_state, self.render_targets.items.len);
-            @memcpy(render_state, self.render_targets.items);
+            //render_state = try self.allocator.realloc(render_state, self.render_targets.items.len);
+            //@memcpy(render_state, self.render_targets.items);
+
+            const next_new_index: u32 = (self.new_index + 1) % 2;
+            try self.render_targets.appendSlice(self.new_render_targets[next_new_index].items);
+            self.new_render_targets[next_new_index].clearRetainingCapacity();
+            self.new_index = next_new_index;
+
 
             bodies = try self.allocator.realloc(bodies, physics_state.display_bodies[physics_state.display_index].len);
             @memcpy(bodies, physics_state.display_bodies[physics_state.display_index]);
@@ -2573,7 +2586,7 @@ try self.create_render_pass();
             try update_chunk_ssbo(self, bodies, game_state.voxel_spaces.items, 0);
             
             // DRAW
-            try self.draw_frame(current_frame_index, &render_state);
+            try self.draw_frame(current_frame_index, &self.render_targets.items);
             
             var average_frame_time: f32 = 0;
             for (frame_time_cyclic_buffer) |time|

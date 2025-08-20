@@ -209,6 +209,8 @@ pub fn main() !void {
                     .inverse_mass = 1.0 / 32.0,
             });
 
+            //try render_state.new_render_targets[render_state.new_index].append();
+
             //if () {
             //    try game_state.voxel_spaces.append(.{
             //        .size = .{1,1,1},
