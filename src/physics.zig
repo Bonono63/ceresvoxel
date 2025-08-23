@@ -42,9 +42,11 @@ const PlanetaryMotionStyle = enum {
 };
 
 pub const Contact = struct {
-    force: @Vector(3, f32),
-    contact_pos: @Vector(3, f32), // used to derive torque
-    pair: [2]*Body, // particle pair
+    position: zm.Vec,
+    normal: zm.Vec,
+    penetration: f32,
+    restitution: f32, // how close to ellastic vs inellastic
+    friction: f32,
 };
 
 pub const PhysicsErrors = error {
@@ -65,11 +67,12 @@ pub const PhysicsState = struct {
 
     // Copies the current bodies to a double buffer and swaps between the two for the most recent data
     // Should only ever be used for reads
-    display_bodies: [2][]Body = undefined,
+    display_bodies: [4][]Body = undefined,
     display_index: u32 = 0,
+    copying: bool = false,
+    //display_mutex: std.Thread.Mutex = std.Thread.Mutex{},
 
     mutex: std.Thread.Mutex = std.Thread.Mutex{},
-    display_mutex: std.Thread.Mutex = std.Thread.Mutex{},
     motion_style: PlanetaryMotionStyle = PlanetaryMotionStyle.DETERMINISTIC,
 };
 
@@ -78,8 +81,12 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
 
     physics_state.display_bodies[0] = try game_state.allocator.alloc(Body, 0);
     physics_state.display_bodies[1] = try game_state.allocator.alloc(Body, 0);
+    physics_state.display_bodies[2] = try game_state.allocator.alloc(Body, 0);
+    physics_state.display_bodies[3] = try game_state.allocator.alloc(Body, 0);
     defer game_state.allocator.free(physics_state.display_bodies[0]);
     defer game_state.allocator.free(physics_state.display_bodies[1]);
+    defer game_state.allocator.free(physics_state.display_bodies[2]);
+    defer game_state.allocator.free(physics_state.display_bodies[3]);
 
     physics_state.new_bodies[0] = std.ArrayList(Body).init(game_state.allocator.*);
     physics_state.new_bodies[1] = std.ArrayList(Body).init(game_state.allocator.*);
@@ -232,4 +239,8 @@ fn physics_tick(delta_time: f64, bodies: []Body, physics_state: *PhysicsState) v
         }
     }
 }
+
+//fn generate_contacts(allocator: *const std.Allocator, a: *Body, a_offset: zm.Mat, b: *Body, b_offset: zm.Mat) ![]Contact {
+//    return ;
+//}
 

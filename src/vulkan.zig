@@ -2515,17 +2515,15 @@ try self.create_render_pass();
         c.glfwPollEvents();
 
         if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
-            //render_state = try self.allocator.realloc(render_state, self.render_targets.items.len);
-            //@memcpy(render_state, self.render_targets.items);
 
             const next_new_index: u32 = (self.new_index + 1) % 2;
             try self.render_targets.appendSlice(self.new_render_targets[next_new_index].items);
             self.new_render_targets[next_new_index].clearRetainingCapacity();
             self.new_index = next_new_index;
 
-
-            bodies = try self.allocator.realloc(bodies, physics_state.display_bodies[physics_state.display_index].len);
-            @memcpy(bodies, physics_state.display_bodies[physics_state.display_index]);
+            const copy_index: u32 = physics_state.display_index; // If we keep referencing the original index variable it will change and segfault
+            bodies = try self.allocator.realloc(bodies, physics_state.display_bodies[copy_index].len);
+            @memcpy(bodies, physics_state.display_bodies[copy_index]);
 
             previous_frame_time = current_time;
 
