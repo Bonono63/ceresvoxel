@@ -162,6 +162,7 @@ pub const RenderInfo = struct {
     vertex_count: u32 = 0,
     vertex_buffer_offset: c.VkDeviceSize = 0,
     vertex_render_offset: u32 = 0,
+    instance_count: u32 = 1,
     rendering_enabled: bool = true,
 };
 
@@ -1086,7 +1087,7 @@ pub const VulkanState = struct {
                     &target.vertex_buffer_offset
                     );
                 
-                c.vkCmdDraw(command_buffer, target.vertex_count, 1, 0, 0);
+                c.vkCmdDraw(command_buffer, target.vertex_count, target.instance_count, 0, 0);
             }
         }
 

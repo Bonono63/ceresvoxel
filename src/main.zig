@@ -90,8 +90,6 @@ pub const GameObject = struct {
 const PARTICLE_MAX_TIME: u32 = 1000;
 
 pub const ParticleHandle = struct {
-    physics_index: u32,
-    render_index: u32,
     time: u32 = 0,
 };
 
@@ -111,15 +109,19 @@ pub const GameState = struct {
         _ = &pos;
         _ = &im;
 
+        try self.particles.append(.{});
+
         try physics_state.new_bodies[physics_state.new_index].append(.{
                 .position = pos,
                 .inverse_mass = im,
                 .orientation = rot,
         });
 
-        try render_state.new_render_targets[render_state.new_index].append(
-            .{.vertex_index = 1, .pipeline_index = 1 }
-            );
+        render_state.render_targets.items[1].instance_count += 1;
+
+        //try render_state.new_render_targets[render_state.new_index].append(
+        //    .{.vertex_index = 1, .pipeline_index = 1 }
+        //    );
     }
 };
 
@@ -180,6 +182,7 @@ pub fn main() !void {
         .allocator = &allocator,
     };
     defer game_state.voxel_spaces.deinit();
+    defer game_state.particles.deinit();
     
     var physics_state = physics.PhysicsState{
         .bodies = std.ArrayList(physics.Body).init(allocator),
@@ -278,7 +281,6 @@ pub fn main() !void {
         // TODO be more clever about the mutexes: Mutexes should only be for buffered state changes instead of 
         // essentially halting the thread
         if (input_state.e) {
-
             const player_body = physics_state.display_bodies[physics_state.display_index][game_state.player_state.physics_index];
             try game_state.add_box_particle(
                 &physics_state,
