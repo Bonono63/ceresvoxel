@@ -49,11 +49,6 @@ pub const Contact = struct {
     friction: f32,
 };
 
-pub const PhysicsErrors = error {
-    OutOfMemory,
-    BodyAppendFailure,
-};
-
 // TODO maybe planets belong in a different array or structure, but for now they are the same
 pub const PhysicsState = struct {
     bodies: std.ArrayList(Body),
@@ -67,7 +62,7 @@ pub const PhysicsState = struct {
 
     // Copies the current bodies to a double buffer and swaps between the two for the most recent data
     // Should only ever be used for reads
-    display_bodies: [4][]Body = undefined,
+    display_bodies: [2][]Body = undefined,
     display_index: u32 = 0,
     copying: bool = false,
     //display_mutex: std.Thread.Mutex = std.Thread.Mutex{},
@@ -81,12 +76,8 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
 
     physics_state.display_bodies[0] = try game_state.allocator.alloc(Body, 0);
     physics_state.display_bodies[1] = try game_state.allocator.alloc(Body, 0);
-    physics_state.display_bodies[2] = try game_state.allocator.alloc(Body, 0);
-    physics_state.display_bodies[3] = try game_state.allocator.alloc(Body, 0);
     defer game_state.allocator.free(physics_state.display_bodies[0]);
     defer game_state.allocator.free(physics_state.display_bodies[1]);
-    defer game_state.allocator.free(physics_state.display_bodies[2]);
-    defer game_state.allocator.free(physics_state.display_bodies[3]);
 
     physics_state.new_bodies[0] = std.ArrayList(Body).init(game_state.allocator.*);
     physics_state.new_bodies[1] = std.ArrayList(Body).init(game_state.allocator.*);

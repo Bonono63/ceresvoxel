@@ -2130,6 +2130,26 @@ pub fn update_chunk_ssbo(self: *VulkanState, bodies: []physics.Body, voxel_space
     try self.copy_data_via_staging_buffer(&self.ssbo_buffers.items[ssbo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
 }
 
+pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, particles: []main.Particle, ubo_index: u32) VkAbstractionError!void {
+    var data = std.ArrayList(zm.Mat).init(self.allocator.*);
+    try data.ensureUnusedCapacity(10000 * @sizeOf(zm.Mat)); // TODO maybe we do more later
+    defer data.deinit();
+   
+    for (particles) |particle| {
+        const physics_pos = .{
+            @as(f32, @floatCast(bodies[particle.physics_index].position[0])),
+            @as(f32, @floatCast(bodies[particle.physics_index].position[1])),
+            @as(f32, @floatCast(bodies[particle.physics_index].position[2])),
+        };
+
+        try data.append(zm.mul(zm.quatToMat(bodies[particle.physics_index].orientation), zm.translationV(physics_pos)));
+    }
+
+    try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(zm.Mat)), &data.items[0]);
+}
+
+//THREAD
+
 pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_state: *main.InputState, physics_state: *physics.PhysicsState, done: *bool) !void {
     self.shader_modules = std.ArrayList(c.VkShaderModule).init(self.allocator.*);
     defer self.shader_modules.deinit();
@@ -2404,7 +2424,7 @@ try self.create_render_pass();
             c.VkDescriptorBufferInfo{
                 .buffer = self.ubo_buffers.items[i],
                 .offset = 0,
-                .range = @sizeOf(BlockSelectorTransform),
+                .range = 10000 * @sizeOf(BlockSelectorTransform),
             },
             c.VkDescriptorBufferInfo{
                 .buffer = self.ssbo_buffers.items[0],
@@ -2515,7 +2535,6 @@ try self.create_render_pass();
         c.glfwPollEvents();
 
         if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
-
             const next_new_index: u32 = (self.new_index + 1) % 2;
             try self.render_targets.appendSlice(self.new_render_targets[next_new_index].items);
             self.new_render_targets[next_new_index].clearRetainingCapacity();
@@ -2557,14 +2576,14 @@ try self.create_render_pass();
                 input_state.mouse_dy = 0.0;
             }
 
-            //// TODO make this based on a quaternion in player state
+            // TODO make this based on a quaternion in player state
             const look = zm.normalize3(@Vector(4, f32){
                 @as(f32, @floatCast(std.math.cos(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
                 @as(f32, @floatCast(std.math.sin(game_state.player_state.pitch))),
                 @as(f32, @floatCast(std.math.sin(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
                 0.0,
             });
-            //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
+            // Have this based on player gravity (an up in player state determined by logic/physics controllers)
             const up : zm.Vec = game_state.player_state.up;
 
             const player_pos: zm.Vec = .{

@@ -34,14 +34,93 @@ const PlayerState = struct {
     //camera_rot: zm.Quat,
     speed: f32 = 5.0,
     physics_index: u32,
+
+    pub fn look(self: *PlayerState) !zm.Quat {
+        const result = zm.normalize3(@Vector(4, f32){
+            @as(f32, @floatCast(std.math.cos(self.yaw) * std.math.cos(self.pitch))),
+            @as(f32, @floatCast(std.math.sin(self.pitch))),
+            @as(f32, @floatCast(std.math.sin(self.yaw) * std.math.cos(self.pitch))),
+            0.0,
+        });
+
+        return result;
+    }
+    
+    pub fn lookV(self: *PlayerState) !zm.Vec {
+        const result = zm.normalize3(@Vector(4, f32){
+            @as(f32, @floatCast(std.math.cos(self.yaw) * std.math.cos(self.pitch))),
+            @as(f32, @floatCast(std.math.sin(self.pitch))),
+            @as(f32, @floatCast(std.math.sin(self.yaw) * std.math.cos(self.pitch))),
+            0.0,
+        });
+
+        return result;
+    }
+};
+
+pub const GameObject = struct {
+
+    //PHYSICS
+
+    // This should be sufficient for space exploration at a solar system level
+    position: @Vector(3, f128),
+    // There is phyicsally no reason to be able to go above a speed or acceleration of 2.4 billion meters a second
+    velocity: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, // meters per second
+    // TODO decide whether a f32 is sufficient precision for mass calculations
+    inverse_mass: f32,
+    // Sum accelerations of the forces acting on the particle
+    force_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
+    // Helps with simulation stability, but for space it doesn't make much sense
+    linear_damping: f32 = 0.99999,
+
+    gravity: bool = true,
+    planet: bool = false,
+    orbit_radius: f128 = 0.0,
+    barocenter: @Vector(3, f128) = .{0.0,0.0,0.0}, // center of the object's orbit
+    eccentricity: f32 = 1.0,
+    eccliptic_offset: @Vector(2, f32) = .{0.0, 0.0},
+
+    orientation: zm.Quat = zm.qidentity(),
+    angular_velocity: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, // axis-angle representation
+    angular_damping: f32 = 0.99999,
+    inverse_inertia_tensor: zm.Mat = zm.inverse(zm.identity()),
+    torque_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, //change in axis is based on direction, strength the the coefficient from if it was a unit vector
+};
+
+const PARTICLE_MAX_TIME: u32 = 1000;
+
+pub const ParticleHandle = struct {
+    physics_index: u32,
+    render_index: u32,
+    time: u32 = 0,
 };
 
 pub const GameState = struct {
     voxel_spaces: std.ArrayList(chunk.VoxelSpace),
+    particles: std.ArrayList(ParticleHandle),
     seed: u64 = 0,
     player_state: PlayerState,
     completion_signal: bool,
     allocator: *std.mem.Allocator,
+
+    fn add_box_particle(self: *GameState, physics_state: *physics.PhysicsState, render_state: *vulkan.VulkanState, rot: zm.Quat, pos: @Vector(3, f128), im: f32) !void {
+        _ = &self;
+        _ = &physics_state;
+        _ = &render_state;
+        _ = &rot;
+        _ = &pos;
+        _ = &im;
+
+        try physics_state.new_bodies[physics_state.new_index].append(.{
+                .position = pos,
+                .inverse_mass = im,
+                .orientation = rot,
+        });
+
+        try render_state.new_render_targets[render_state.new_index].append(
+            .{.vertex_index = 1, .pipeline_index = 1 }
+            );
+    }
 };
 
 
@@ -95,6 +174,7 @@ pub fn main() !void {
 
     var game_state = GameState{
         .voxel_spaces = std.ArrayList(chunk.VoxelSpace).init(allocator),
+        .particles = std.ArrayList(ParticleHandle).init(allocator),
         .player_state = undefined,
         .completion_signal = true,
         .allocator = &allocator,
@@ -170,12 +250,7 @@ pub fn main() !void {
             game_state.player_state.speed = 5.0;
         }
         
-        const look = zm.normalize3(@Vector(4, f32){
-            @as(f32, @floatCast(std.math.cos(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
-            @as(f32, @floatCast(std.math.sin(game_state.player_state.pitch))),
-            @as(f32, @floatCast(std.math.sin(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
-            0.0,
-        });
+        const look = try game_state.player_state.lookV();
 
         const right = zm.normalize3(zm.cross3(look, game_state.player_state.up));
 
@@ -204,19 +279,14 @@ pub fn main() !void {
         // essentially halting the thread
         if (input_state.e) {
 
-            try physics_state.new_bodies[physics_state.new_index].append(.{
-                    .position = physics_state.display_bodies[physics_state.display_index][game_state.player_state.physics_index].position,
-                    .inverse_mass = 1.0 / 32.0,
-            });
-
-            //try render_state.new_render_targets[render_state.new_index].append();
-
-            //if () {
-            //    try game_state.voxel_spaces.append(.{
-            //        .size = .{1,1,1},
-            //        .physics_index = @intCast(physics_state.bodies.items.len - 1),
-            //    });
-            //}
+            const player_body = physics_state.display_bodies[physics_state.display_index][game_state.player_state.physics_index];
+            try game_state.add_box_particle(
+                &physics_state,
+                &vulkan_state,
+                player_body.orientation,
+                player_body.position,
+                1.0 / 32.0
+                );
         }
 
         if (render_done) {
@@ -225,6 +295,7 @@ pub fn main() !void {
         std.time.sleep(1);
     }
 }
+
 
 pub fn key_callback(window: ?*c.GLFWwindow, key: i32, scancode: i32, action: i32, mods: i32) callconv(.C) void {
     _ = &scancode;

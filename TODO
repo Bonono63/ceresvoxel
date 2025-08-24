@@ -1,0 +1,7 @@
+
+multi draw particles
+use the instance index to derive the transform matrix from UBOs
+update all UBOs every frame
+
+add a way to delete the physics/render info of discarded particles
+
