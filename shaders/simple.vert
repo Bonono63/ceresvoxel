@@ -17,7 +17,7 @@ struct chunk {
     mat4 model;
 };
 
-layout(binding = 3) readonly buffer chunk_data {
+layout(binding = 3) readonly uniform chunk_data {
     chunk data[];
 } cd;
 

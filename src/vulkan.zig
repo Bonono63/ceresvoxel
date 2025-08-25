@@ -2098,7 +2098,7 @@ pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) 
     std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });
 }
 
-pub fn update_chunk_ssbo(self: *VulkanState, bodies: []physics.Body, voxel_spaces: []chunk.VoxelSpace, ssbo_index: u32) VkAbstractionError!void {
+pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, voxel_spaces: []chunk.VoxelSpace, ssbo_index: u32) VkAbstractionError!void {
     var data = std.ArrayList(ChunkRenderData).init(self.allocator.*);
     try data.ensureUnusedCapacity(voxel_spaces.len); // TODO maybe we do more later
     defer data.deinit();
@@ -2133,7 +2133,7 @@ pub fn update_chunk_ssbo(self: *VulkanState, bodies: []physics.Body, voxel_space
 
 pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, particles: []main.Particle, ubo_index: u32) VkAbstractionError!void {
     var data = std.ArrayList(zm.Mat).init(self.allocator.*);
-    try data.ensureUnusedCapacity(10000 * @sizeOf(zm.Mat)); // TODO maybe we do more later
+    try data.ensureUnusedCapacity(particles.len);
     defer data.deinit();
    
     for (particles) |particle| {
@@ -2171,11 +2171,6 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
     self.ubo_allocs = std.ArrayList(c.VmaAllocation).init(self.allocator.*);
     defer self.ubo_allocs.deinit();
     
-    self.ssbo_buffers = std.ArrayList(c.VkBuffer).init(self.allocator.*);
-    defer self.ssbo_buffers.deinit();
-    self.ssbo_allocs = std.ArrayList(c.VmaAllocation).init(self.allocator.*);
-    defer self.ssbo_allocs.deinit();
-
     self.command_buffers = try self.allocator.*.alloc(c.VkCommandBuffer, self.MAX_CONCURRENT_FRAMES);
     defer self.allocator.*.free(self.command_buffers);
 
@@ -2230,20 +2225,22 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
     };
     
     try self.create_pipeline_layout();
-try self.create_render_pass();
+    try self.create_render_pass();
+
     // cursor
     self.pipelines[0] = try self.create_generic_pipeline(cursor_vert_source, cursor_frag_source, false);
     // outline
     self.pipelines[1] = try self.create_outline_pipeline(outline_vert_source, outline_frag_source);
     // simple chunk
     self.pipelines[2] = try self.create_simple_chunk_pipeline(chunk_vert_source, chunk_frag_source, false);
+    
     try self.create_framebuffers();
     try self.create_command_pool();
     try self.create_command_buffers();
     try self.create_sync_objects();
 
     // GLFW INIT
-    c.glfwSetWindowSizeLimits(self.window, 240, 135, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
+    c.glfwSetWindowSizeLimits(self.window, 480, 270, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
 
     // cursor
     try self.render_targets.append(.{ .vertex_index = 0, .pipeline_index = 0});
@@ -2252,9 +2249,6 @@ try self.create_render_pass();
     
     try self.create_vertex_buffer(0, @sizeOf(Vertex), @intCast(cursor_vertices.len * @sizeOf(Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
     try self.create_vertex_buffer(1, @sizeOf(Vertex), @intCast(block_selection_cube.len * @sizeOf(Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
-
-    //var chunk_render_data: std.ArrayList(ChunkRenderData) = std.ArrayList(ChunkRenderData).init(self.allocator.*);
-    //defer chunk_render_data.deinit();
 
     var last_space_chunk_index: u32 = 0;
     // TODO add entries in a chunk data storage buffer for chunk pos etc.
@@ -2279,13 +2273,6 @@ try self.create_render_pass();
         try self.create_vertex_buffer(render_index, @sizeOf(ChunkVertex), @intCast(mesh_data.items.len * @sizeOf(ChunkVertex)), mesh_data.items.ptr);
     }
 
-
-    // TODO initialize chunk data appropriately
-    //try self.create_ssbo(@intCast(2 * @sizeOf(ChunkRenderData)), &chunk_render_data.items[0]);
-    
-    var ssbo: c.VkBuffer = undefined;
-    var ssbo_alloc: c.VmaAllocation = undefined;
-    
     var buffer_create_info = c.VkBufferCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = 2 * @sizeOf(ChunkRenderData),
@@ -2311,12 +2298,6 @@ try self.create_render_pass();
     //try update_chunk_ssbo(self, physics_state, game_state.voxel_spaces.items, 0);
 
     // RENDER INIT
-
-    const BlockSelectorTransform = struct {
-        model: zm.Mat = zm.identity(),
-    };
-    
-    var selector_transform = BlockSelectorTransform{};
 
     const create_info = c.VkBufferCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -2508,7 +2489,8 @@ try self.create_render_pass();
     var window_width: i32 = 0;
 
     var frame_time_buffer_index: u32 = 0;
-    var frame_time_cyclic_buffer: [256]f32 = undefined;
+    const FTCB_SIZE: u32 = 64;
+    var frame_time_cyclic_buffer: [FTCB_SIZE]f32 = undefined;
     // TODO replace this with splat?
     @memset(&frame_time_cyclic_buffer, 0.0);
 
@@ -2602,6 +2584,8 @@ try self.create_render_pass();
             @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
             
             try update_chunk_ssbo(self, bodies, game_state.voxel_spaces.items, 0);
+
+            //try update_particle_ubo(self, );
             
             // DRAW
             try self.draw_frame(current_frame_index, &self.render_targets.items);
@@ -2611,7 +2595,7 @@ try self.create_render_pass();
             {
                 average_frame_time += time;
             }
-            average_frame_time /= 256;
+            average_frame_time /= FTCB_SIZE;
 
 
             //std.debug.print("render state size: {} {any}\n", .{render_state.len, render_state});
@@ -2627,7 +2611,7 @@ try self.create_render_pass();
             });
 
             frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
-            if (frame_time_buffer_index < 255) {
+            if (frame_time_buffer_index < FTCB_SIZE - 1) {
                 frame_time_buffer_index += 1;
             } else {
                 frame_time_buffer_index = 0;
