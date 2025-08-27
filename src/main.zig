@@ -91,6 +91,7 @@ const PARTICLE_MAX_TIME: u32 = 1000;
 
 pub const ParticleHandle = struct {
     time: u32 = 0,
+    physics_index: u32 = undefined,
 };
 
 pub const GameState = struct {
