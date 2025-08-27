@@ -98,6 +98,7 @@ pub const VkAbstractionError = error{
     DepthFormatAvailablityFailure,
     DepthResourceCreationFailure,
     VertexBufferCreationFailure,
+    UBOBufferCreationFailure,
 };
 
 // These parameters are the minimum required for what we want to do
@@ -217,9 +218,6 @@ pub const VulkanState = struct {
 
     ubo_buffers: std.ArrayList(c.VkBuffer) = undefined,
     ubo_allocs: std.ArrayList(c.VmaAllocation) = undefined,
-    
-    ssbo_buffers: std.ArrayList(c.VkBuffer) = undefined,
-    ssbo_allocs: std.ArrayList(c.VmaAllocation) = undefined,
 
     images: []ImageInfo = undefined,
 
@@ -1766,9 +1764,9 @@ pub const VulkanState = struct {
             c.vmaDestroyBuffer(self.vma_allocator, self.vertex_buffers.items[i], self.vertex_allocs.items[i]);
         }
         
-        for (0..self.ssbo_buffers.items.len) |i| {
-            c.vmaDestroyBuffer(self.vma_allocator, self.ssbo_buffers.items[i], self.ssbo_allocs.items[i]);
-        }
+        //for (0..self.ssbo_buffers.items.len) |i| {
+        //    c.vmaDestroyBuffer(self.vma_allocator, self.ssbo_buffers.items[i], self.ssbo_allocs.items[i]);
+        //}
 
         for (0..self.MAX_CONCURRENT_FRAMES) |i| {
             c.vkDestroySemaphore(self.device, self.image_available_semaphores[i], null);
@@ -2098,7 +2096,7 @@ pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) 
     std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });
 }
 
-pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, voxel_spaces: []chunk.VoxelSpace, ssbo_index: u32) VkAbstractionError!void {
+pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, voxel_spaces: []chunk.VoxelSpace, ubo_index: u32) VkAbstractionError!void {
     var data = std.ArrayList(ChunkRenderData).init(self.allocator.*);
     try data.ensureUnusedCapacity(voxel_spaces.len); // TODO maybe we do more later
     defer data.deinit();
@@ -2128,7 +2126,7 @@ pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, voxel_spaces
         }
     }
     
-    try self.copy_data_via_staging_buffer(&self.ssbo_buffers.items[ssbo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
+    try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
 }
 
 pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, particles: []main.Particle, ubo_index: u32) VkAbstractionError!void {
@@ -2162,15 +2160,15 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
     defer self.vertex_buffers.deinit();
     self.vertex_allocs = std.ArrayList(c.VmaAllocation).init(self.allocator.*);
     defer self.vertex_allocs.deinit();
-    
-    self.render_targets = std.ArrayList(RenderInfo).init(self.allocator.*);
-    defer self.render_targets.deinit();
-
+   
     self.ubo_buffers = std.ArrayList(c.VkBuffer).init(self.allocator.*);
     defer self.ubo_buffers.deinit();
     self.ubo_allocs = std.ArrayList(c.VmaAllocation).init(self.allocator.*);
     defer self.ubo_allocs.deinit();
-    
+
+    self.render_targets = std.ArrayList(RenderInfo).init(self.allocator.*);
+    defer self.render_targets.deinit();
+
     self.command_buffers = try self.allocator.*.alloc(c.VkCommandBuffer, self.MAX_CONCURRENT_FRAMES);
     defer self.allocator.*.free(self.command_buffers);
 
@@ -2273,55 +2271,86 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
         try self.create_vertex_buffer(render_index, @sizeOf(ChunkVertex), @intCast(mesh_data.items.len * @sizeOf(ChunkVertex)), mesh_data.items.ptr);
     }
 
-    var buffer_create_info = c.VkBufferCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = 2 * @sizeOf(ChunkRenderData),
-        .usage = c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-    }; 
-    
-    const alloc_create_info = c.VmaAllocationCreateInfo{
-        .usage = c.VMA_MEMORY_USAGE_AUTO,
-        .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-    };
-    
-    const buffer_success = c.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &ssbo, &ssbo_alloc, null);
-    
-    if (buffer_success != c.VK_SUCCESS)
-    {
-        std.debug.print("success: {}\n", .{buffer_success});
-        return VkAbstractionError.VertexBufferCreationFailure;
-    }
+    //var buffer_create_info = c.VkBufferCreateInfo{
+    //    .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+    //    .size = 2 * @sizeOf(ChunkRenderData),
+    //    .usage = c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    //}; 
+    //
+    //const alloc_create_info = c.VmaAllocationCreateInfo{
+    //    .usage = c.VMA_MEMORY_USAGE_AUTO,
+    //    .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+    //};
+    //
+    //const buffer_success = c.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &ssbo, &ssbo_alloc, null);
+    //
+    //if (buffer_success != c.VK_SUCCESS)
+    //{
+    //    std.debug.print("success: {}\n", .{buffer_success});
+    //    return VkAbstractionError.VertexBufferCreationFailure;
+    //}
 
-    try self.ssbo_buffers.append(ssbo);
-    try self.ssbo_allocs.append(ssbo_alloc);
-    
-    //try update_chunk_ssbo(self, physics_state, game_state.voxel_spaces.items, 0);
+    //try self.ssbo_buffers.append(ssbo);
+    //try self.ssbo_allocs.append(ssbo_alloc);
 
     // RENDER INIT
 
-    const create_info = c.VkBufferCreateInfo{
-        .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = @sizeOf(BlockSelectorTransform),
-        .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+    const BufferInfo = struct {
+        create_info: c.VkBufferCreateInfo,
+        alloc_info: c.VmaAllocationCreateInfo,
     };
 
-    const ubo_alloc_create_info = c.VmaAllocationCreateInfo{
-        .usage = c.VMA_MEMORY_USAGE_AUTO,
-        .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+    const buffer_infos: [2]BufferInfo = .{
+        .{  .create_info = .{
+                .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = 10000 * @sizeOf(zm.Mat),
+                .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            },
+            .alloc_info = .{
+                .usage = c.VMA_MEMORY_USAGE_AUTO,
+                .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+            },
+        },
+        .{  .create_info = .{
+                .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = 10000 * @sizeOf(ChunkRenderData),
+                .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            },
+            .alloc_info = .{
+                .usage = c.VMA_MEMORY_USAGE_AUTO,
+                .flags = c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+            },
+        },
     };
 
-    for (0..self.vertex_buffers.items.len*self.MAX_CONCURRENT_FRAMES) |i|
-    {
-        _ = &i;
-         
-        var buffer: c.VkBuffer = undefined;
+    for (buffer_infos) |buffer| {
+        var ubo: c.VkBuffer = undefined;
         var alloc: c.VmaAllocation = undefined;
-        _ = c.vmaCreateBuffer(self.vma_allocator, &create_info, &ubo_alloc_create_info, &buffer, &alloc, null);
+        const buffer_success = c.vmaCreateBuffer(self.vma_allocator, &buffer.create_info, &buffer.alloc_info, &ubo, &alloc, null);
         
-        _ = c.vmaCopyMemoryToAllocation(self.vma_allocator, &selector_transform, alloc, 0, @sizeOf(BlockSelectorTransform));
+        if (buffer_success != c.VK_SUCCESS)
+        {
+            std.debug.print("success: {}\n", .{buffer_success});
+            return VkAbstractionError.UBOBufferCreationFailure;
+        }
+
+        try self.ubo_buffers.append(ubo);
         try self.ubo_allocs.append(alloc);
-        try self.ubo_buffers.append(buffer);
     }
+
+
+//    for (0..self.vertex_buffers.items.len*self.MAX_CONCURRENT_FRAMES) |i|
+//    {
+//        _ = &i;
+//         
+//        var buffer: c.VkBuffer = undefined;
+//        var alloc: c.VmaAllocation = undefined;
+//        _ = c.vmaCreateBuffer(self.vma_allocator, &create_info, &ubo_alloc_create_info, &buffer, &alloc, null);
+//        
+//        _ = c.vmaCopyMemoryToAllocation(self.vma_allocator, &selector_transform, alloc, 0, @sizeOf(BlockSelectorTransform));
+//        try self.ubo_allocs.append(alloc);
+//        try self.ubo_buffers.append(buffer);
+//    }
 
     var image_info0 = ImageInfo{
         .depth = 1,
@@ -2403,15 +2432,17 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
     
     for (0..self.MAX_CONCURRENT_FRAMES) |i| {
         const buffers: [2]c.VkDescriptorBufferInfo = .{
+            // Particles
             c.VkDescriptorBufferInfo{
-                .buffer = self.ubo_buffers.items[i],
+                .buffer = self.ubo_buffers.items[0],
                 .offset = 0,
-                .range = 10000 * @sizeOf(BlockSelectorTransform),
+                .range = 10000 * @sizeOf(zm.Mat),
             },
+            // Chunks
             c.VkDescriptorBufferInfo{
-                .buffer = self.ssbo_buffers.items[0],
+                .buffer = self.ubo_buffers.items[1],
                 .offset = 0,
-                .range = 1000 * @sizeOf(ChunkRenderData),
+                .range = 10000 * @sizeOf(ChunkRenderData),
             },
         };
         
@@ -2583,9 +2614,8 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
             @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
             @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
             
-            try update_chunk_ssbo(self, bodies, game_state.voxel_spaces.items, 0);
-
-            //try update_particle_ubo(self, );
+            try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
+            try update_particle_ubo(self, bodies, game_state.particles.items, 0);
             
             // DRAW
             try self.draw_frame(current_frame_index, &self.render_targets.items);
