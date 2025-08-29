@@ -111,18 +111,15 @@ pub const GameState = struct {
         _ = &im;
 
         try self.particles.append(.{});
+        const handle: *ParticleHandle = &self.particles.items[self.particles.items.len - 1];
 
-        try physics_state.new_bodies[physics_state.new_index].append(.{
+        try physics_state.add_body(handle, .{
                 .position = pos,
                 .inverse_mass = im,
                 .orientation = rot,
         });
 
         render_state.render_targets.items[1].instance_count += 1;
-
-        //try render_state.new_render_targets[render_state.new_index].append(
-        //    .{.vertex_index = 1, .pipeline_index = 1 }
-        //    );
     }
 };
 
@@ -246,6 +243,8 @@ pub fn main() !void {
     var physics_thread: std.Thread = try std.Thread.spawn(.{}, physics.physics_thread, .{ &physics_state, &game_state, &game_state.completion_signal, &physics_done});
     defer physics_thread.join();
 
+    var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
+
     while (!render_done or !physics_done) {
 
         if (input_state.control) {
@@ -282,14 +281,20 @@ pub fn main() !void {
         // TODO be more clever about the mutexes: Mutexes should only be for buffered state changes instead of 
         // essentially halting the thread
         if (input_state.e) {
-            const player_body = physics_state.display_bodies[physics_state.display_index][game_state.player_state.physics_index];
-            try game_state.add_box_particle(
-                &physics_state,
-                &vulkan_state,
-                player_body.orientation,
-                player_body.position,
-                1.0 / 32.0
-                );
+            const current_time: i64 = std.time.milliTimestamp();
+            if (@abs(vomit_cooldown_previous_time - current_time) >= 20) {
+                const player_body = physics_state.display_bodies[physics_state.display_index][game_state.player_state.physics_index];
+                try game_state.add_box_particle(
+                    &physics_state,
+                    &vulkan_state,
+                    player_body.orientation,
+                    player_body.position,
+                    1.0 / 32.0
+                    );
+                vomit_cooldown_previous_time = current_time;
+
+                std.debug.print("{any}\n", .{game_state.particles.items});
+            }
         }
 
         if (render_done) {

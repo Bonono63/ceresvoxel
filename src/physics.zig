@@ -58,6 +58,7 @@ pub const PhysicsState = struct {
 
     // Should only ever be used for writes from the logic thread
     new_bodies: [2]std.ArrayList(Body) = undefined,
+    new_particle_handles: [2]std.ArrayList(*main.ParticleHandle) = undefined,
     new_index: u32 = 0,
 
     // Copies the current bodies to a double buffer and swaps between the two for the most recent data
@@ -69,6 +70,11 @@ pub const PhysicsState = struct {
 
     mutex: std.Thread.Mutex = std.Thread.Mutex{},
     motion_style: PlanetaryMotionStyle = PlanetaryMotionStyle.DETERMINISTIC,
+
+    pub fn add_body(self: *PhysicsState, handle: *main.ParticleHandle, body: Body) !void {
+        try self.new_bodies[self.new_index].append(body);
+        try self.new_particle_handles[self.new_index].append(handle);
+    }
 };
 
 pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState, complete_signal: *bool, done: *bool) !void {
@@ -83,6 +89,11 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
     physics_state.new_bodies[1] = std.ArrayList(Body).init(game_state.allocator.*);
     defer physics_state.new_bodies[0].deinit();
     defer physics_state.new_bodies[1].deinit();
+    
+    physics_state.new_particle_handles[0] = std.ArrayList(*main.ParticleHandle).init(game_state.allocator.*);
+    physics_state.new_particle_handles[1] = std.ArrayList(*main.ParticleHandle).init(game_state.allocator.*);
+    defer physics_state.new_particle_handles[0].deinit();
+    defer physics_state.new_particle_handles[1].deinit();
 
     var last_interval: i64 = std.time.milliTimestamp();
     var counter: u8 = 1;
@@ -97,6 +108,11 @@ pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState,
                 const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
                
                 const next_new_index: u32 = (physics_state.new_index + 1) % 2;
+                const old_bodies_len = physics_state.bodies.items.len;
+                for (0..physics_state.new_particle_handles[next_new_index].items.len) |i| {
+                    physics_state.new_particle_handles[next_new_index].items[i].*.physics_index = @as(u32, @intCast(old_bodies_len + i - 1));
+                }
+                physics_state.new_particle_handles[next_new_index].clearRetainingCapacity();
                 try physics_state.bodies.appendSlice(physics_state.new_bodies[next_new_index].items);
                 physics_state.new_bodies[next_new_index].clearRetainingCapacity();
                 physics_state.new_index = next_new_index;

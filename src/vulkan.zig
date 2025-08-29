@@ -2129,7 +2129,7 @@ pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, voxel_spaces
     try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
 }
 
-pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, particles: []main.Particle, ubo_index: u32) VkAbstractionError!void {
+pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, particles: []main.ParticleHandle, ubo_index: u32) VkAbstractionError!void {
     var data = std.ArrayList(zm.Mat).init(self.allocator.*);
     try data.ensureUnusedCapacity(particles.len);
     defer data.deinit();
@@ -2139,6 +2139,7 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, particles
             @as(f32, @floatCast(bodies[particle.physics_index].position[0])),
             @as(f32, @floatCast(bodies[particle.physics_index].position[1])),
             @as(f32, @floatCast(bodies[particle.physics_index].position[2])),
+            1.0
         };
 
         try data.append(zm.mul(zm.quatToMat(bodies[particle.physics_index].orientation), zm.translationV(physics_pos)));
@@ -2520,7 +2521,7 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
     var window_width: i32 = 0;
 
     var frame_time_buffer_index: u32 = 0;
-    const FTCB_SIZE: u32 = 64;
+    const FTCB_SIZE: u32 = 128;
     var frame_time_cyclic_buffer: [FTCB_SIZE]f32 = undefined;
     // TODO replace this with splat?
     @memset(&frame_time_cyclic_buffer, 0.0);
@@ -2615,7 +2616,10 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
             @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
             
             try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
-            try update_particle_ubo(self, bodies, game_state.particles.items, 0);
+            const particles = game_state.particles.items;
+            if (particles.len > 0) {
+                try update_particle_ubo(self, bodies, particles, 0);
+            }
             
             // DRAW
             try self.draw_frame(current_frame_index, &self.render_targets.items);
