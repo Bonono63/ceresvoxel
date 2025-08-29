@@ -2150,7 +2150,7 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, particles
 
 //THREAD
 
-pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_state: *main.InputState, physics_state: *physics.PhysicsState, done: *bool) !void {
+pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_state: *main.InputState, physics_state: *physics.PhysicsState, ready: *bool, done: *bool) !void {
     self.shader_modules = std.ArrayList(c.VkShaderModule).init(self.allocator.*);
     defer self.shader_modules.deinit();
 
@@ -2244,7 +2244,7 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
     // cursor
     try self.render_targets.append(.{ .vertex_index = 0, .pipeline_index = 0});
     // outline
-    try self.render_targets.append(.{ .vertex_index = 1, .pipeline_index = 1});
+    try self.render_targets.append(.{ .vertex_index = 1, .pipeline_index = 1, .instance_count = 0});
     
     try self.create_vertex_buffer(0, @sizeOf(Vertex), @intCast(cursor_vertices.len * @sizeOf(Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
     try self.create_vertex_buffer(1, @sizeOf(Vertex), @intCast(block_selection_cube.len * @sizeOf(Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
@@ -2543,6 +2543,8 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
 
     std.debug.print("fps limit: {}\n", .{fps_limit});
 
+    ready.* = true;
+
     while (c.glfwWindowShouldClose(self.window) == 0) {
         const current_time: f32 = @floatCast(c.glfwGetTime());
         const frame_delta: f32 = current_time - previous_frame_time;
@@ -2633,16 +2635,16 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
 
 
             //std.debug.print("render state size: {} {any}\n", .{render_state.len, render_state});
-            std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
-                if (input_state.mouse_capture) "on " else "off",
-                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[0])), 
-                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[1])),
-                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[2])),
-                game_state.player_state.yaw,
-                game_state.player_state.pitch,
-                average_frame_time * 1000.0,
-                1.0/average_frame_time,
-            });
+            //std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
+            //    if (input_state.mouse_capture) "on " else "off",
+            //    @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[0])), 
+            //    @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[1])),
+            //    @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[2])),
+            //    game_state.player_state.yaw,
+            //    game_state.player_state.pitch,
+            //    average_frame_time * 1000.0,
+            //    1.0/average_frame_time,
+            //});
 
             frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
             if (frame_time_buffer_index < FTCB_SIZE - 1) {

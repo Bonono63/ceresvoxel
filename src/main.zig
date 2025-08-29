@@ -101,26 +101,6 @@ pub const GameState = struct {
     player_state: PlayerState,
     completion_signal: bool,
     allocator: *std.mem.Allocator,
-
-    fn add_box_particle(self: *GameState, physics_state: *physics.PhysicsState, render_state: *vulkan.VulkanState, rot: zm.Quat, pos: @Vector(3, f128), im: f32) !void {
-        _ = &self;
-        _ = &physics_state;
-        _ = &render_state;
-        _ = &rot;
-        _ = &pos;
-        _ = &im;
-
-        try self.particles.append(.{});
-        const handle: *ParticleHandle = &self.particles.items[self.particles.items.len - 1];
-
-        try physics_state.add_body(handle, .{
-                .position = pos,
-                .inverse_mass = im,
-                .orientation = rot,
-        });
-
-        render_state.render_targets.items[1].instance_count += 1;
-    }
 };
 
 
@@ -232,20 +212,36 @@ pub fn main() !void {
     });
     game_state.player_state = PlayerState{.physics_index = @intCast(physics_state.bodies.items.len - 1)};
 
-    std.debug.print("{any}\n", .{physics_state.bodies.items});
-    std.debug.print("{}\n", .{game_state.player_state.up});
-
     var render_done: bool = false;
-    var render_thread = try std.Thread.spawn(.{}, vulkan.render_thread, .{&vulkan_state, &game_state, &input_state, &physics_state, &render_done});
+    var render_ready: bool = false;
+    var render_thread = try std.Thread.spawn(.{}, vulkan.render_thread, .{&vulkan_state, &game_state, &input_state, &physics_state, &render_ready, &render_done});
     defer render_thread.join();
 
-    var physics_done: bool = false;
-    var physics_thread: std.Thread = try std.Thread.spawn(.{}, physics.physics_thread, .{ &physics_state, &game_state, &game_state.completion_signal, &physics_done});
-    defer physics_thread.join();
+    physics_state.display_bodies[0] = try game_state.allocator.alloc(physics.Body, 0);
+    physics_state.display_bodies[1] = try game_state.allocator.alloc(physics.Body, 0);
+    defer game_state.allocator.free(physics_state.display_bodies[0]);
+    defer game_state.allocator.free(physics_state.display_bodies[1]);
 
     var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
 
-    while (!render_done or !physics_done) {
+    var prev_tick_time: i64 = 0;
+    var prev_time: i64 = 0;
+    const MINIMUM_TICK_TIME: i64 = 40;
+    
+    physics_state.display_bodies[physics_state.display_index] = try game_state.allocator.realloc(physics_state.display_bodies[physics_state.display_index], physics_state.bodies.items.len);
+    @memcpy(physics_state.display_bodies[physics_state.display_index], physics_state.bodies.items);
+
+    while (!render_ready) {
+        std.time.sleep(1);
+    }
+
+    std.debug.print("[Debug] render ready\n", .{});
+
+    while (!render_done) {
+        const current_time: i64 = std.time.milliTimestamp();
+        prev_time = current_time;
+        const delta_time: i64 = current_time - prev_tick_time;
+        const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
 
         if (input_state.control) {
             game_state.player_state.speed = 30.0;
@@ -278,29 +274,41 @@ pub fn main() !void {
             game_state.player_state.input_vec += cm.scale_f32(right, game_state.player_state.speed);
         }
 
-        // TODO be more clever about the mutexes: Mutexes should only be for buffered state changes instead of 
-        // essentially halting the thread
-        if (input_state.e) {
-            const current_time: i64 = std.time.milliTimestamp();
-            if (@abs(vomit_cooldown_previous_time - current_time) >= 20) {
-                const player_body = physics_state.display_bodies[physics_state.display_index][game_state.player_state.physics_index];
-                try game_state.add_box_particle(
-                    &physics_state,
-                    &vulkan_state,
-                    player_body.orientation,
-                    player_body.position,
-                    1.0 / 32.0
-                    );
-                vomit_cooldown_previous_time = current_time;
+        if (@abs(current_time - prev_tick_time) > MINIMUM_TICK_TIME) {
+            prev_tick_time = current_time;
 
-                std.debug.print("{any}\n", .{game_state.particles.items});
+            physics_state.bodies.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
+            
+            physics.physics_tick(delta_time_float, physics_state.bodies.items, &physics_state);
+            
+            if (input_state.e and current_time - vomit_cooldown_previous_time > 20) {
+                const player_pos = physics_state.bodies.items[game_state.player_state.physics_index].position;
+                const pos = .{player_pos[0] - 0.5, player_pos[1] - 0.5, player_pos[2] - 0.5};
+                try physics_state.bodies.append(.{
+                        .position = pos,
+                        .inverse_mass = 1.0 / 32.0,
+                        .orientation = physics_state.bodies.items[game_state.player_state.physics_index].orientation,
+                        .velocity = cm.scale_f32(try game_state.player_state.look(), 50.0),
+                });
+
+                try game_state.particles.append(.{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 2))});
+                
+                vomit_cooldown_previous_time = current_time;
+            }
+            
+            if (game_state.particles.items.len > 0) {
+                vulkan_state.render_targets.items[1].instance_count = @as(u32, @intCast(game_state.particles.items.len - 1));
             }
         }
-
+        
+        const next_display_index = (physics_state.display_index + 1) % 2;
+        physics_state.display_bodies[next_display_index] = try game_state.allocator.realloc(physics_state.display_bodies[next_display_index], physics_state.bodies.items.len);
+        @memcpy(physics_state.display_bodies[next_display_index], physics_state.bodies.items);
+        physics_state.display_index = next_display_index;
+        
         if (render_done) {
             game_state.completion_signal = false;
         }
-        std.time.sleep(1);
     }
 }
 

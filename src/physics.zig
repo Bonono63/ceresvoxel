@@ -77,76 +77,8 @@ pub const PhysicsState = struct {
     }
 };
 
-pub fn physics_thread(physics_state: *PhysicsState, game_state: *main.GameState, complete_signal: *bool, done: *bool) !void {
-
-
-    physics_state.display_bodies[0] = try game_state.allocator.alloc(Body, 0);
-    physics_state.display_bodies[1] = try game_state.allocator.alloc(Body, 0);
-    defer game_state.allocator.free(physics_state.display_bodies[0]);
-    defer game_state.allocator.free(physics_state.display_bodies[1]);
-
-    physics_state.new_bodies[0] = std.ArrayList(Body).init(game_state.allocator.*);
-    physics_state.new_bodies[1] = std.ArrayList(Body).init(game_state.allocator.*);
-    defer physics_state.new_bodies[0].deinit();
-    defer physics_state.new_bodies[1].deinit();
-    
-    physics_state.new_particle_handles[0] = std.ArrayList(*main.ParticleHandle).init(game_state.allocator.*);
-    physics_state.new_particle_handles[1] = std.ArrayList(*main.ParticleHandle).init(game_state.allocator.*);
-    defer physics_state.new_particle_handles[0].deinit();
-    defer physics_state.new_particle_handles[1].deinit();
-
-    var last_interval: i64 = std.time.milliTimestamp();
-    var counter: u8 = 1;
-    const counter_max: u8 = 40;
-    // 40 ticks a second = 25 ms
-    const minimum_delta_time: u8 = 5;
-    while (complete_signal.*) {
-        const current_time = std.time.milliTimestamp();
-        const delta_time = current_time - last_interval;
-        if (delta_time > minimum_delta_time) {
-            if (physics_state.mutex.tryLock()) {
-                const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
-               
-                const next_new_index: u32 = (physics_state.new_index + 1) % 2;
-                const old_bodies_len = physics_state.bodies.items.len;
-                for (0..physics_state.new_particle_handles[next_new_index].items.len) |i| {
-                    physics_state.new_particle_handles[next_new_index].items[i].*.physics_index = @as(u32, @intCast(old_bodies_len + i - 1));
-                }
-                physics_state.new_particle_handles[next_new_index].clearRetainingCapacity();
-                try physics_state.bodies.appendSlice(physics_state.new_bodies[next_new_index].items);
-                physics_state.new_bodies[next_new_index].clearRetainingCapacity();
-                physics_state.new_index = next_new_index;
-
-                // TODO replace this with linear impulses later
-                physics_state.bodies.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
-                
-                physics_tick(delta_time_float, physics_state.bodies.items, physics_state);
-                
-                last_interval = current_time;
-                //std.debug.print("{any}\n", .{physics_state.bodies.items[1]});
-                std.debug.print("{d:3}ms {} bodies\r", .{delta_time, physics_state.bodies.items.len});
-                if (counter >= counter_max) {
-                    counter = 0;
-                } else {
-                    counter += 1;
-                }
-
-                const next_display_index = (physics_state.display_index + 1) % 2;
-                physics_state.display_bodies[next_display_index] = try game_state.allocator.realloc(physics_state.display_bodies[next_display_index], physics_state.bodies.items.len);
-                @memcpy(physics_state.display_bodies[next_display_index], physics_state.bodies.items);
-                physics_state.display_index = next_display_index;
-
-                physics_state.mutex.unlock();
-            }
-        }
-    }
-
-    done.* = true;
-}
-
-
 // TODO abstract the voxel spaces and entities to one type of physics entity
-fn physics_tick(delta_time: f64, bodies: []Body, physics_state: *PhysicsState) void {
+pub fn physics_tick(delta_time: f64, bodies: []Body, physics_state: *PhysicsState) void {
     // Planetary Motion
     for (0..bodies.len) |index| {
         if (bodies[index].planet) {
