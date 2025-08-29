@@ -288,7 +288,7 @@ pub fn main() !void {
                         .position = pos,
                         .inverse_mass = 1.0 / 32.0,
                         .orientation = physics_state.bodies.items[game_state.player_state.physics_index].orientation,
-                        .velocity = cm.scale_f32(try game_state.player_state.look(), 50.0),
+                        .velocity = cm.scale_f32(try game_state.player_state.look(), 1.0 * 32.0) + physics_state.bodies.items[game_state.player_state.physics_index].velocity,
                 });
 
                 try game_state.particles.append(.{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 2))});
@@ -297,7 +297,7 @@ pub fn main() !void {
             }
             
             if (game_state.particles.items.len > 0) {
-                vulkan_state.render_targets.items[1].instance_count = @as(u32, @intCast(game_state.particles.items.len - 1));
+                vulkan_state.render_targets.items[1].instance_count = @as(u32, @intCast(game_state.particles.items.len));
             }
         }
         
