@@ -244,7 +244,7 @@ pub fn main() !void {
         const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
 
         if (input_state.control) {
-            game_state.player_state.speed = 30.0;
+            game_state.player_state.speed = 100.0;
         } else {
             game_state.player_state.speed = 5.0;
         }
