@@ -5,10 +5,6 @@ layout(push_constant, std430) uniform push_constants {
     layout(offset=64) float aspect_ratio;
 } pc;
 
-layout(binding = 0) uniform object_transform {
-    mat4 model;
-} ubo;
-
 layout(location = 0) in vec3 in_pos;
 layout(location = 1) in vec3 in_color;
 

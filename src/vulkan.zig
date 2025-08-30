@@ -607,7 +607,7 @@ pub const VulkanState = struct {
             c.VkDescriptorSetLayoutBinding{
                 .binding = 3,
                 .descriptorCount = 1,
-                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .stageFlags = c.VK_SHADER_STAGE_ALL,
                 .pImmutableSamplers = null,
             },
@@ -1730,7 +1730,7 @@ pub const VulkanState = struct {
         var buffer_create_info = c.VkBufferCreateInfo{
             .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size = size,
-            .usage = c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         }; 
     
         const alloc_create_info = c.VmaAllocationCreateInfo{
@@ -2304,8 +2304,8 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
     const buffer_infos: [2]BufferInfo = .{
         .{  .create_info = .{
                 .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = 10000 * @sizeOf(zm.Mat),
-                .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                .size = 500 * @sizeOf(zm.Mat),
+                .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             },
             .alloc_info = .{
                 .usage = c.VMA_MEMORY_USAGE_AUTO,
@@ -2314,8 +2314,8 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
         },
         .{  .create_info = .{
                 .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = 10000 * @sizeOf(ChunkRenderData),
-                .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                .size = 256 * @sizeOf(ChunkRenderData),
+                .usage = c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             },
             .alloc_info = .{
                 .usage = c.VMA_MEMORY_USAGE_AUTO,
@@ -2437,13 +2437,13 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
             c.VkDescriptorBufferInfo{
                 .buffer = self.ubo_buffers.items[0],
                 .offset = 0,
-                .range = 10000 * @sizeOf(zm.Mat),
+                .range = 500 * @sizeOf(zm.Mat),
             },
             // Chunks
             c.VkDescriptorBufferInfo{
                 .buffer = self.ubo_buffers.items[1],
                 .offset = 0,
-                .range = 10000 * @sizeOf(ChunkRenderData),
+                .range = 256 * @sizeOf(ChunkRenderData),
             },
         };
         
@@ -2499,7 +2499,7 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
                 .dstSet = self.descriptor_sets[i],
                 .dstBinding = 3,
                 .dstArrayElement = 0,
-                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
                 .pBufferInfo = &buffers[1],
                 .pImageInfo = null,

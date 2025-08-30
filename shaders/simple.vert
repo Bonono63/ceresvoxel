@@ -18,7 +18,7 @@ struct chunk {
 };
 
 layout(binding = 3) readonly uniform chunk_data {
-    chunk data[];
+    chunk data[256];
 } cd;
 
 layout(location = 0) in uint chunk_index;

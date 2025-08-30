@@ -70,11 +70,6 @@ pub const PhysicsState = struct {
 
     mutex: std.Thread.Mutex = std.Thread.Mutex{},
     motion_style: PlanetaryMotionStyle = PlanetaryMotionStyle.DETERMINISTIC,
-
-    pub fn add_body(self: *PhysicsState, handle: *main.ParticleHandle, body: Body) !void {
-        try self.new_bodies[self.new_index].append(body);
-        try self.new_particle_handles[self.new_index].append(handle);
-    }
 };
 
 // TODO abstract the voxel spaces and entities to one type of physics entity
