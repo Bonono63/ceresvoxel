@@ -1,6 +1,7 @@
 const std = @import("std");
 const c = @import("clibs.zig");
 const zm = @import("zmath");
+const cm = @import("ceresmath.zig");
 const main = @import("main.zig");
 const chunk = @import("chunk.zig");
 const mesh_generation = @import("mesh_generation.zig");
@@ -1066,27 +1067,25 @@ pub const VulkanState = struct {
 
         var previous_pipeline_index: u32 = std.math.maxInt(u32);
         for (render_state.*) |target| {
-            if (target.rendering_enabled) {
-                const pipeline_index = target.pipeline_index;
-                if (pipeline_index != previous_pipeline_index) {
-                    c.vkCmdBindPipeline(
-                        command_buffer,
-                        c.VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        self.pipelines[pipeline_index]
-                        );
-                    previous_pipeline_index = pipeline_index;
-                }
-                
-                c.vkCmdBindVertexBuffers(
+            const pipeline_index = target.pipeline_index;
+            if (pipeline_index != previous_pipeline_index) {
+                c.vkCmdBindPipeline(
                     command_buffer,
-                    0,
-                    1,
-                    &self.vertex_buffers.items[target.vertex_index],
-                    &target.vertex_buffer_offset
+                    c.VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    self.pipelines[pipeline_index]
                     );
-                
-                c.vkCmdDraw(command_buffer, target.vertex_count, target.instance_count, 0, 0);
+                previous_pipeline_index = pipeline_index;
             }
+            
+            c.vkCmdBindVertexBuffers(
+                command_buffer,
+                0,
+                1,
+                &self.vertex_buffers.items[target.vertex_index],
+                &target.vertex_buffer_offset
+                );
+            
+            c.vkCmdDraw(command_buffer, target.vertex_count, target.instance_count, 0, 0);
         }
 
         c.vkCmdEndRenderPass(command_buffer);
@@ -2135,14 +2134,21 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, particles
     defer data.deinit();
    
     for (particles) |particle| {
-        const physics_pos = .{
-            @as(f32, @floatCast(bodies[particle.physics_index].position[0])),
-            @as(f32, @floatCast(bodies[particle.physics_index].position[1])),
-            @as(f32, @floatCast(bodies[particle.physics_index].position[2])),
-            1.0
-        };
+        //const physics_pos = .{
+        //    @as(f32, @floatCast(bodies[particle.physics_index].position[0] - bodies[particle.physics_index].half_size[0])),
+        //    @as(f32, @floatCast(bodies[particle.physics_index].position[1] - bodies[particle.physics_index].half_size[1])),
+        //    @as(f32, @floatCast(bodies[particle.physics_index].position[2] - bodies[particle.physics_index].half_size[2])),
+        //    1.0
+        //};
 
-        try data.append(zm.mul(zm.quatToMat(bodies[particle.physics_index].orientation), zm.translationV(physics_pos)));
+        const orientation_normalized = zm.qmul(cm.qnormalize(bodies[particle.physics_index].orientation), .{1.0,0.0,0.0,0.0});
+        const orientation: zm.Quat = .{
+            orientation_normalized[0],
+            orientation_normalized[1],
+            orientation_normalized[2],
+            0.0//bodies[particle.physics_index].orientation[3],
+    };
+        try data.append(zm.matFromQuat(orientation));
     }
 
     try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(zm.Mat)), &data.items[0]);
@@ -2605,7 +2611,7 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
 
             const player_pos: zm.Vec = .{
                 @floatCast(bodies[game_state.player_state.physics_index].position[0]),
-                @floatCast(bodies[game_state.player_state.physics_index].position[1]),
+                @floatCast(bodies[game_state.player_state.physics_index].position[1] - 0.5),
                 @floatCast(bodies[game_state.player_state.physics_index].position[2]),
                 0.0,
             };
@@ -2635,16 +2641,16 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
 
 
             //std.debug.print("render state size: {} {any}\n", .{render_state.len, render_state});
-            //std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
-            //    if (input_state.mouse_capture) "on " else "off",
-            //    @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[0])), 
-            //    @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[1])),
-            //    @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[2])),
-            //    game_state.player_state.yaw,
-            //    game_state.player_state.pitch,
-            //    average_frame_time * 1000.0,
-            //    1.0/average_frame_time,
-            //});
+            std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
+                if (input_state.mouse_capture) "on " else "off",
+                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[0])), 
+                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[1])),
+                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[2])),
+                game_state.player_state.yaw,
+                game_state.player_state.pitch,
+                average_frame_time * 1000.0,
+                1.0/average_frame_time,
+            });
 
             frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
             if (frame_time_buffer_index < FTCB_SIZE - 1) {

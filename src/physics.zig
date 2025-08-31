@@ -34,6 +34,10 @@ pub const Body = struct {
     transform: zm.Mat = zm.identity(), // Current body transform, can be used for rendering as well
     inverse_inertia_tensor: zm.Mat = zm.inverse(zm.identity()),
     torque_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, //change in axis is based on direction, strength the the coefficient from if it was a unit vector
+
+    // Collisions are only possible with boxes (other shapes can be added, but I can't be bothered)
+    // Make sure to only ever put in half the length of each dimension of the collision box
+    half_size: zm.Vec,
 };
 
 const PlanetaryMotionStyle = enum {
@@ -111,7 +115,6 @@ pub fn physics_tick(delta_time: f64, bodies: []Body, physics_state: *PhysicsStat
                         0.0,
                     };
 
-                    //std.debug.print("d: {} gc: {} fv: {} f64 {}\n ", .{d, force_coefficient, final_vector, final_f64});
                     bodies[index].force_accumulation += final;
                 },
             }
@@ -119,10 +122,6 @@ pub fn physics_tick(delta_time: f64, bodies: []Body, physics_state: *PhysicsStat
     }
 
     // Gravity
-    for (0..bodies.len) |index| {
-        _ = &index;
-    }
-
     // Bouyancy
     // Magnetism
 
@@ -177,4 +176,16 @@ pub fn physics_tick(delta_time: f64, bodies: []Body, physics_state: *PhysicsStat
 //fn generate_contacts(allocator: *const std.Allocator, a: *Body, a_offset: zm.Mat, b: *Body, b_offset: zm.Mat) ![]Contact {
 //    return ;
 //}
+
+fn penetration_on_axis(box_a: zm.Vec, transform_a: zm.Mat, box_b: zm.Vec, transform_b: zm.Mat, axis: zm.Vec, ab_center_dist: zm.Vec) f32 {
+    _ = &box_a;
+    _ = &box_b;
+    _ = &transform_a;
+    _ = &transform_b;
+    _ = &axis;
+    _ = &ab_center_dist;
+    //const a_projected: f32 = zm.mul(collision_box_a, axis);
+    //const b_projected: f32 = ;
+    return 0.0;
+}
 

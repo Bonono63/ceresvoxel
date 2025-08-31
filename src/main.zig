@@ -35,7 +35,7 @@ const PlayerState = struct {
     speed: f32 = 5.0,
     physics_index: u32,
 
-    pub fn look(self: *PlayerState) !zm.Quat {
+    pub fn look(self: *PlayerState) zm.Quat {
         const result = zm.normalize3(@Vector(4, f32){
             @as(f32, @floatCast(std.math.cos(self.yaw) * std.math.cos(self.pitch))),
             @as(f32, @floatCast(std.math.sin(self.pitch))),
@@ -179,6 +179,7 @@ pub fn main() !void {
         .planet = false,
         .gravity = false,
         .torque_accumulation = .{std.math.pi, 0.0, 0.0, 0.0},
+        .half_size = .{0.5, 0.5, 0.5, 0.0},
     });
     
     try game_state.voxel_spaces.append(.{
@@ -197,6 +198,7 @@ pub fn main() !void {
             .orbit_radius = @as(f128, @floatFromInt(index * index * index * 3)),
             .eccentricity = 1.0,
             .eccliptic_offset = .{rand.float(f32) / 10.0, rand.float(f32) / 10.0},
+            .half_size = .{0.5, 0.5, 0.5, 0.0},
         });
         
         try game_state.voxel_spaces.append(.{
@@ -209,6 +211,7 @@ pub fn main() !void {
     try physics_state.bodies.append(.{
         .position = .{0.0, 100, 0.0},
         .inverse_mass = (1.0/100.0),
+        .half_size = .{0.5, 1.0, 0.5, 0.0},
     });
     game_state.player_state = PlayerState{.physics_index = @intCast(physics_state.bodies.items.len - 1)};
 
@@ -223,10 +226,11 @@ pub fn main() !void {
     defer game_state.allocator.free(physics_state.display_bodies[1]);
 
     var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
+    const VOMIT_COOLDOWN: i64 = 60;
 
     var prev_tick_time: i64 = 0;
     var prev_time: i64 = 0;
-    const MINIMUM_TICK_TIME: i64 = 40;
+    const MINIMUM_TICK_TIME: i64 = 20;
     
     physics_state.display_bodies[physics_state.display_index] = try game_state.allocator.realloc(physics_state.display_bodies[physics_state.display_index], physics_state.bodies.items.len);
     @memcpy(physics_state.display_bodies[physics_state.display_index], physics_state.bodies.items);
@@ -236,6 +240,7 @@ pub fn main() !void {
     }
 
     std.debug.print("[Debug] render ready\n", .{});
+    std.debug.print("player physics index: {}\n", .{game_state.player_state.physics_index});
 
     while (!render_done) {
         const current_time: i64 = std.time.milliTimestamp();
@@ -281,14 +286,16 @@ pub fn main() !void {
             
             physics.physics_tick(delta_time_float, physics_state.bodies.items, &physics_state);
             
-            if (input_state.e and current_time - vomit_cooldown_previous_time > 20) {
+            if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
                 const player_pos = physics_state.bodies.items[game_state.player_state.physics_index].position;
-                const pos = .{player_pos[0] - 0.5, player_pos[1] - 0.5, player_pos[2] - 0.5};
+                const pos = .{player_pos[0], player_pos[1] - 0.5, player_pos[2]};
                 try physics_state.bodies.append(.{
                         .position = pos,
                         .inverse_mass = 1.0 / 32.0,
-                        .orientation = physics_state.bodies.items[game_state.player_state.physics_index].orientation,
-                        .velocity = cm.scale_f32(try game_state.player_state.look(), 1.0 * 32.0) + physics_state.bodies.items[game_state.player_state.physics_index].velocity,
+                        .orientation = game_state.player_state.look(),
+                        .velocity = cm.scale_f32(game_state.player_state.look(), 0.1 * 32.0) + physics_state.bodies.items[game_state.player_state.physics_index].velocity,
+                        //.angular_velocity = .{1.0,0.0,0.0,0.0},
+                        .half_size = .{0.5, 0.5, 0.5, 0.0},
                 });
 
                 try game_state.particles.append(.{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 2))});
@@ -299,6 +306,8 @@ pub fn main() !void {
             if (game_state.particles.items.len > 0) {
                 vulkan_state.render_targets.items[1].instance_count = @as(u32, @intCast(game_state.particles.items.len));
             }
+
+            std.debug.print("{}ms {} bodies {}ms\r", .{delta_time, physics_state.bodies.items.len, std.time.milliTimestamp() - current_time});
         }
         
         const next_display_index = (physics_state.display_index + 1) % 2;
