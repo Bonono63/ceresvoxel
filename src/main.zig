@@ -36,17 +36,17 @@ const PlayerState = struct {
     physics_index: u32,
 
     pub fn look(self: *PlayerState) zm.Quat {
-        const result = zm.normalize3(@Vector(4, f32){
-            @as(f32, @floatCast(std.math.cos(self.yaw) * std.math.cos(self.pitch))),
-            @as(f32, @floatCast(std.math.sin(self.pitch))),
-            @as(f32, @floatCast(std.math.sin(self.yaw) * std.math.cos(self.pitch))),
+        const result = cm.qnormalize(@Vector(4, f32){
+            @cos(self.yaw / 2),
+            0.0,
+            @sin(self.yaw / 2),
             0.0,
         });
 
         return result;
     }
     
-    pub fn lookV(self: *PlayerState) !zm.Vec {
+    pub fn lookV(self: *PlayerState) zm.Vec {
         const result = zm.normalize3(@Vector(4, f32){
             @as(f32, @floatCast(std.math.cos(self.yaw) * std.math.cos(self.pitch))),
             @as(f32, @floatCast(std.math.sin(self.pitch))),
@@ -215,6 +215,8 @@ pub fn main() !void {
     });
     game_state.player_state = PlayerState{.physics_index = @intCast(physics_state.bodies.items.len - 1)};
 
+    try game_state.particles.append(.{.physics_index = game_state.player_state.physics_index});
+
     var render_done: bool = false;
     var render_ready: bool = false;
     var render_thread = try std.Thread.spawn(.{}, vulkan.render_thread, .{&vulkan_state, &game_state, &input_state, &physics_state, &render_ready, &render_done});
@@ -254,7 +256,7 @@ pub fn main() !void {
             game_state.player_state.speed = 5.0;
         }
         
-        const look = try game_state.player_state.lookV();
+        const look = game_state.player_state.lookV();
 
         const right = zm.normalize3(zm.cross3(look, game_state.player_state.up));
 
@@ -303,11 +305,11 @@ pub fn main() !void {
                 vomit_cooldown_previous_time = current_time;
             }
             
-            if (game_state.particles.items.len > 0) {
-                vulkan_state.render_targets.items[1].instance_count = @as(u32, @intCast(game_state.particles.items.len));
-            }
-
             std.debug.print("{}ms {} bodies {}ms\r", .{delta_time, physics_state.bodies.items.len, std.time.milliTimestamp() - current_time});
+        }
+        
+        if (game_state.particles.items.len > 0) {
+            vulkan_state.render_targets.items[1].instance_count = @as(u32, @intCast(game_state.particles.items.len));
         }
         
         const next_display_index = (physics_state.display_index + 1) % 2;

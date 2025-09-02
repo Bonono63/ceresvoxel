@@ -2128,28 +2128,55 @@ pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, voxel_spaces
     try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
 }
 
-pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, particles: []main.ParticleHandle, ubo_index: u32) VkAbstractionError!void {
+pub fn update_particle_ubo(self: *VulkanState, game_state: *main.GameState, bodies: []physics.Body, particles: []main.ParticleHandle, ubo_index: u32) VkAbstractionError!void {
     var data = std.ArrayList(zm.Mat).init(self.allocator.*);
     try data.ensureUnusedCapacity(particles.len);
     defer data.deinit();
-   
-    for (particles) |particle| {
-        //const physics_pos = .{
-        //    @as(f32, @floatCast(bodies[particle.physics_index].position[0] - bodies[particle.physics_index].half_size[0])),
-        //    @as(f32, @floatCast(bodies[particle.physics_index].position[1] - bodies[particle.physics_index].half_size[1])),
-        //    @as(f32, @floatCast(bodies[particle.physics_index].position[2] - bodies[particle.physics_index].half_size[2])),
-        //    1.0
-        //};
 
-        const orientation_normalized = zm.qmul(cm.qnormalize(bodies[particle.physics_index].orientation), .{1.0,0.0,0.0,0.0});
-        const orientation: zm.Quat = .{
-            orientation_normalized[0],
-            orientation_normalized[1],
-            orientation_normalized[2],
-            0.0//bodies[particle.physics_index].orientation[3],
-    };
-        try data.append(zm.matFromQuat(orientation));
-    }
+    _ = &bodies;
+    var final_mat: zm.Mat = zm.translationV(.{-0.5, -0.5, -0.5, 0.0});
+    
+    //const relative_center: zm.Mat = ;
+    
+    const world_pos: zm.Mat = zm.translationV(.{
+            @as(f32, @floatCast(bodies[particles[0].physics_index].position[0])),
+            @as(f32, @floatCast(bodies[particles[0].physics_index].position[1] - 0.5)),
+            @as(f32, @floatCast(bodies[particles[0].physics_index].position[2])),
+            0.0,
+        });
+
+    const yaw: f32 = game_state.player_state.yaw / 2;
+    const pitch: f32 = game_state.player_state.pitch / 2;
+
+    final_mat = zm.mul(final_mat, zm.matFromQuat(cm.qnormalize(.{
+        @cos(yaw) * @cos(pitch),
+        pitch/2,
+        @sin(yaw) * @cos(pitch),
+        0.0,
+    })));
+
+    final_mat = zm.mul(final_mat, world_pos);
+
+    try data.append(final_mat);
+
+    //for (particles) |particle| {
+    //    var final_mat: zm.Mat = zm.identity();
+    //    
+    //    const relative_center: zm.Mat = zm.translationV(.{- bodies[particle.physics_index].half_size[0], - bodies[particle.physics_index].half_size[1], - bodies[particle.physics_index].half_size[2], 0.0});
+    //    
+    //    const world_pos: zm.Mat = zm.translationV(.{
+    //            @as(f32, @floatCast(bodies[particle.physics_index].position[0])),
+    //            @as(f32, @floatCast(bodies[particle.physics_index].position[1])),
+    //            @as(f32, @floatCast(bodies[particle.physics_index].position[2])),
+    //            0.0,
+    //        });
+
+    //    final_mat = zm.mul(zm.matFromQuat(bodies[particle.physics_index].orientation), relative_center);
+
+    //    final_mat = zm.mul(final_mat, world_pos);
+
+    //    try data.append(final_mat);
+    //}
 
     try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(zm.Mat)), &data.items[0]);
 }
@@ -2626,7 +2653,7 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
             try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
             const particles = game_state.particles.items;
             if (particles.len > 0) {
-                try update_particle_ubo(self, bodies, particles, 0);
+                try update_particle_ubo(self, game_state, bodies, particles, 0);
             }
             
             // DRAW
