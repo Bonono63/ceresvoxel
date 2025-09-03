@@ -2145,12 +2145,12 @@ pub fn update_particle_ubo(self: *VulkanState, game_state: *main.GameState, bodi
             0.0,
         });
 
-    const yaw: f32 = game_state.player_state.yaw / 2;
-    const pitch: f32 = game_state.player_state.pitch / 2;
+    const yaw: f32 = game_state.player_state.yaw / 2.0;
+    const pitch: f32 = game_state.player_state.pitch / 2.0;
 
     final_mat = zm.mul(final_mat, zm.matFromQuat(cm.qnormalize(.{
         @cos(yaw) * @cos(pitch),
-        pitch/2,
+        @sin(pitch),
         @sin(yaw) * @cos(pitch),
         0.0,
     })));
