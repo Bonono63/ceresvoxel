@@ -37,9 +37,9 @@ const PlayerState = struct {
 
     pub fn look(self: *PlayerState) zm.Quat {
         const result = cm.qnormalize(@Vector(4, f32){
-            @cos(self.yaw / 2),
-            0.0,
-            @sin(self.yaw / 2),
+            @cos(self.yaw / 2.0),
+            @sin(self.pitch / 2.0),
+            @sin(self.yaw / 2.0),
             0.0,
         });
 
@@ -290,12 +290,12 @@ pub fn main() !void {
             
             if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
                 const player_pos = physics_state.bodies.items[game_state.player_state.physics_index].position;
-                const pos = .{player_pos[0], player_pos[1] - 0.5, player_pos[2]};
+                const pos = .{player_pos[0], player_pos[1], player_pos[2]};
                 try physics_state.bodies.append(.{
                         .position = pos,
                         .inverse_mass = 1.0 / 32.0,
                         .orientation = game_state.player_state.look(),
-                        .velocity = cm.scale_f32(game_state.player_state.look(), 0.1 * 32.0) + physics_state.bodies.items[game_state.player_state.physics_index].velocity,
+                        .velocity = cm.scale_f32(game_state.player_state.lookV(), 0.1 * 32.0) + physics_state.bodies.items[game_state.player_state.physics_index].velocity,
                         //.angular_velocity = .{1.0,0.0,0.0,0.0},
                         .half_size = .{0.5, 0.5, 0.5, 0.0},
                 });
