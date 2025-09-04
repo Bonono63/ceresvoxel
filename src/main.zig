@@ -278,7 +278,7 @@ pub fn main() !void {
                         .half_size = .{0.5, 0.5, 0.5, 0.0},
                 });
 
-                try game_state.particles.append(.{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 1))});
+                try game_state.particles.append(.{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 2))});
                 
                 vomit_cooldown_previous_time = current_time;
             }
@@ -471,16 +471,3 @@ pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_in
 //}
 
 //TODO refactor this for f128 from physics/game state
-pub fn distance_test(player_pos: *const @Vector(3, f64), space_pos: * const @Vector(3, f64), distance: f32) bool {
-    var result = false;
-
-    const distance_vec: zm.Vec = .{@floatCast(player_pos.*[0] - space_pos.*[0]), @floatCast(player_pos.*[1] - space_pos.*[1]), @floatCast(player_pos.*[2] - space_pos.*[2]), 0.0};
-    const length = zm.length3(distance_vec);
-    //std.debug.print("{}\n", .{length});
-
-    if (length[0] < distance) {
-        result = true;
-    }
-
-    return result;
-}

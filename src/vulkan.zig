@@ -18,28 +18,29 @@ const outline_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@e
 const cursor_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/cursor.vert.spv")))));
 const cursor_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/cursor.frag.spv")))));
 
+const COLOR: @Vector(3, f32) = .{32.0 / 256.0, 252.0 / 256.0, 164.0 / 256.0 };
 const block_selection_cube: [17]Vertex = .{
     //front
-    .{.pos = .{-0.001,-0.001,-0.001}, .color = .{1.0,1.0,1.0} },
-    .{.pos = .{1.001,-0.001,-0.001}, .color = .{1.0,1.0,1.0} },
-    .{.pos = .{1.001,1.001,-0.001}, .color = .{1.0,1.0,1.0} },
-    .{.pos = .{-0.001,1.001,-0.001}, .color = .{1.0,1.0,1.0} },
+    .{.pos = .{-0.001,-0.001,-0.001}, .color = COLOR },
+    .{.pos = .{1.001,-0.001,-0.001}, .color = COLOR },
+    .{.pos = .{1.001,1.001,-0.001}, .color = COLOR },
+    .{.pos = .{-0.001,1.001,-0.001}, .color = COLOR },
     //left
-    .{.pos = .{-0.001,-0.001,-0.001}, .color = .{1.0,1.0,1.0}},
-    .{.pos = .{-0.001,-0.001,1.001}, .color = .{1.0,1.0,1.0}},
-    .{.pos = .{-0.001,1.001,1.001}, .color = .{1.0,1.0,1.0}},
-    .{.pos = .{-0.001,1.001,-0.001}, .color = .{1.0,1.0,1.0}},
-    .{.pos = .{-0.001,-0.001,-0.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{-0.001,-0.001,-0.001}, .color = COLOR },
+    .{.pos = .{-0.001,-0.001,1.001}, .color = COLOR },
+    .{.pos = .{-0.001,1.001,1.001}, .color = COLOR },
+    .{.pos = .{-0.001,1.001,-0.001}, .color = COLOR },
+    .{.pos = .{-0.001,-0.001,-0.001}, .color = COLOR },
     //right
-    .{.pos = .{1.001,-0.001,-0.001}, .color = .{1.0,1.0,1.0}},
-    .{.pos = .{1.001,-0.001,1.001}, .color = .{1.0,1.0,1.0}},
-    .{.pos = .{1.001,1.001,1.001}, .color = .{1.0,1.0,1.0}},
-    .{.pos = .{1.001,1.001,-0.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{1.001,-0.001,-0.001}, .color = COLOR },
+    .{.pos = .{1.001,-0.001,1.001}, .color = COLOR },
+    .{.pos = .{1.001,1.001,1.001}, .color = COLOR },
+    .{.pos = .{1.001,1.001,-0.001}, .color = COLOR },
     //back
-    .{.pos = .{1.001,1.001,1.001}, .color = .{1.0,1.0,1.0}},
-    .{.pos = .{-0.001,1.001,1.001}, .color = .{1.0,1.0,1.0}},
-    .{.pos = .{-0.001,-0.001,1.001}, .color = .{1.0,1.0,1.0}},
-    .{.pos = .{1.001,-0.001,1.001}, .color = .{1.0,1.0,1.0}},
+    .{.pos = .{1.001,1.001,1.001}, .color = COLOR },
+    .{.pos = .{-0.001,1.001,1.001}, .color = COLOR },
+    .{.pos = .{-0.001,-0.001,1.001}, .color = COLOR },
+    .{.pos = .{1.001,-0.001,1.001}, .color = COLOR },
 };
 
 const CURSOR_SCALE: f32 = 1.0 / 64.0;

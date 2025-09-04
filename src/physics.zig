@@ -95,6 +95,18 @@ pub fn physics_tick(delta_time: f64, sim_start_time: i64, bodies: []Body) void {
     // Bouyancy
     // Magnetism
 
+    // Contact Generation
+
+    for (0..bodies) |a| {
+        for (0..bodies) |b| {
+            if (a != b) {
+                if (cm.distance_f128(bodies[a].position, bodies[b].position) < 2.0) {
+                    generate_contacts(&bodies[a], &bodies[b], );
+                }
+            }
+        }
+    }
+
     // Classical Mechanics (Integrator) 
     for (0..bodies.len) |index| {
         if (bodies[index].inverse_mass > 0.0) {
@@ -143,9 +155,55 @@ pub fn physics_tick(delta_time: f64, sim_start_time: i64, bodies: []Body) void {
     }
 }
 
-//fn generate_contacts(allocator: *const std.Allocator, a: *Body, a_offset: zm.Mat, b: *Body, b_offset: zm.Mat) ![]Contact {
-//    return ;
-//}
+/// produces a set of contacts between 2 bodies (boxes)
+/// Up to 15 contacts per resolution
+///
+/// 
+fn generate_contacts(a: *Body, b: *Body, contacts: *std.ArrayList(Contact)) !u32 {
+    _ = &contacts;
+    var contact_count: u32 = 0;
+    _ = &contact_count;
+
+    var smallest_overlap_axis_index: u32 = 0;
+    var smallest_overlap: f32 = 10000.0;
+    for (0..15) |i| {
+        var axis: zm.Vec = .{1.0, 0.0, 0.0, 0.0};
+        switch (i) {
+            0 => {
+                axis = zm.mul(.{1.0, 0.0, 0.0, 0.0}, zm.matFromQuat(a.*.orientation));
+            },
+            1 => {
+                axis = zm.mul(.{0.0, 1.0, 0.0, 0.0}, zm.matFromQuat(a.*.orientation));
+            },
+            2 => {
+                axis = zm.mul(.{0.0, 0.0, 1.0, 0.0}, zm.matFromQuat(a.*.orientation));
+            },
+            else => {
+            },
+        }
+
+        const ab_center_line_f128 = a.*.position - b.*.position;
+        // this cast should be safe since the 2 bodies should be close enough for it to not be a problem
+        const ab_center_line: zm.Vec = .{
+            @as(f32, @floatCast(ab_center_line_f128[0])),
+            @as(f32, @floatCast(ab_center_line_f128[1])),
+            @as(f32, @floatCast(ab_center_line_f128[2])),
+            0.0,
+        };
+       
+        const a_transform: zm.Mat = zm.mul(a.*.half_size, zm.matFromQuat(a.*.orientation));
+        const b_transform: zm.Mat = zm.mul(b.*.half_size, zm.matFromQuat(b.*.orientation));
+        const overlap: f32 = penetration_on_axis(a.*.half_size, a_transform, b.*.half_size, b_transform, axis, ab_center_line);
+        
+        if (overlap < 0) {} // TODO break out of loop
+        if (overlap < smallest_overlap) {
+            smallest_overlap = overlap;
+            smallest_overlap_axis_index = i;
+        }
+    }
+
+    return contact_count;
+}
 
 /// Finds the penetrating depth of a Box A and a Box B on a given axis
 /// (Seperating Axis Theorum)
@@ -170,4 +228,3 @@ fn penetration_on_axis(box_a: zm.Vec, transform_a: zm.Mat, box_b: zm.Vec, transf
     
     return a_projected_length + b_projected_length - distance;
 }
-
