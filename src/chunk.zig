@@ -1,6 +1,10 @@
+//!Voxel storage, manipulation, and generation. Still WIP
 const std = @import("std");
 const zm = @import("zmath");
 
+//TODO add chunk saving and loading
+
+///The fundamental structure of any array of voxels
 pub const VoxelSpace = struct {
     size: @Vector(3, u32),
     //pos: @Vector(3, f64),
@@ -9,7 +13,13 @@ pub const VoxelSpace = struct {
     physics_index: u32 = undefined,
 };
 
-/// Either read or generate data live based on whether the chunk has been modified or not etc.
+/// Returns a chunk with of random noise for voxels 
+///
+/// seed: the world specific RNG seed (unused)
+/// planet_index: unused
+/// chunk_pos: unused
+///
+/// return: a 32**3 slice of voxel values
 pub fn get_chunk_data_random(seed: u64, planet_index: u32, chunk_pos: @Vector(3,u32)) ![32768]u8 {
     var result: [32768]u8 = undefined;
     _ = &planet_index;
@@ -23,7 +33,13 @@ pub fn get_chunk_data_random(seed: u64, planet_index: u32, chunk_pos: @Vector(3,
     return result;
 }
 
-/// Either read or generate data live based on whether the chunk has been modified or not etc.
+/// Returns a chunk with one voxel in its corner
+///
+/// seed: the world specific RNG seed (unused)
+/// planet_index: unused
+/// chunk_pos: unused
+///
+/// return: a 32**3 slice of voxel values
 pub fn get_chunk_data(seed: u64, planet_index: u32, chunk_pos: @Vector(3,u32)) ![32768]u8 {
     var result: [32768]u8 = undefined;
     _ = &planet_index;

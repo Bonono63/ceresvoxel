@@ -1,4 +1,4 @@
-//Proceeds to zig all over the place...
+//!Main entry point for CeresVoxel
 const std = @import("std");
 const c = @import("clibs.zig");
 const vulkan = @import("vulkan.zig");
@@ -29,7 +29,7 @@ const PlayerState = struct {
     yaw: f32 = std.math.pi/2.0,
     pitch: f32 = 0.0,
     up: zm.Vec = .{ 0.0, -1.0, 0.0, 0.0},
-    // Unit vector of player input
+    /// Unit vector of player input
     input_vec: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
     //camera_rot: zm.Quat,
     speed: f32 = 5.0,
@@ -58,42 +58,15 @@ const PlayerState = struct {
     }
 };
 
-pub const GameObject = struct {
-
-    //PHYSICS
-
-    // This should be sufficient for space exploration at a solar system level
-    position: @Vector(3, f128),
-    // There is phyicsally no reason to be able to go above a speed or acceleration of 2.4 billion meters a second
-    velocity: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, // meters per second
-    // TODO decide whether a f32 is sufficient precision for mass calculations
-    inverse_mass: f32,
-    // Sum accelerations of the forces acting on the particle
-    force_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
-    // Helps with simulation stability, but for space it doesn't make much sense
-    linear_damping: f32 = 0.99999,
-
-    gravity: bool = true,
-    planet: bool = false,
-    orbit_radius: f128 = 0.0,
-    barocenter: @Vector(3, f128) = .{0.0,0.0,0.0}, // center of the object's orbit
-    eccentricity: f32 = 1.0,
-    eccliptic_offset: @Vector(2, f32) = .{0.0, 0.0},
-
-    orientation: zm.Quat = zm.qidentity(),
-    angular_velocity: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, // axis-angle representation
-    angular_damping: f32 = 0.99999,
-    inverse_inertia_tensor: zm.Mat = zm.inverse(zm.identity()),
-    torque_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, //change in axis is based on direction, strength the the coefficient from if it was a unit vector
-};
-
-const PARTICLE_MAX_TIME: u32 = 1000;
+const particle_max_time: u32 = 1000;
 
 pub const ParticleHandle = struct {
+    ///lifetime of the particle, once this hits the particle_max_time it should disappear
     time: u32 = 0,
     physics_index: u32 = undefined,
 };
 
+///Stores arbitrary state of the game
 pub const GameState = struct {
     voxel_spaces: std.ArrayList(chunk.VoxelSpace),
     particles: std.ArrayList(ParticleHandle),
@@ -103,11 +76,11 @@ pub const GameState = struct {
     allocator: *std.mem.Allocator,
 };
 
-
 var input_state = InputState{};
 
 const ENGINE_NAME = "CeresVoxel";
 
+// Current mouse state (Must be global so it can be accessed by the mouse input callback)
 var xpos: f64 = 0.0;
 var ypos: f64 = 0.0;
 var dx: f64 = 0.0;
@@ -144,13 +117,16 @@ pub fn main() !void {
 
     try vulkan.glfw_initialization();
     try vulkan_state.window_setup(vulkan_state.ENGINE_NAME, vulkan_state.ENGINE_NAME);
-    
+   
+    // GLFW Callbacks
     _ = c.glfwSetKeyCallback(vulkan_state.window, key_callback);
 
     _ = c.glfwSetCursorPosCallback(vulkan_state.window, cursor_pos_callback);
     _ = c.glfwSetWindowUserPointer(vulkan_state.window, @constCast(&vulkan_state));
     _ = c.glfwSetFramebufferSizeCallback(vulkan_state.window, window_resize_callback);
     _ = c.glfwSetMouseButtonCallback(vulkan_state.window, mouse_button_input_callback);
+
+    // game and physics INIT
 
     var game_state = GameState{
         .voxel_spaces = std.ArrayList(chunk.VoxelSpace).init(allocator),
@@ -186,7 +162,6 @@ pub fn main() !void {
         .size = .{1,1,1},
         .physics_index = @intCast(physics_state.bodies.items.len - 1),
     });
-    physics_state.sun_index = @intCast(physics_state.bodies.items.len - 1);
     
     for (2..9) |index| {
         const rand = std.crypto.random;
@@ -215,8 +190,7 @@ pub fn main() !void {
     });
     game_state.player_state = PlayerState{.physics_index = @intCast(physics_state.bodies.items.len - 1)};
 
-    try game_state.particles.append(.{.physics_index = game_state.player_state.physics_index});
-
+    // threading INIT
     var render_done: bool = false;
     var render_ready: bool = false;
     var render_thread = try std.Thread.spawn(.{}, vulkan.render_thread, .{&vulkan_state, &game_state, &input_state, &physics_state, &render_ready, &render_done});
@@ -227,6 +201,7 @@ pub fn main() !void {
     defer game_state.allocator.free(physics_state.display_bodies[0]);
     defer game_state.allocator.free(physics_state.display_bodies[1]);
 
+    // Game Loop and additional prerequisites
     var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
     const VOMIT_COOLDOWN: i64 = 60;
 
@@ -237,6 +212,7 @@ pub fn main() !void {
     physics_state.display_bodies[physics_state.display_index] = try game_state.allocator.realloc(physics_state.display_bodies[physics_state.display_index], physics_state.bodies.items.len);
     @memcpy(physics_state.display_bodies[physics_state.display_index], physics_state.bodies.items);
 
+    // This is to ensure we don't start before the render state is prepared (it crashes)
     while (!render_ready) {
         std.time.sleep(1);
     }
@@ -282,11 +258,13 @@ pub fn main() !void {
         }
 
         if (@abs(current_time - prev_tick_time) > MINIMUM_TICK_TIME) {
+            // PHYSICS AND LOGIC SECTION
+
             prev_tick_time = current_time;
 
             physics_state.bodies.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
             
-            physics.physics_tick(delta_time_float, physics_state.bodies.items, &physics_state);
+            physics.physics_tick(delta_time_float, physics_state.sim_start_time, physics_state.bodies.items);
             
             if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
                 const player_pos = physics_state.bodies.items[game_state.player_state.physics_index].position;
@@ -295,12 +273,12 @@ pub fn main() !void {
                         .position = pos,
                         .inverse_mass = 1.0 / 32.0,
                         .orientation = game_state.player_state.look(),
-                        .velocity = cm.scale_f32(game_state.player_state.lookV(), 0.1 * 32.0) + physics_state.bodies.items[game_state.player_state.physics_index].velocity,
+                        .velocity = cm.scale_f32(game_state.player_state.lookV(), 1.0 * 32.0) + physics_state.bodies.items[game_state.player_state.physics_index].velocity,
                         //.angular_velocity = .{1.0,0.0,0.0,0.0},
                         .half_size = .{0.5, 0.5, 0.5, 0.0},
                 });
 
-                try game_state.particles.append(.{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 2))});
+                try game_state.particles.append(.{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 1))});
                 
                 vomit_cooldown_previous_time = current_time;
             }

@@ -1,4 +1,4 @@
-//! Meshing algorithms
+//!Chunk meshing algorithms
 const std = @import("std");
 const vulkan = @import("vulkan.zig");
 
@@ -9,7 +9,16 @@ const vulkan = @import("vulkan.zig");
 
 const BLOCK_COUNT: f32 = 4.0;
 
-pub fn basic_mesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList(vulkan.ChunkVertex)) !u32
+/// An unoptimized simple voxel meshing algorithm.
+/// This is meant to be used as a baseline, nearly any other algorithm will produce better results.
+///
+/// data: voxel values; 0 being air, anything larger corresponding to the texture of a different block
+/// chunk_index: the index of the chunk's model matrix on the GPU
+/// list: a list to append the generated vertices to, this is useful for producing larger meshes
+/// containing more than one chunk (Should be deprecated)
+///
+/// return: number of new additions to the given array list
+pub fn BasicMesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList(vulkan.ChunkVertex)) !u32
 {
     var size: u32 = 0;
 
@@ -85,8 +94,19 @@ pub fn basic_mesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayLis
     return size;
 }
 
-/// Returns size of additions
-pub fn cull_mesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList(vulkan.ChunkVertex)) !u32
+/// A simple voxel meshing algorithm.
+/// This algorithm provides voxels without faces in between them.
+/// This mildly improves graphics performance and upload times, but the algorithm itself
+/// it still relatively slow asside from ensuring there is enough unused space and appending with 
+/// assumed available capacity
+///
+/// data: voxel values; 0 being air, anything larger corresponding to the texture of a different block
+/// chunk_index: the index of the chunk's model matrix on the GPU
+/// list: a list to append the generated vertices to, this is useful for producing larger meshes
+/// containing more than one chunk (Should be deprecated)
+///
+/// return: number of new additions to the given array list
+pub fn CullMesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList(vulkan.ChunkVertex)) !u32
 {
     _ = &chunk_index;
     var size: u32 = 0;

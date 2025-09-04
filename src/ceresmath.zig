@@ -1,3 +1,4 @@
+//!Various mathematical functions to fill in the gaps that zmath doesn't provide
 const zm = @import("zmath");
 const std = @import("std");
 
@@ -51,6 +52,12 @@ pub fn qnormalize(a: zm.Quat) zm.Quat {
 pub fn q_add_vector(q: *zm.Quat, vec: zm.Vec) void {
     const temp: zm.Quat = zm.qmul(q.*, .{0, vec[0], vec[1], vec[2]});
     q.* += .{temp[0] * 0.5, temp[1] * 0.5, temp[2] * 0.5, temp[3] * 0.5};
+}
+
+pub fn projectV(a: zm.Vec, b: zm.Vec) zm.Vec {
+    // proj b a = (a dot b_unit) unit_b
+    const unit_b = zm.normalize3(b);
+    return scale_f32(unit_b, zm.dot3(a, unit_b));
 }
 
 ///// Inverse for inertia tensors

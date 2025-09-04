@@ -1,3 +1,4 @@
+//!Code pertaining to rendering and window creation
 const std = @import("std");
 const c = @import("clibs.zig");
 const zm = @import("zmath");
@@ -122,17 +123,22 @@ const swapchain_support = struct {
     present_modes: []c.VkPresentModeKHR = undefined,
 };
 
+/// Generic vertex format (Used by everything that isn't a chunk)
 pub const Vertex = struct {
     pos: @Vector(3, f32),
     color: @Vector(3, f32),
 };
 
+/// Chunk specific vertex format
+/// Given the uniqueness of each chunk's vertices it needs to have an index field for it's place in the UBO (or SBO)
 pub const ChunkVertex = packed struct {
+    //TODO compact this once we are 100% settled on this data
     index: u32,
     uv: @Vector(2, f32), // TODO Make the UV split into a texture index and the normal values (we can do basic lighting and have access to all textures using a texture atlas essentially with the same amount of data)
-    pos: @Vector(3, f32), // 3 * u5 + 1 bit
+    pos: @Vector(3, f32),
 };
 
+/// Structure sent to the GPU for chunk unique data
 const ChunkRenderData = struct {
     size: @Vector(3, u32),
     model: zm.Mat = zm.identity(),
@@ -168,15 +174,19 @@ pub const RenderInfo = struct {
     rendering_enabled: bool = true,
 };
 
-// The vulkan/render state
+/// The vulkan/render state
 pub const VulkanState = struct {
+    /// bitwise AND for more required queue bits (ie: compute)
     REQUIRE_FAMILIES: u32 = c.VK_QUEUE_GRAPHICS_BIT,
+    /// Corresponds to frame buffers, command buffers and more
     MAX_CONCURRENT_FRAMES: u32,
 
     ENGINE_NAME: *const [10:0]u8,
 
+    /// CPU memory allocator
     allocator: *const std.mem.Allocator,
 
+    /// GPU memory allocator
     vma_allocator: c.VmaAllocator = undefined,
 
     vk_instance: c.VkInstance = undefined,
@@ -199,6 +209,7 @@ pub const VulkanState = struct {
 
     framebuffer_resized: bool = false,
 
+    /// keeps track of shader modules
     shader_modules: std.ArrayList(c.VkShaderModule) = undefined,
 
     descriptor_pool : c.VkDescriptorPool = undefined,
@@ -209,14 +220,19 @@ pub const VulkanState = struct {
     renderpass: c.VkRenderPass = undefined,
     pipelines: []c.VkPipeline = undefined,
     frame_buffers: []c.VkFramebuffer = undefined,
-    
+   
+    /// Tells the renderer what to render according to a pipeline (shader + misc settings) and vertex data
     render_targets: std.ArrayList(RenderInfo) = undefined,
+    // TODO refactor how render targets are determined (should be produced during runtime instead of being static)
+    // scenes will likely be simple enough to do a runtime determination
     new_render_targets: [2]std.ArrayList(RenderInfo) = undefined,
     new_index: u32 = 0,
 
+    /// keeps track of GPU memory (Vertex buffers)
     vertex_buffers: std.ArrayList(c.VkBuffer) = undefined,
     vertex_allocs: std.ArrayList(c.VmaAllocation) = undefined,
 
+    // keeps track of GPU memory (Uniform buffers)
     ubo_buffers: std.ArrayList(c.VkBuffer) = undefined,
     ubo_allocs: std.ArrayList(c.VmaAllocation) = undefined,
 
@@ -225,15 +241,18 @@ pub const VulkanState = struct {
     command_pool: c.VkCommandPool = undefined,
     command_buffers: []c.VkCommandBuffer = undefined,
 
+    // GPU timing structures
     image_available_semaphores: []c.VkSemaphore = undefined,
     image_completion_semaphores: []c.VkSemaphore = undefined,
     in_flight_fences: []c.VkFence = undefined,
 
+    // image data just for the depth buffer (absolutely necessary for 3D)
     depth_format: c.VkFormat = undefined,
     depth_image: c.VkImage = undefined,
     depth_image_alloc: c.VmaAllocation = undefined,
     depth_image_view: c.VkImageView = undefined,
 
+    // Small, but immediate data, good for view-projection matrix
     PUSH_CONSTANT_SIZE: u32,
     push_constant_data: []u8 = undefined,
     push_constant_info: c.VkPushConstantRange = undefined,
@@ -326,6 +345,7 @@ pub const VulkanState = struct {
         }
     }
 
+    /// Chooses a graphics device to use for rendering
     pub fn pick_physical_device(self: *VulkanState) VkAbstractionError!void {
         var device_count: u32 = 0;
         const physical_device_count_success = c.vkEnumeratePhysicalDevices(self.vk_instance, &device_count, null);
@@ -627,6 +647,7 @@ pub const VulkanState = struct {
         }
     }
 
+    /// Pipeline for arbitrary 3D geometry (vertices)
     pub fn create_generic_pipeline(self: *VulkanState, vert_source: []align(4) u8, frag_source: []align(4) u8, wireframe: bool) VkAbstractionError!c.VkPipeline {
         const vert_index = self.shader_modules.items.len;
         try create_shader_module(self, vert_source);
@@ -785,6 +806,7 @@ pub const VulkanState = struct {
         return pipeline;
     }
 
+    /// Pipeline for arbitrary 3D geometry (lines)
     pub fn create_outline_pipeline(self: *VulkanState, vert_source: []align(4) u8, frag_source: []align(4) u8) VkAbstractionError!c.VkPipeline {
         const vert_index = self.shader_modules.items.len;
         try create_shader_module(self, vert_source);
@@ -1013,6 +1035,7 @@ pub const VulkanState = struct {
         }
     }
 
+    /// Records the commands that produce a frame
     fn record_command_buffer(self: *VulkanState, command_buffer: c.VkCommandBuffer, render_state: *[]RenderInfo, image_index: u32, frame_index: u32) VkAbstractionError!void {
         _ = &frame_index;
 
@@ -1107,6 +1130,7 @@ pub const VulkanState = struct {
         }
     }
 
+    /// Produces a pipeline for chunks (Chunk Vertices)
     pub fn create_simple_chunk_pipeline(self: *VulkanState, vert_source: []align(4) u8, frag_source: []align(4) u8, wireframe: bool) VkAbstractionError!c.VkPipeline {
         const vert_index = self.shader_modules.items.len;
         try create_shader_module(self, vert_source);
@@ -1358,6 +1382,8 @@ pub const VulkanState = struct {
         }
     }
 
+    /// Determines which buffer to use (according to the number of concurrent frames and which was the previous one)
+    /// It then submits the commands generated by record_command_buffer()
     pub fn draw_frame(self: *VulkanState, frame_index: u32, render_state: *[]RenderInfo) VkAbstractionError!void {
         const fence_wait = c.vkWaitForFences(self.device, 1, &self.in_flight_fences[frame_index], c.VK_TRUE, std.math.maxInt(u64));
         if (fence_wait != c.VK_SUCCESS) {
@@ -1490,6 +1516,7 @@ pub const VulkanState = struct {
         }
     }
 
+    /// Determines and returns the (best) supported depth resource format
     fn depth_texture_format(self: *VulkanState, candidates: []const c.VkFormat, tiling: c.VkImageTiling, features: c.VkFormatFeatureFlags) VkAbstractionError!c.VkFormat
     {
         for (candidates) |format|
@@ -1524,6 +1551,7 @@ pub const VulkanState = struct {
         self.allocator.*.free(self.swapchain_images);
     }
 
+    /// Called whenever resizing a window
     pub fn recreate_swapchain(self: *VulkanState) VkAbstractionError!void {
         var width: i32 = 0;
         var height: i32 = 0;
@@ -1550,6 +1578,11 @@ pub const VulkanState = struct {
         c.vmaDestroyImage(self.vma_allocator, self.depth_image, self.depth_image_alloc);
     }
 
+    /// Copies any arbitrary CPU memory to the designated GPU buffer
+    /// 
+    /// ** WARNING **
+    /// This function will overwrite data in adjacent memory
+    /// if you specify a size larger than the allocated GPU buffer
     fn copy_data_via_staging_buffer(self: *VulkanState, final_buffer: *c.VkBuffer, size: u32, data: *anyopaque) VkAbstractionError!void
     {
         var staging_buffer : c.VkBuffer = undefined;
@@ -1679,6 +1712,7 @@ pub const VulkanState = struct {
         self.render_targets.items[render_index].vertex_count = vertex_count;
     }
 
+    /// DEPRECATED
     pub fn replace_vertex_data(self: *VulkanState, render_index: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void
     {
         // needs to occur asynchronously
@@ -1721,6 +1755,7 @@ pub const VulkanState = struct {
     // of chunk data updates
     // TODO make a way to modify the buffer at all, could replace it or change
     // data based on frequency and size...
+    /// DEPRECATED
     pub fn create_ssbo(self: *VulkanState, size: u32, ptr: *anyopaque) VkAbstractionError!void
     {
         var ssbo: c.VkBuffer = undefined;
@@ -2095,6 +2130,7 @@ pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) 
     std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });
 }
 
+/// Generates the unique data sent to the GPU for chunks
 pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, voxel_spaces: []chunk.VoxelSpace, ubo_index: u32) VkAbstractionError!void {
     var data = std.ArrayList(ChunkRenderData).init(self.allocator.*);
     try data.ensureUnusedCapacity(voxel_spaces.len); // TODO maybe we do more later
@@ -2128,6 +2164,7 @@ pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, voxel_spaces
     try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
 }
 
+/// Generates the unique data sent to the GPU for particles
 pub fn update_particle_ubo(self: *VulkanState, game_state: *main.GameState, bodies: []physics.Body, particles: []main.ParticleHandle, ubo_index: u32) VkAbstractionError!void {
     var data = std.ArrayList(zm.Mat).init(self.allocator.*);
     try data.ensureUnusedCapacity(particles.len);
@@ -2159,6 +2196,10 @@ pub fn update_particle_ubo(self: *VulkanState, game_state: *main.GameState, bodi
 
 //THREAD
 
+/// The main entry point for the rendering code.
+///
+/// ready is set to true once all boiler plate has been completed
+/// done is set to true once the rendering loop is complete
 pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_state: *main.InputState, physics_state: *physics.PhysicsState, ready: *bool, done: *bool) !void {
     self.shader_modules = std.ArrayList(c.VkShaderModule).init(self.allocator.*);
     defer self.shader_modules.deinit();
@@ -2268,7 +2309,7 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
             // The goal is for this get chunk to be faster than reading the disk for an unmodified chunk
             const data = try chunk.get_chunk_data(game_state.seed, @intCast(space_index), .{0,0,0});
             const mesh_start: f64 = c.glfwGetTime();
-            const new_vertices_count = try mesh_generation.cull_mesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
+            const new_vertices_count = try mesh_generation.CullMesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
             std.debug.print("[Debug] time: {d:.4}ms \n", .{(c.glfwGetTime() - mesh_start) * 1000.0});
             _ = &new_vertices_count;
             std.debug.print("[Debug] vertice count: {}\n", .{new_vertices_count});
