@@ -37,10 +37,10 @@ const PlayerState = struct {
 
     pub fn look(self: *PlayerState) zm.Quat {
         const result = cm.qnormalize(@Vector(4, f32){
-            @cos(self.yaw / 2.0),
-            @sin(self.pitch / 2.0),
-            @sin(self.yaw / 2.0),
-            0.0,
+            @cos(self.yaw / 2.0) * @cos(0.0),
+            @sin(self.pitch / 2.0) * @cos(0.0),
+            @sin(self.yaw / 2.0) * @cos(0.0),
+            @sin(0.0),
         });
 
         return result;

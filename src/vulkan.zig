@@ -57,46 +57,44 @@ const cursor_vertices: [6]Vertex = .{
 pub const VkAbstractionError = error{
     Success,
     OutOfMemory,
-    GLFWInitializationFailed,
-    GLFWErrorCallbackFailure,
+    GLFWInitializationFailure,
     NullWindow,
     RequiredExtensionsFailure,
     VkInstanceCreationFailure,
-    SurfaceCreationFailed,
+    SurfaceCreationFailure,
     VulkanUnavailable,
     PhysicalDevicesCountFailure,
     EnumeratePhysicalDevicesFailure,
     InvalidDeviceCount,
-    EnumeratePhysicalDevicesFailed,
     DeviceCreationFailure,
-    RetrievePhysicalDeviceSurfaceCapabilitiesFailed,
+    RetrievePhysicalDeviceSurfaceCapabilitiesFailure,
     GetPhysicalDevicePresentModesFailure,
     RetrieveSurfaceFormatFailure,
     PhysicalDeviceInappropriateSwapchainSupport,
-    CreateSwapchainFailed,
-    GetSwapchainImagesFailed,
-    CreateSwapchainImageViewsFailed,
+    CreateSwapchainFailure,
+    GetSwapchainImagesFailure,
+    CreateSwapchainImageViewsFailure,
     InappropriateGLFWFrameBufferSizeReturn,
-    CreateShaderModuleFailed,
+    CreateShaderModuleFailure,
     ShaderFileInvalidFileSize,
-    ReadShaderFileFailed,
-    CreatePipelineLayoutFailed,
-    FailedCreatingRenderPass,
-    FailedCreatingGraphicsPipeline,
-    FramebufferCreationFailed,
-    FailedCommandPoolCreation,
-    CommandBufferAllocationFailed,
-    BeginRenderPassFailed,
-    CompleteRenderPassFailed,
-    InstanceLayerEnumerationFailed,
-    CreateSyncObjectsFailed,
+    ReadShaderFileFailure,
+    CreatePipelineLayoutFailure,
+    CreatingRenderPassFailure,
+    CreatingGraphicsPipelineFailure,
+    FramebufferCreationFailure,
+    CreateCommandPoolFailure,
+    CommandBufferAllocationFailure,
+    BeginRenderPassFailure,
+    CompleteRenderPassFailure,
+    InstanceLayerEnumerationFailure,
+    CreateSyncObjectsFailure,
     EndRecordingFailure,
-    AcquireNextSwapchainImageFailed,
+    AcquireNextSwapchainImageFailure,
     PresentationFailure,
     DescriptorSetCreationFailure,
     DeviceBufferAllocationFailure,
     DeviceBufferBindFailure,
-    DescriptorPoolCreationFailed,
+    DescriptorPoolCreationFailure,
     SuitableDeviceMemoryTypeSelectionFailure,
     DepthFormatAvailablityFailure,
     DepthResourceCreationFailure,
@@ -298,7 +296,7 @@ pub const VulkanState = struct {
 
         var available_layers_count: u32 = 0;
         if (c.vkEnumerateInstanceLayerProperties(&available_layers_count, null) != c.VK_SUCCESS) {
-            return VkAbstractionError.InstanceLayerEnumerationFailed;
+            return VkAbstractionError.InstanceLayerEnumerationFailure;
         }
 
         const available_layers = try self.allocator.*.alloc(c.VkLayerProperties, available_layers_count);
@@ -307,7 +305,7 @@ pub const VulkanState = struct {
         const enumeration_success = c.vkEnumerateInstanceLayerProperties(&available_layers_count, available_layers.ptr);
         if (enumeration_success != c.VK_SUCCESS) {
             std.debug.print("[Error] Enumeration failure: {}\n", .{enumeration_success});
-            return VkAbstractionError.InstanceLayerEnumerationFailed;
+            return VkAbstractionError.InstanceLayerEnumerationFailure;
         }
 
         std.debug.print("[Info] Available validation layers ({}):\n", .{available_layers.len});
@@ -332,7 +330,7 @@ pub const VulkanState = struct {
         const instance_result = c.vkCreateInstance(&create_info, null, &self.vk_instance);
 
         if (instance_result != c.VK_SUCCESS) {
-            std.debug.print("[Error] Vk Instance Creation Failed: {}\n", .{instance_result});
+            std.debug.print("[Error] Vk Instance Creation Failure: {}\n", .{instance_result});
             return VkAbstractionError.VkInstanceCreationFailure;
         }
     }
@@ -341,8 +339,8 @@ pub const VulkanState = struct {
         const success = c.glfwCreateWindowSurface(self.vk_instance, self.window, null, &self.surface);
 
         if (success != c.VK_SUCCESS) {
-            std.debug.print("[Error] Surface Creation Failed: {}\n", .{success});
-            return VkAbstractionError.SurfaceCreationFailed;
+            std.debug.print("[Error] Surface Creation Failure: {}\n", .{success});
+            return VkAbstractionError.SurfaceCreationFailure;
         }
     }
 
@@ -514,20 +512,20 @@ pub const VulkanState = struct {
 
         const swapchain_creation_success = c.vkCreateSwapchainKHR(self.device, &swapchain_create_info, null, &self.swapchain);
         if (swapchain_creation_success != c.VK_SUCCESS) {
-            return VkAbstractionError.CreateSwapchainFailed;
+            return VkAbstractionError.CreateSwapchainFailure;
         }
 
         const get_swapchain_images_success = c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &image_count, null);
 
         if (get_swapchain_images_success != c.VK_SUCCESS) {
-            return VkAbstractionError.GetSwapchainImagesFailed;
+            return VkAbstractionError.GetSwapchainImagesFailure;
         }
 
         self.swapchain_images = try self.allocator.*.alloc(c.VkImage, image_count);
         const get_swapchain_images_KHR = c.vkGetSwapchainImagesKHR(self.device, self.swapchain, &image_count, self.swapchain_images.ptr);
 
         if (get_swapchain_images_KHR != c.VK_SUCCESS) {
-            return VkAbstractionError.GetSwapchainImagesFailed;
+            return VkAbstractionError.GetSwapchainImagesFailure;
         }
 
         self.swapchain_format = surface_format;
@@ -561,7 +559,7 @@ pub const VulkanState = struct {
 
             const imageview_success = c.vkCreateImageView(self.device, &create_info, null, self.swapchain_image_views.ptr + i);
             if (imageview_success != c.VK_SUCCESS) {
-                return VkAbstractionError.CreateSwapchainImageViewsFailed;
+                return VkAbstractionError.CreateSwapchainImageViewsFailure;
             }
         }
     }
@@ -596,7 +594,7 @@ pub const VulkanState = struct {
         if (success != c.VK_SUCCESS)
         {
             std.debug.print("[Error] Unable to create Descriptor Pool: {}\n", .{success});
-            return VkAbstractionError.DescriptorPoolCreationFailed;
+            return VkAbstractionError.DescriptorPoolCreationFailure;
         }
     }
 
@@ -801,7 +799,7 @@ pub const VulkanState = struct {
         var pipeline: c.VkPipeline = undefined;
         const pipeline_success = c.vkCreateGraphicsPipelines(self.device, null, 1, &pipeline_create_info, null, &pipeline);
         if (pipeline_success != c.VK_SUCCESS) {
-            return VkAbstractionError.FailedCreatingGraphicsPipeline;
+            return VkAbstractionError.CreatingGraphicsPipelineFailure;
         }
 
         return pipeline;
@@ -960,7 +958,7 @@ pub const VulkanState = struct {
         var pipeline: c.VkPipeline = undefined;
         const pipeline_success = c.vkCreateGraphicsPipelines(self.device, null, 1, &pipeline_create_info, null, &pipeline);
         if (pipeline_success != c.VK_SUCCESS) {
-            return VkAbstractionError.FailedCreatingGraphicsPipeline;
+            return VkAbstractionError.CreatingGraphicsPipelineFailure;
         }
 
         return pipeline;
@@ -980,7 +978,7 @@ pub const VulkanState = struct {
 
         const create_shader_module_success = c.vkCreateShaderModule(self.device, &create_info, null, &shader_module);
         if (create_shader_module_success != c.VK_SUCCESS) {
-            return VkAbstractionError.CreateShaderModuleFailed;
+            return VkAbstractionError.CreateShaderModuleFailure;
         }
 
         try self.shader_modules.append(shader_module);
@@ -1005,7 +1003,7 @@ pub const VulkanState = struct {
 
             const framebuffer_success = c.vkCreateFramebuffer(self.device, &framebuffer_create_info, null, &self.frame_buffers[i]);
             if (framebuffer_success != c.VK_SUCCESS) {
-                return VkAbstractionError.FramebufferCreationFailed;
+                return VkAbstractionError.FramebufferCreationFailure;
             }
         }
     }
@@ -1019,7 +1017,7 @@ pub const VulkanState = struct {
 
         const command_pool_success = c.vkCreateCommandPool(self.device, &command_pool_info, null, &self.command_pool);
         if (command_pool_success != c.VK_SUCCESS) {
-            return VkAbstractionError.FailedCommandPoolCreation;
+            return VkAbstractionError.CreateCommandPoolFailure;
         }
     }
 
@@ -1032,7 +1030,7 @@ pub const VulkanState = struct {
         };
 
         if (c.vkAllocateCommandBuffers(self.device, &allocation_info, self.command_buffers.ptr) != c.VK_SUCCESS) {
-            return VkAbstractionError.CommandBufferAllocationFailed;
+            return VkAbstractionError.CommandBufferAllocationFailure;
         }
     }
 
@@ -1046,7 +1044,7 @@ pub const VulkanState = struct {
         };
 
         if (c.vkBeginCommandBuffer(command_buffer, &begin_info) != c.VK_SUCCESS) {
-            return VkAbstractionError.BeginRenderPassFailed;
+            return VkAbstractionError.BeginRenderPassFailure;
         }
 
         var clear_colors: [2]c.VkClearValue = undefined;
@@ -1127,7 +1125,7 @@ pub const VulkanState = struct {
         const pipeline_layout_success = c.vkCreatePipelineLayout(self.device, &pipeline_layout_create_info, null, &self.pipeline_layout);
 
         if (pipeline_layout_success != c.VK_SUCCESS) {
-            return VkAbstractionError.CreatePipelineLayoutFailed;
+            return VkAbstractionError.CreatePipelineLayoutFailure;
         }
     }
 
@@ -1284,7 +1282,7 @@ pub const VulkanState = struct {
         var pipeline: c.VkPipeline = undefined;
         const pipeline_success = c.vkCreateGraphicsPipelines(self.device, null, 1, &pipeline_create_info, null, &pipeline);
         if (pipeline_success != c.VK_SUCCESS) {
-            return VkAbstractionError.FailedCreatingGraphicsPipeline;
+            return VkAbstractionError.CreatingGraphicsPipelineFailure;
         }
 
         return pipeline;
@@ -1354,7 +1352,7 @@ pub const VulkanState = struct {
 
         const render_pass_creation = c.vkCreateRenderPass(self.device, &renderpass_create_info, null, &self.renderpass);
         if (render_pass_creation != c.VK_SUCCESS) {
-            return VkAbstractionError.FailedCreatingRenderPass;
+            return VkAbstractionError.CreatingRenderPassFailure;
         }
     }
 
@@ -1378,7 +1376,7 @@ pub const VulkanState = struct {
             const success_c = c.vkCreateFence(self.device, &in_flight_fence_info, null, &self.in_flight_fences[i]);
 
             if (success_a != c.VK_SUCCESS or success_b != c.VK_SUCCESS or success_c != c.VK_SUCCESS) {
-                return VkAbstractionError.CreateSyncObjectsFailed;
+                return VkAbstractionError.CreateSyncObjectsFailure;
             }
         }
     }
@@ -1400,7 +1398,7 @@ pub const VulkanState = struct {
             return;
         } else if (acquire_next_image_success != c.VK_SUCCESS) {
             std.debug.print("[Error] Unable to acquire next swapchain image: {} \n", .{acquire_next_image_success});
-            return VkAbstractionError.AcquireNextSwapchainImageFailed;
+            return VkAbstractionError.AcquireNextSwapchainImageFailure;
         }
         
         const reset_fence_success = c.vkResetFences(self.device, 1, &self.in_flight_fences[frame_index]);
@@ -1513,7 +1511,7 @@ pub const VulkanState = struct {
         const success = c.vkCreateImageView(self.device, &view_info, null, &self.depth_image_view);
         if (success != c.VK_SUCCESS)
         {
-            std.debug.print("Failed to create texture image view: {}\n", .{success}); return;
+            std.debug.print("Failure to create texture image view: {}\n", .{success}); return;
         }
     }
 
@@ -2003,7 +2001,7 @@ pub fn create_image_view(device: c.VkDevice, image_info: *const ImageInfo) VkAbs
         const success = c.vkCreateImageView(device, &view_info, null, &image_info.views[i]);
         if (success != c.VK_SUCCESS)
         {
-            std.debug.print("Failed to create texture image view: {}\n", .{success}); return;
+            std.debug.print("Failure to create texture image view: {}\n", .{success}); return;
         }
     }
 }
@@ -2033,7 +2031,7 @@ pub fn create_samplers(instance: *VulkanState, image_info: *ImageInfo, filter: c
         const success = c.vkCreateSampler(instance.device, &sampler_info, null, &image_info.samplers[i]);
         if (success != c.VK_SUCCESS)
         {
-            std.debug.print("Failed to create texture sampler: {}\n", .{success});
+            std.debug.print("Failure to create texture sampler: {}\n", .{success});
             return;
         }
     }
@@ -2058,7 +2056,7 @@ pub fn image_cleanup(self: *VulkanState, info: *ImageInfo) void
 fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []const u8) VkAbstractionError![]align(@sizeOf(u32)) u8 {
     const file_array = std.fs.cwd().readFileAllocOptions(allocator.*, file_name, 10000, null, @sizeOf(u32), null) catch |err| {
         std.debug.print("[Error] [IO] {}", .{err});
-        return VkAbstractionError.ReadShaderFileFailed;
+        return VkAbstractionError.ReadShaderFileFailure;
     };
 
     std.debug.print("[Info] \"{s}\" file length: {} aligned length: {}\n", .{ file_name, file_array.len, file_array.len / 4 });
@@ -2076,7 +2074,7 @@ fn query_swapchain_support(self: *VulkanState) VkAbstractionError!swapchain_supp
 
     const surface_capabilities_success = c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(self.physical_device, self.surface, &result.capabilities);
     if (surface_capabilities_success != c.VK_SUCCESS) {
-        return VkAbstractionError.RetrievePhysicalDeviceSurfaceCapabilitiesFailed;
+        return VkAbstractionError.RetrievePhysicalDeviceSurfaceCapabilitiesFailure;
     }
 
     var format_count: u32 = 0;
@@ -2115,7 +2113,7 @@ fn query_swapchain_support(self: *VulkanState) VkAbstractionError!swapchain_supp
 /// Initializes GLFW and checks for Vulkan support
 pub fn glfw_initialization() VkAbstractionError!void {
     if (c.glfwInit() != c.GLFW_TRUE) {
-        return VkAbstractionError.GLFWInitializationFailed;
+        return VkAbstractionError.GLFWInitializationFailure;
     }
 
     const vulkan_support = c.glfwVulkanSupported();
