@@ -177,7 +177,7 @@ fn generate_contacts(a: *Body, b: *Body, contacts: *std.ArrayList(Contact)) u32 
 
     var smallest_overlap_axis_index: u32 = 0;
     var smallest_overlap: f32 = 10000.0;
-    for (0..15) |i| {
+    for (0..14) |i| {
         var axis: zm.Vec = .{1.0, 0.0, 0.0, 0.0};
         switch (i) {
             0 => {
@@ -189,8 +189,70 @@ fn generate_contacts(a: *Body, b: *Body, contacts: *std.ArrayList(Contact)) u32 
             2 => {
                 axis = zm.mul(.{0.0, 0.0, 1.0, 0.0}, zm.matFromQuat(a.*.orientation));
             },
-            else => {
+            3 => {
+                axis = zm.mul(.{1.0, 0.0, 0.0, 0.0}, zm.matFromQuat(b.*.orientation));
             },
+            4 => {
+                axis = zm.mul(.{0.0, 1.0, 0.0, 0.0}, zm.matFromQuat(b.*.orientation));
+            },
+            5 => {
+                axis = zm.mul(.{0.0, 0.0, 1.0, 0.0}, zm.matFromQuat(b.*.orientation));
+            },
+            6 => {
+                axis = zm.cross(
+                    zm.mul(.{1.0, 0.0, 0.0, 0.0}, zm.matFromQuat(a.*.orientation)),
+                    zm.mul(.{1.0, 0.0, 0.0, 0.0}, zm.matFromQuat(b.*.orientation))
+                    );
+            },
+            7 => {
+                axis = zm.cross(
+                    zm.mul(.{1.0, 0.0, 0.0, 0.0}, zm.matFromQuat(a.*.orientation)),
+                    zm.mul(.{0.0, 1.0, 0.0, 0.0}, zm.matFromQuat(b.*.orientation))
+                    );
+            },
+            8 => {
+                axis = zm.cross(
+                    zm.mul(.{1.0, 0.0, 0.0, 0.0}, zm.matFromQuat(a.*.orientation)),
+                    zm.mul(.{0.0, 0.0, 1.0, 0.0}, zm.matFromQuat(b.*.orientation))
+                    );
+            },
+            9 => {
+                axis = zm.cross(
+                    zm.mul(.{0.0, 1.0, 0.0, 0.0}, zm.matFromQuat(a.*.orientation)),
+                    zm.mul(.{1.0, 0.0, 0.0, 0.0}, zm.matFromQuat(b.*.orientation))
+                    );
+            },
+            10 => {
+                axis = zm.cross(
+                    zm.mul(.{0.0, 1.0, 0.0, 0.0}, zm.matFromQuat(a.*.orientation)),
+                    zm.mul(.{0.0, 1.0, 0.0, 0.0}, zm.matFromQuat(b.*.orientation))
+                    );
+            },
+            11 => {
+                axis = zm.cross(
+                    zm.mul(.{0.0, 1.0, 0.0, 0.0}, zm.matFromQuat(a.*.orientation)),
+                    zm.mul(.{0.0, 0.0, 1.0, 0.0}, zm.matFromQuat(b.*.orientation))
+                    );
+            },
+            12 => {
+                axis = zm.cross(
+                    zm.mul(.{0.0, 0.0, 1.0, 0.0}, zm.matFromQuat(a.*.orientation)),
+                    zm.mul(.{1.0, 0.0, 0.0, 0.0}, zm.matFromQuat(b.*.orientation))
+                    );
+            },
+            13 => {
+                axis = zm.cross(
+                    zm.mul(.{0.0, 0.0, 1.0, 0.0}, zm.matFromQuat(a.*.orientation)),
+                    zm.mul(.{0.0, 1.0, 0.0, 0.0}, zm.matFromQuat(b.*.orientation))
+                    );
+            },
+            14 => {
+                axis = zm.cross(
+                    zm.mul(.{0.0, 0.0, 1.0, 0.0}, zm.matFromQuat(a.*.orientation)),
+                    zm.mul(.{0.0, 0.0, 1.0, 0.0}, zm.matFromQuat(b.*.orientation))
+                    );
+            },
+            else => {},
         }
 
         const ab_center_line_f128 = a.*.position - b.*.position;
