@@ -75,7 +75,7 @@ pub const PhysicsState = struct {
 /// sim_start_time: the first time the simulation was started (Created on world start) (UNIX time stamp)
 /// sun_index: the index of the sun in @bodies
 /// bodies: the bodies to be simulated over
-pub fn physics_tick(delta_time: f64, sim_start_time: i64, bodies: []Body) void {
+pub fn physics_tick(delta_time: f64, sim_start_time: i64, bodies: []Body, contacts: *std.ArrayList(Contact)) void {
     // Planetary Motion
     for (0..bodies.len) |index| {
         if (bodies[index].planet) {
@@ -97,15 +97,26 @@ pub fn physics_tick(delta_time: f64, sim_start_time: i64, bodies: []Body) void {
 
     // Contact Generation
 
-    for (0..bodies) |a| {
-        for (0..bodies) |b| {
+    // TODO implement 3D sweep and prune as a broad phase
+    const start_time = std.time.milliTimestamp();
+    for (0..bodies.len) |a| {
+        for ((a+1)..bodies.len) |b| {
             if (a != b) {
                 if (cm.distance_f128(bodies[a].position, bodies[b].position) < 2.0) {
-                    generate_contacts(&bodies[a], &bodies[b], );
+                    //try generate_contacts(&bodies[a], &bodies[b], contacts);
                 }
             }
         }
     }
+
+    for (contacts.items) |contact| {
+        _ = &contact;
+        // resolve collisions (apply torques)
+    }
+    contacts.clearRetainingCapacity();
+    // clear contacts
+
+    std.debug.print("{}ms\n", .{std.time.milliTimestamp() - start_time});
 
     // Classical Mechanics (Integrator) 
     for (0..bodies.len) |index| {
@@ -159,7 +170,7 @@ pub fn physics_tick(delta_time: f64, sim_start_time: i64, bodies: []Body) void {
 /// Up to 15 contacts per resolution
 ///
 /// 
-fn generate_contacts(a: *Body, b: *Body, contacts: *std.ArrayList(Contact)) !u32 {
+fn generate_contacts(a: *Body, b: *Body, contacts: *std.ArrayList(Contact)) u32 {
     _ = &contacts;
     var contact_count: u32 = 0;
     _ = &contact_count;

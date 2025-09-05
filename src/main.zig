@@ -220,6 +220,8 @@ pub fn main() !void {
     std.debug.print("[Debug] render ready\n", .{});
     std.debug.print("player physics index: {}\n", .{game_state.player_state.physics_index});
 
+    var contacts = std.ArrayList(physics.Contact).init(allocator);
+
     while (!render_done) {
         const current_time: i64 = std.time.milliTimestamp();
         prev_time = current_time;
@@ -264,7 +266,7 @@ pub fn main() !void {
 
             physics_state.bodies.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
             
-            physics.physics_tick(delta_time_float, physics_state.sim_start_time, physics_state.bodies.items);
+            physics.physics_tick(delta_time_float, physics_state.sim_start_time, physics_state.bodies.items, &contacts);
             
             if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
                 const player_pos = physics_state.bodies.items[game_state.player_state.physics_index].position;
