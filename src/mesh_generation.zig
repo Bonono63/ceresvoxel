@@ -18,8 +18,11 @@ const BLOCK_COUNT: f32 = 4.0;
 /// containing more than one chunk (Should be deprecated)
 ///
 /// return: number of new additions to the given array list
-pub fn BasicMesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList(vulkan.ChunkVertex)) !u32
-{
+pub fn BasicMesh(
+    data : *const [32768]u8,
+    chunk_index: u32,
+    list: *std.ArrayList(vulkan.ChunkVertex)
+    ) !u32 {
     var size: u32 = 0;
 
     for (data[0..32768], 0..32768) |val, index| {
@@ -130,46 +133,141 @@ pub fn CullMesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList(
                 const xp = data[index+1];
                 if (xp == 0) {
                     //Right
-                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr, .index = chunk_index });
-                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x + 1.0, y + 1.0, z },
+                        .uv = tr,
+                        .index = chunk_index 
+                    });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x + 1.0, y, z },
+                        .uv = br,
+                        .index = chunk_index
+                    });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x + 1.0, y + 1.0, z + 1.0 },
+                        .uv = tl,
+                        .index = chunk_index
+                    });
                     
-                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                    list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x + 1.0, y, z },
+                        .uv = br,
+                        .index = chunk_index
+                    });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x + 1.0, y, z + 1.0 },
+                        .uv = bl,
+                        .index = chunk_index
+                    });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x + 1.0, y + 1.0, z + 1.0 },
+                        .uv = tl,
+                        .index = chunk_index
+                    });
                 }
             } else {
                 //Right
-                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr, .index = chunk_index });
-                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x + 1.0, y + 1.0, z },
+                    .uv = tr,
+                    .index = chunk_index
+                });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x + 1.0, y, z },
+                    .uv = br,
+                    .index = chunk_index
+                });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x + 1.0, y + 1.0, z + 1.0 },
+                    .uv = tl,
+                    .index = chunk_index
+                });
                 
-                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                list.appendAssumeCapacity(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x + 1.0, y, z },
+                    .uv = br,
+                    .index = chunk_index
+                });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x + 1.0, y, z + 1.0 },
+                    .uv = bl,
+                    .index = chunk_index
+                });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x + 1.0, y + 1.0, z + 1.0 },
+                    .uv = tl,
+                    .index = chunk_index
+                });
             }
 
             if (index % 32 > 0) {
                 const xn = data[index-1];
                 if (xn == 0) {
                     //Left
-                    list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
-                    list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = bl, .index = chunk_index });
-                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x, y, z + 1.0},
+                        .uv = br,
+                        .index = chunk_index });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x, y, z },
+                        .uv = bl,
+                        .index = chunk_index
+                    });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x, y + 1.0, z },
+                        .uv = tl,
+                        .index = chunk_index
+                    });
                     
-                    list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
-                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
-                    list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x, y, z + 1.0},
+                        .uv = br,
+                        .index = chunk_index
+                    });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x, y + 1.0, z },
+                        .uv = tl,
+                        .index = chunk_index
+                    });
+                    list.appendAssumeCapacity(.{
+                        .pos = .{ x, y + 1.0, z + 1.0 },
+                        .uv = tr,
+                        .index = chunk_index
+                    });
                 }
             } else {
                 //Left
-                list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
-                list.appendAssumeCapacity(.{.pos = .{ x, y, z }, .uv = bl, .index = chunk_index });
-                list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x, y, z + 1.0},
+                    .uv = br,
+                    .index = chunk_index
+                });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x, y, z },
+                    .uv = bl,
+                    .index = chunk_index
+                });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x, y + 1.0, z },
+                    .uv = tl,
+                    .index = chunk_index
+                });
                 
-                list.appendAssumeCapacity(.{.pos = .{ x, y, z + 1.0}, .uv = br, .index = chunk_index });
-                list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
-                list.appendAssumeCapacity(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x, y, z + 1.0},
+                    .uv = br,
+                    .index = chunk_index
+                });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x, y + 1.0, z },
+                    .uv = tl,
+                    .index = chunk_index
+                });
+                list.appendAssumeCapacity(.{
+                    .pos = .{ x, y + 1.0, z + 1.0 },
+                    .uv = tr,
+                    .index = chunk_index
+                });
             }
 
             if (index / 32 / 32 % 32 < 31) {

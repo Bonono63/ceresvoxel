@@ -188,12 +188,18 @@ pub fn main() !void {
         .inverse_mass = (1.0/100.0),
         .half_size = .{0.5, 1.0, 0.5, 0.0},
     });
-    game_state.player_state = PlayerState{.physics_index = @intCast(physics_state.bodies.items.len - 1)};
+    game_state.player_state = PlayerState{
+        .physics_index = @intCast(physics_state.bodies.items.len - 1)
+    };
 
     // threading INIT
     var render_done: bool = false;
     var render_ready: bool = false;
-    var render_thread = try std.Thread.spawn(.{}, vulkan.render_thread, .{&vulkan_state, &game_state, &input_state, &physics_state, &render_ready, &render_done});
+    var render_thread = try std.Thread.spawn(
+        .{},
+        vulkan.render_thread,
+        .{&vulkan_state, &game_state, &input_state, &physics_state, &render_ready, &render_done}
+        );
     defer render_thread.join();
 
     physics_state.display_bodies[0] = try game_state.allocator.alloc(physics.Body, 0);
@@ -209,7 +215,10 @@ pub fn main() !void {
     var prev_time: i64 = 0;
     const MINIMUM_TICK_TIME: i64 = 20;
     
-    physics_state.display_bodies[physics_state.display_index] = try game_state.allocator.realloc(physics_state.display_bodies[physics_state.display_index], physics_state.bodies.items.len);
+    physics_state.display_bodies[physics_state.display_index] = try game_state.allocator.realloc(
+        physics_state.display_bodies[physics_state.display_index],
+        physics_state.bodies.items.len
+        );
     @memcpy(physics_state.display_bodies[physics_state.display_index], physics_state.bodies.items);
 
     // This is to ensure we don't start before the render state is prepared (it crashes)
@@ -221,6 +230,7 @@ pub fn main() !void {
     std.debug.print("player physics index: {}\n", .{game_state.player_state.physics_index});
 
     var contacts = std.ArrayList(physics.Contact).init(allocator);
+    defer contacts.deinit();
 
     while (!render_done) {
         const current_time: i64 = std.time.milliTimestamp();
@@ -241,22 +251,40 @@ pub fn main() !void {
         game_state.player_state.input_vec = .{0.0, 0.0, 0.0, 0.0};
 
         if (input_state.space) {
-            game_state.player_state.input_vec -= cm.scale_f32(game_state.player_state.up, game_state.player_state.speed);
+            game_state.player_state.input_vec -= cm.scale_f32(
+                game_state.player_state.up,
+                game_state.player_state.speed
+                );
         }
         if (input_state.shift) {
-            game_state.player_state.input_vec += cm.scale_f32(game_state.player_state.up, game_state.player_state.speed);
+            game_state.player_state.input_vec += cm.scale_f32(
+                game_state.player_state.up,
+                game_state.player_state.speed
+                );
         }
         if (input_state.w) {
-            game_state.player_state.input_vec += cm.scale_f32(look, game_state.player_state.speed);
+            game_state.player_state.input_vec += cm.scale_f32(
+                look,
+                game_state.player_state.speed
+                );
         }
         if (input_state.s) {
-            game_state.player_state.input_vec -= cm.scale_f32(look, game_state.player_state.speed);
+            game_state.player_state.input_vec -= cm.scale_f32(
+                look,
+                game_state.player_state.speed
+                );
         }
         if (input_state.d) {
-            game_state.player_state.input_vec -= cm.scale_f32(right, game_state.player_state.speed);
+            game_state.player_state.input_vec -= cm.scale_f32(
+                right,
+                game_state.player_state.speed
+                );
         }
         if (input_state.a) {
-            game_state.player_state.input_vec += cm.scale_f32(right, game_state.player_state.speed);
+            game_state.player_state.input_vec += cm.scale_f32(
+                right,
+                game_state.player_state.speed
+                );
         }
 
         if (@abs(current_time - prev_tick_time) > MINIMUM_TICK_TIME) {
@@ -264,36 +292,54 @@ pub fn main() !void {
 
             prev_tick_time = current_time;
 
-            physics_state.bodies.items[game_state.player_state.physics_index].velocity = game_state.player_state.input_vec;
+            const player_physics_state: *physics.Body = &physics_state.bodies.items[game_state.player_state.physics_index];
+
+            player_physics_state.*.velocity = game_state.player_state.input_vec;
             
-            physics.physics_tick(delta_time_float, physics_state.sim_start_time, physics_state.bodies.items, &contacts);
+            try physics.physics_tick(
+                delta_time_float,
+                physics_state.sim_start_time,
+                physics_state.bodies.items,
+                &contacts
+                );
             
             if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
-                const player_pos = physics_state.bodies.items[game_state.player_state.physics_index].position;
-                const pos = .{player_pos[0], player_pos[1], player_pos[2]};
                 try physics_state.bodies.append(.{
-                        .position = pos,
+                        .position = player_physics_state.*.position,
                         .inverse_mass = 1.0 / 32.0,
                         .orientation = game_state.player_state.look(),
-                        .velocity = cm.scale_f32(game_state.player_state.lookV(), 1.0 * 32.0) + physics_state.bodies.items[game_state.player_state.physics_index].velocity,
+                        .velocity = cm.scale_f32(
+                            game_state.player_state.lookV(), 1.0 * 32.0)
+                            + player_physics_state.*.velocity,
                         //.angular_velocity = .{1.0,0.0,0.0,0.0},
                         .half_size = .{0.5, 0.5, 0.5, 0.0},
                 });
 
-                try game_state.particles.append(.{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 2))});
+                try game_state.particles.append(
+                    .{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 2))}
+                    );
                 
                 vomit_cooldown_previous_time = current_time;
             }
             
-            std.debug.print("{}ms {} bodies {}ms\r", .{delta_time, physics_state.bodies.items.len, std.time.milliTimestamp() - current_time});
+            std.debug.print("{}ms {} bodies {}ms\r", .{
+                delta_time,
+                physics_state.bodies.items.len,
+                std.time.milliTimestamp() - current_time
+            });
         }
         
         if (game_state.particles.items.len > 0) {
-            vulkan_state.render_targets.items[1].instance_count = @as(u32, @intCast(game_state.particles.items.len));
+            vulkan_state.render_targets.items[1].instance_count = @as(u32, @intCast(
+                    game_state.particles.items.len
+                    ));
         }
         
         const next_display_index = (physics_state.display_index + 1) % 2;
-        physics_state.display_bodies[next_display_index] = try game_state.allocator.realloc(physics_state.display_bodies[next_display_index], physics_state.bodies.items.len);
+        physics_state.display_bodies[next_display_index] = try game_state.allocator.realloc(
+            physics_state.display_bodies[next_display_index],
+            physics_state.bodies.items.len
+            );
         @memcpy(physics_state.display_bodies[next_display_index], physics_state.bodies.items);
         physics_state.display_index = next_display_index;
         

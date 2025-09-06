@@ -2172,22 +2172,7 @@ pub fn update_particle_ubo(self: *VulkanState, game_state: *main.GameState, bodi
     _ = &game_state;
 
     for (particles) |particle| {
-        var final_mat: zm.Mat = zm.identity();
-        
-        const relative_center: zm.Mat = zm.translationV(.{- bodies[particle.physics_index].half_size[0], - bodies[particle.physics_index].half_size[1], - bodies[particle.physics_index].half_size[2], 0.0});
-        
-        const world_pos: zm.Mat = zm.translationV(.{
-                @as(f32, @floatCast(bodies[particle.physics_index].position[0])),
-                @as(f32, @floatCast(bodies[particle.physics_index].position[1])),
-                @as(f32, @floatCast(bodies[particle.physics_index].position[2])),
-                0.0,
-            });
-
-        final_mat = zm.mul(zm.matFromQuat(bodies[particle.physics_index].orientation), relative_center);
-
-        final_mat = zm.mul(final_mat, world_pos);
-
-        try data.append(final_mat);
+        try data.append(bodies[particle.physics_index].transform());
     }
 
     try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(zm.Mat)), &data.items[0]);

@@ -57,7 +57,7 @@ pub fn q_add_vector(q: *zm.Quat, vec: zm.Vec) void {
 pub fn projectV(a: zm.Vec, b: zm.Vec) zm.Vec {
     // proj b a = (a dot b_unit) unit_b
     const unit_b = zm.normalize3(b);
-    return scale_f32(unit_b, zm.dot3(a, unit_b));
+    return scale_f32(unit_b, zm.dot3(a, unit_b)[0]);
 }
 
 ///// Inverse for inertia tensors
