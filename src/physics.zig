@@ -9,6 +9,13 @@ pub const GRAVITATIONAL_CONSTANT: f128 = 6.67428e-11;
 pub const AU: f128 = 149.6e9;
 pub const SCALE: f32 = 50.0;
 
+const BodyType = enum {
+    voxel_space,
+    particle,
+    player,
+    other,
+};
+
 pub const Body = struct {
     ///This should be sufficient for space exploration at a solar system level
     position: @Vector(3, f128),
@@ -42,10 +49,12 @@ pub const Body = struct {
     ///Collisions are only possible with boxes (other shapes can be added, but I can't be bothered)
     ///Make sure to only ever put in half the length of each dimension of the collision box
     half_size: zm.Vec,
-    
+   
+    body_type: BodyType,
+
     /// Returns the object's transform (for rendering or physics)
     /// for safety reasons should only be called on objects within f32's range.
-    pub fn transform(self: *Body) zm.Mat {
+    pub fn transform(self: *const Body) zm.Mat {
         const center: zm.Vec = cm.scale_f32(self.half_size, -1.0);
         const world_pos: zm.Mat = zm.translationV(.{
                 @as(f32, @floatCast(self.position[0])),
@@ -59,24 +68,19 @@ pub const Body = struct {
     }
 
     /// Returns the X axis given the body's current transform 
-    pub fn getXAxis(self: *Body) zm.Vec {
+    pub fn getXAxis(self: *const Body) zm.Vec {
         return zm.mul(self.transform(), zm.Vec{1.0,0.0,0.0,0.0});
     }
 
     /// Returns the Y axis given the body's current transform 
-    pub fn getYAxis(self: *Body) zm.Vec {
+    pub fn getYAxis(self: *const Body) zm.Vec {
         return zm.mul(self.transform(), zm.Vec{0.0,1.0,0.0,0.0});
     }
     
     /// Returns the Z axis given the body's current transform 
-    pub fn getZAxis(self: *Body) zm.Vec {
+    pub fn getZAxis(self: *const Body) zm.Vec {
         return zm.mul(self.transform(), zm.Vec{0.0,0.0,1.0,0.0});
     }
-};
-
-const PlanetaryMotionStyle = enum {
-    DETERMINISTIC,
-    NONDETERMINISTIC,
 };
 
 pub const Contact = struct {
@@ -90,7 +94,7 @@ pub const Contact = struct {
 // TODO maybe planets belong in a different array or structure, but for now they are the same
 pub const PhysicsState = struct {
     bodies: std.ArrayList(Body),
-    broad_contact_list: std.ArrayList([2]*Body),
+    //broad_contact_list: std.ArrayList([2]*Body),
     sim_start_time: i64,
 
     //Copies the current bodies to a double buffer and swaps between the two for the most recent data
@@ -100,7 +104,6 @@ pub const PhysicsState = struct {
     copying: bool = false,
 
     mutex: std.Thread.Mutex = std.Thread.Mutex{},
-    motion_style: PlanetaryMotionStyle = PlanetaryMotionStyle.DETERMINISTIC,
 };
 
 /// Integrates all linear forces, torques, angular velocities, linear velocities, positions,

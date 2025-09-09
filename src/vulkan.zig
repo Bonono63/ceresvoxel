@@ -2164,18 +2164,24 @@ pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, voxel_spaces
 }
 
 /// Generates the unique data sent to the GPU for particles
-pub fn update_particle_ubo(self: *VulkanState, game_state: *main.GameState, bodies: []physics.Body, particles: []main.ParticleHandle, ubo_index: u32) VkAbstractionError!void {
+///
+/// returns the number of particles sent to the GPU 
+pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index: u32) VkAbstractionError!u32 {
+    var particle_count: u32 = 0;
     var data = std.ArrayList(zm.Mat).init(self.allocator.*);
-    try data.ensureUnusedCapacity(particles.len);
     defer data.deinit();
 
-    _ = &game_state;
-
-    for (particles) |particle| {
-        try data.append(bodies[particle.physics_index].transform());
+    for (bodies) |body| {
+        if (body.body_type == .particle) {
+            try data.append(body.transform());
+            particle_count += 1;
+        }
     }
 
-    try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(zm.Mat)), &data.items[0]);
+    if (data.items.len > 0) {
+        try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(zm.Mat)), &data.items[0]);
+    }
+    return particle_count;
 }
 
 //THREAD
@@ -2652,10 +2658,9 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
             @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
             
             try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
-            const particles = game_state.particles.items;
-            if (particles.len > 0) {
-                try update_particle_ubo(self, game_state, bodies, particles, 0);
-            }
+            const particle_count = try update_particle_ubo(self, bodies, 0);
+
+            self.render_targets.items[1].instance_count = particle_count;
             
             // DRAW
             try self.draw_frame(current_frame_index, &self.render_targets.items);

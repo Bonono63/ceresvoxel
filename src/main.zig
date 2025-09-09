@@ -69,7 +69,7 @@ pub const ParticleHandle = struct {
 ///Stores arbitrary state of the game
 pub const GameState = struct {
     voxel_spaces: std.ArrayList(chunk.VoxelSpace),
-    particles: std.ArrayList(ParticleHandle),
+    //particles: std.ArrayList(ParticleHandle),
     seed: u64 = 0,
     player_state: PlayerState,
     completion_signal: bool,
@@ -130,23 +130,22 @@ pub fn main() !void {
 
     var game_state = GameState{
         .voxel_spaces = std.ArrayList(chunk.VoxelSpace).init(allocator),
-        .particles = std.ArrayList(ParticleHandle).init(allocator),
+        //.particles = std.ArrayList(ParticleHandle).init(allocator),
         .player_state = undefined,
         .completion_signal = true,
         .allocator = &allocator,
     };
     defer game_state.voxel_spaces.deinit();
-    defer game_state.particles.deinit();
+    //defer game_state.particles.deinit();
     
     var physics_state = physics.PhysicsState{
         .bodies = std.ArrayList(physics.Body).init(allocator),
-        .broad_contact_list = std.ArrayList([2]*physics.Body).init(allocator),
         .sim_start_time = std.time.milliTimestamp(),
     };
     defer physics_state.bodies.deinit();
-    defer physics_state.broad_contact_list.deinit();
+    //defer physics_state.broad_contact_list.deinit();
 
-    try physics_state.broad_contact_list.ensureUnusedCapacity(100);
+    //try physics_state.broad_contact_list.ensureUnusedCapacity(100);
     
     // "Sun"
     try physics_state.bodies.append(.{
@@ -156,6 +155,7 @@ pub fn main() !void {
         .gravity = false,
         .torque_accumulation = .{std.math.pi, 0.0, 0.0, 0.0},
         .half_size = .{0.5, 0.5, 0.5, 0.0},
+        .body_type = .voxel_space
     });
     
     try game_state.voxel_spaces.append(.{
@@ -174,6 +174,7 @@ pub fn main() !void {
             .eccentricity = 1.0,
             .eccliptic_offset = .{rand.float(f32) / 10.0, rand.float(f32) / 10.0},
             .half_size = .{0.5, 0.5, 0.5, 0.0},
+            .body_type = .voxel_space
         });
         
         try game_state.voxel_spaces.append(.{
@@ -187,6 +188,7 @@ pub fn main() !void {
         .position = .{0.0, 100, 0.0},
         .inverse_mass = (1.0/100.0),
         .half_size = .{0.5, 1.0, 0.5, 0.0},
+        .body_type = .player,
     });
     game_state.player_state = PlayerState{
         .physics_index = @intCast(physics_state.bodies.items.len - 1)
@@ -313,11 +315,12 @@ pub fn main() !void {
                             + player_physics_state.*.velocity,
                         //.angular_velocity = .{1.0,0.0,0.0,0.0},
                         .half_size = .{0.5, 0.5, 0.5, 0.0},
+                        .body_type = .particle,
                 });
 
-                try game_state.particles.append(
-                    .{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 2))}
-                    );
+                //try game_state.particles.append(
+                //    .{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 1))}
+                //    );
                 
                 vomit_cooldown_previous_time = current_time;
             }
@@ -329,11 +332,11 @@ pub fn main() !void {
             });
         }
         
-        if (game_state.particles.items.len > 0) {
-            vulkan_state.render_targets.items[1].instance_count = @as(u32, @intCast(
-                    game_state.particles.items.len
-                    ));
-        }
+        //if (game_state.particles.items.len > 0) {
+        //    vulkan_state.render_targets.items[1].instance_count = @as(u32, @intCast(
+        //            game_state.particles.items.len - 1
+        //            ));
+        //}
         
         const next_display_index = (physics_state.display_index + 1) % 2;
         physics_state.display_bodies[next_display_index] = try game_state.allocator.realloc(
