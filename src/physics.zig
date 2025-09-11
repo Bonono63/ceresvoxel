@@ -52,6 +52,8 @@ pub const Body = struct {
    
     body_type: BodyType,
     particle_time: u32 = 0,
+    voxel_space: *chunk.VoxelSpace = undefined,
+    space_index: u32 = undefined,
 
     /// Returns the object's transform (for rendering or physics)
     /// for safety reasons should only be called on objects within f32's range.

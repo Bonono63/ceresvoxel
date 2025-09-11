@@ -1795,6 +1795,37 @@ pub const VulkanState = struct {
         try self.ssbo_allocs.append(alloc);
     }
 
+    pub fn create_voxel_space(self: *VulkanState, voxel_space: *chunk.VoxelSpace, space_index: u32) !void {
+        var mesh_data = std.ArrayList(ChunkVertex).init(self.allocator.*);
+        defer mesh_data.deinit();
+    
+        const vs = voxel_space.*;
+        var last_space_chunk_index: u32 = 0;
+        
+        for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
+            // The goal is for this get chunk to be faster than reading the disk for an unmodified chunk
+            const data = try chunk.get_chunk_data(0, @intCast(space_index), .{0,0,0});
+            const mesh_start: f64 = c.glfwGetTime();
+            const new_vertices_count = try mesh_generation.CullMesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
+            std.debug.print("[Debug] time: {d:.4}ms \n", .{(c.glfwGetTime() - mesh_start) * 1000.0});
+            _ = &new_vertices_count;
+        }
+        last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
+       
+        const render_index = self.render_targets.items.len;
+        try self.render_targets.append(
+            .{
+                .vertex_index = render_index,
+                .pipeline_index = 2,
+                .vertex_render_offset = 0,
+            });
+        try self.create_vertex_buffer(
+            render_index,
+            @sizeOf(ChunkVertex),
+            @intCast(mesh_data.items.len * @sizeOf(ChunkVertex)),
+            mesh_data.items.ptr);
+    }
+
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called
     pub fn cleanup(self: *VulkanState) void {
@@ -2140,33 +2171,38 @@ pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) 
 }
 
 /// Generates the unique data sent to the GPU for chunks
-pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, voxel_spaces: []chunk.VoxelSpace, ubo_index: u32) VkAbstractionError!void {
+pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index: u32) VkAbstractionError!void {
     var data = std.ArrayList(ChunkRenderData).init(self.allocator.*);
-    try data.ensureUnusedCapacity(voxel_spaces.len); // TODO maybe we do more later
     defer data.deinit();
-    for (voxel_spaces) |vs| {
-        for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
-            const physics_pos = .{
-                @as(f32, @floatCast(bodies[vs.physics_index].position[0])),
-                @as(f32, @floatCast(bodies[vs.physics_index].position[1])),
-                @as(f32, @floatCast(bodies[vs.physics_index].position[2])),
-            };
-            const pos: @Vector(4, f32) = .{
-                physics_pos[0] +
-                    @as(f32, @floatFromInt(chunk_index % vs.size[0] * 32)),
-                physics_pos[1] +
-                    @as(f32, @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32)),
-                physics_pos[2] +
-                    @as(f32, @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32)),
-                0.0,
-            };
 
-            const model = zm.mul(zm.quatToMat(bodies[vs.physics_index].orientation), zm.translationV(pos));
+    // Iterating through every single physics body reeks a little to me,
+    // but tbh, not sure I can do much about that atm
+    for (bodies) |body| {
+        if (body.body_type == .voxel_space) {
+            const vs = body.voxel_space.*;
+            for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
+                const physics_pos = .{
+                    @as(f32, @floatCast(bodies[vs.physics_index].position[0])),
+                    @as(f32, @floatCast(bodies[vs.physics_index].position[1])),
+                    @as(f32, @floatCast(bodies[vs.physics_index].position[2])),
+                };
+                const pos: @Vector(4, f32) = .{
+                    physics_pos[0] +
+                        @as(f32, @floatFromInt(chunk_index % vs.size[0] * 32)),
+                    physics_pos[1] +
+                        @as(f32, @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32)),
+                    physics_pos[2] +
+                        @as(f32, @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32)),
+                    0.0,
+                };
 
-            try data.append(.{
-                .model = model,
-                .size = vs.size,
-            });
+                const model = zm.mul(zm.quatToMat(bodies[vs.physics_index].orientation), zm.translationV(pos));
+
+                try data.append(.{
+                    .model = model,
+                    .size = vs.size,
+                });
+            }
         }
     }
     
@@ -2188,6 +2224,7 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index
         try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(zm.Mat)), &data.items[0]);
     }
 }
+
 
 //THREAD
 
@@ -2296,6 +2333,12 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, c
 
     var last_space_chunk_index: u32 = 0;
     // TODO add entries in a chunk data storage buffer for chunk pos etc.
+    for (bodies) |body| {
+        if (body.body_type == .voxel_space) {
+            const vs = body.voxel_space;
+            try self.create_voxel_space(vs);
+        }
+    }
     for (game_state.voxel_spaces.items, 0..game_state.voxel_spaces.items.len) |vs, space_index| {
         var mesh_data = std.ArrayList(ChunkVertex).init(self.allocator.*);
         defer mesh_data.deinit();

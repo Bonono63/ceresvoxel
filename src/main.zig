@@ -136,6 +136,10 @@ pub fn main() !void {
     };
     defer physics_state.bodies.deinit();
     
+    try game_state.voxel_spaces.append(.{
+        .size = .{1,1,1},
+    });
+    
     // "Sun"
     try physics_state.bodies.append(.{
         .position = .{0.0, 0.0, 0.0},
@@ -144,16 +148,18 @@ pub fn main() !void {
         .gravity = false,
         .torque_accumulation = .{std.math.pi, 0.0, 0.0, 0.0},
         .half_size = .{0.5, 0.5, 0.5, 0.0},
-        .body_type = .voxel_space
+        .body_type = .voxel_space,
+        .voxel_space = &game_state.voxel_spaces.items[game_state.voxel_spaces.items.len - 1],
     });
     
-    try game_state.voxel_spaces.append(.{
-        .size = .{1,1,1},
-        .physics_index = @intCast(physics_state.bodies.items.len - 1),
-    });
     
     for (2..9) |index| {
         const rand = std.crypto.random;
+        
+        try game_state.voxel_spaces.append(.{
+            .size = .{1,1,1},
+        });
+        
         try physics_state.bodies.append(.{
             .position = .{0.0, 0.0, 0.0},
             .inverse_mass = 0.0,
@@ -163,13 +169,8 @@ pub fn main() !void {
             .eccentricity = 1.0,
             .eccliptic_offset = .{rand.float(f32) / 10.0, rand.float(f32) / 10.0},
             .half_size = .{0.5, 0.5, 0.5, 0.0},
-            .body_type = .voxel_space
-        });
-        
-        // Should instead be storing the voxel space index in the physics body I think
-        try game_state.voxel_spaces.append(.{
-            .size = .{1,1,1},
-            .physics_index = @intCast(physics_state.bodies.items.len - 1),
+            .body_type = .voxel_space,
+            .voxel_space = &game_state.voxel_spaces.items[game_state.voxel_spaces.items.len - 1],
         });
     }
 
