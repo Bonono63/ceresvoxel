@@ -9,6 +9,7 @@ const cm = @import("ceresmath.zig");
 
 pub const InputState = packed struct {
     MOUSE_SENSITIVITY : f64 = 0.1,
+    input_vec: zm.Vec = .{0.0,0.0,0.0,0.0},
     w : bool = false,
     a : bool = false,
     s : bool = false,
@@ -24,18 +25,14 @@ pub const InputState = packed struct {
     mouse_dy: f64 = 0.0,
 };
 
-const PlayerState = struct {
-    // TODO switch to quat for camera dir
-    yaw: f32 = std.math.pi/2.0,
+pub const CameraState = struct {
+    yaw: f32 = std.math.pi / 2.0,
     pitch: f32 = 0.0,
-    up: zm.Vec = .{ 0.0, -1.0, 0.0, 0.0},
-    /// Unit vector of player input
-    input_vec: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
-    //camera_rot: zm.Quat,
+    free_cam: bool = false,
+    // free cam only
     speed: f32 = 5.0,
-    physics_index: u32,
 
-    pub fn look(self: *PlayerState) zm.Quat {
+    pub fn look(self: *CameraState) zm.Quat {
         const result = cm.qnormalize(@Vector(4, f32){
             @cos(self.yaw / 2.0) * @cos(0.0),
             @sin(self.pitch / 2.0) * @cos(0.0),
@@ -46,7 +43,7 @@ const PlayerState = struct {
         return result;
     }
     
-    pub fn lookV(self: *PlayerState) zm.Vec {
+    pub fn lookV(self: *CameraState) zm.Vec {
         const result = zm.normalize3(@Vector(4, f32){
             @as(f32, @floatCast(std.math.cos(self.yaw) * std.math.cos(self.pitch))),
             @as(f32, @floatCast(std.math.sin(self.pitch))),
@@ -60,25 +57,22 @@ const PlayerState = struct {
 
 const particle_max_time: u32 = 1000;
 
-pub const ParticleHandle = struct {
-    ///lifetime of the particle, once this hits the particle_max_time it should disappear
-    time: u32 = 0,
-    physics_index: u32 = undefined,
-};
-
 ///Stores arbitrary state of the game
 pub const GameState = struct {
     voxel_spaces: std.ArrayList(chunk.VoxelSpace),
-    //particles: std.ArrayList(ParticleHandle),
     seed: u64 = 0,
-    player_state: PlayerState,
+    camera_state: CameraState,
     completion_signal: bool,
     allocator: *std.mem.Allocator,
+    /// All the data required to render a frame
+    render_frames: [2]vulkan.RenderFrame = undefined,
+
+    current_render_frame_index: u32 = 0,
 };
 
-var input_state = InputState{};
-
 const ENGINE_NAME = "CeresVoxel";
+
+var input_state = InputState{};
 
 // Current mouse state (Must be global so it can be accessed by the mouse input callback)
 var xpos: f64 = 0.0;
@@ -130,22 +124,17 @@ pub fn main() !void {
 
     var game_state = GameState{
         .voxel_spaces = std.ArrayList(chunk.VoxelSpace).init(allocator),
-        //.particles = std.ArrayList(ParticleHandle).init(allocator),
-        .player_state = undefined,
         .completion_signal = true,
+        .camera_state = CameraState{},
         .allocator = &allocator,
     };
     defer game_state.voxel_spaces.deinit();
-    //defer game_state.particles.deinit();
     
     var physics_state = physics.PhysicsState{
         .bodies = std.ArrayList(physics.Body).init(allocator),
         .sim_start_time = std.time.milliTimestamp(),
     };
     defer physics_state.bodies.deinit();
-    //defer physics_state.broad_contact_list.deinit();
-
-    //try physics_state.broad_contact_list.ensureUnusedCapacity(100);
     
     // "Sun"
     try physics_state.bodies.append(.{
@@ -177,6 +166,7 @@ pub fn main() !void {
             .body_type = .voxel_space
         });
         
+        // Should instead be storing the voxel space index in the physics body I think
         try game_state.voxel_spaces.append(.{
             .size = .{1,1,1},
             .physics_index = @intCast(physics_state.bodies.items.len - 1),
@@ -190,9 +180,6 @@ pub fn main() !void {
         .half_size = .{0.5, 1.0, 0.5, 0.0},
         .body_type = .player,
     });
-    game_state.player_state = PlayerState{
-        .physics_index = @intCast(physics_state.bodies.items.len - 1)
-    };
 
     // threading INIT
     var render_done: bool = false;
@@ -200,7 +187,7 @@ pub fn main() !void {
     var render_thread = try std.Thread.spawn(
         .{},
         vulkan.render_thread,
-        .{&vulkan_state, &game_state, &input_state, &physics_state, &render_ready, &render_done}
+        .{&vulkan_state, &game_state.render_frames, &game_state.current_render_frame_index, &render_ready, &render_done}
         );
     defer render_thread.join();
 
@@ -234,6 +221,11 @@ pub fn main() !void {
     var contacts = std.ArrayList(physics.Contact).init(allocator);
     defer contacts.deinit();
 
+    // The responsibility of the main thread is to handle input and manage
+    // all the other threads
+    // This will ensure the lowest input state for the various threads and have slightly
+    // better seperation of responsiblities
+    // Camera state (yaw, pitch, and freecam) are all handled here as well
     while (!render_done) {
         const current_time: i64 = std.time.milliTimestamp();
         prev_time = current_time;
@@ -297,6 +289,16 @@ pub fn main() !void {
             const player_physics_state: *physics.Body = &physics_state.bodies.items[game_state.player_state.physics_index];
 
             player_physics_state.*.velocity = game_state.player_state.input_vec;
+
+            for (physics_state.bodies.items, 0..physics_state.bodies.items.len) |body, index| {
+                if (body.body_type == .particle) {
+                    if (body.particle_time < 200) {
+                        physics_state.bodies.items[index].particle_time += 1;
+                    } else {
+                        _ = physics_state.bodies.orderedRemove(index);
+                    }
+                }
+            }
             
             try physics.physics_tick(
                 delta_time_float,
@@ -317,10 +319,6 @@ pub fn main() !void {
                         .half_size = .{0.5, 0.5, 0.5, 0.0},
                         .body_type = .particle,
                 });
-
-                //try game_state.particles.append(
-                //    .{.physics_index = @as(u32, @intCast(physics_state.bodies.items.len - 1))}
-                //    );
                 
                 vomit_cooldown_previous_time = current_time;
             }
@@ -331,12 +329,6 @@ pub fn main() !void {
                 std.time.milliTimestamp() - current_time
             });
         }
-        
-        //if (game_state.particles.items.len > 0) {
-        //    vulkan_state.render_targets.items[1].instance_count = @as(u32, @intCast(
-        //            game_state.particles.items.len - 1
-        //            ));
-        //}
         
         const next_display_index = (physics_state.display_index + 1) % 2;
         physics_state.display_bodies[next_display_index] = try game_state.allocator.realloc(
@@ -487,6 +479,11 @@ pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_in
     _ = &height;
     const instance: *vulkan.VulkanState = @ptrCast(@alignCast(c.glfwGetWindowUserPointer(window)));
     instance.framebuffer_resized = true;
+}
+
+/// The thread that processes all game and logic
+fn game_thread() !void {
+    
 }
 
 // TODO redo this after we implement physics and stuffsies

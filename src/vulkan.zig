@@ -143,6 +143,16 @@ const ChunkRenderData = struct {
     model: zm.Mat = zm.identity(),
 };
 
+/// All the state required to render a frame
+/// This is to make sure all rendering state is seperate from the logic and physics state etc.
+pub const RenderFrame = struct {
+    bodies: []physics.Body,
+    particle_count: u32 = 0,
+    voxel_spaces: []chunk.VoxelSpace,
+    player_index: u32,
+    camera_state: *const main.CameraState,
+};
+
 /// image_views size should be of size MAX_CONCURRENT_FRAMES
 /// Current implementation also assumes 2D texture
 /// Defaults to 2D image view type
@@ -2165,23 +2175,18 @@ pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, voxel_spaces
 
 /// Generates the unique data sent to the GPU for particles
 ///
-/// returns the number of particles sent to the GPU 
-pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index: u32) VkAbstractionError!u32 {
-    var particle_count: u32 = 0;
+/// returns the number of particles sent to the GPU (used for instance rendering)
+pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index: u32) VkAbstractionError!void {
     var data = std.ArrayList(zm.Mat).init(self.allocator.*);
     defer data.deinit();
 
     for (bodies) |body| {
-        if (body.body_type == .particle) {
-            try data.append(body.transform());
-            particle_count += 1;
-        }
+        try data.append(body.transform());
     }
 
     if (data.items.len > 0) {
         try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(zm.Mat)), &data.items[0]);
     }
-    return particle_count;
 }
 
 //THREAD
@@ -2190,7 +2195,7 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index
 ///
 /// ready is set to true once all boiler plate has been completed
 /// done is set to true once the rendering loop is complete
-pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_state: *main.InputState, physics_state: *physics.PhysicsState, ready: *bool, done: *bool) !void {
+pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, current_render_frame_index: *u32, ready: *bool, done: *bool) !void {
     self.shader_modules = std.ArrayList(c.VkShaderModule).init(self.allocator.*);
     defer self.shader_modules.deinit();
 
@@ -2592,19 +2597,25 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
         c.glfwPollEvents();
 
         if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
+            current_render_frame_index.* = (current_render_frame_index.* + 1) % 2;
+            const render_frame: RenderFrame = render_frame_buffer.*[current_render_frame_index.*];
+
             const next_new_index: u32 = (self.new_index + 1) % 2;
             try self.render_targets.appendSlice(self.new_render_targets[next_new_index].items);
             self.new_render_targets[next_new_index].clearRetainingCapacity();
             self.new_index = next_new_index;
 
-            const copy_index: u32 = physics_state.display_index; // If we keep referencing the original index variable it will change and segfault
-            bodies = try self.allocator.realloc(bodies, physics_state.display_bodies[copy_index].len);
-            @memcpy(bodies, physics_state.display_bodies[copy_index]);
+            //const copy_index: u32 = physics_state.display_index; // If we keep referencing the original index variable it will change and segfault
+            //bodies = try self.allocator.realloc(bodies, physics_state.display_bodies[copy_index].len);
+            //@memcpy(bodies, physics_state.display_bodies[copy_index]);
 
             previous_frame_time = current_time;
 
             c.glfwGetWindowSize(self.window, &window_width, &window_height);
-            const aspect_ratio : f32 = @as(f32, @floatFromInt(window_width))/@as(f32, @floatFromInt(window_height));
+            const aspect_ratio : f32 = @as(f32, 
+                @floatFromInt(window_width))
+                / @as(f32, @floatFromInt(window_height)
+                    );
 
             if (input_state.mouse_capture)
             {
@@ -2617,31 +2628,34 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
 
             // TODO move this out of the render loop somehow
             //  I think this is better than making the yaw a global state?
-            if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
-                game_state.player_state.yaw += @as(f32, @floatCast(input_state.mouse_dx * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
-                input_state.mouse_dx = 0.0;
-            }
-            
-            if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
-                game_state.player_state.pitch -= @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
-                if (game_state.player_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
-                    game_state.player_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
-                }
-                if (game_state.player_state.pitch < - std.math.pi / 2.0 + std.math.pi / 256.0) {
-                    game_state.player_state.pitch =  - std.math.pi / 2.0 + std.math.pi / 256.0;
-                }
-                input_state.mouse_dy = 0.0;
-            }
+            //if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
+            //    game_state.player_state.yaw += @as(f32, 
+            //        @floatCast(input_state.mouse_dx * std.math.pi
+            //            / 180.0 * input_state.MOUSE_SENSITIVITY)
+            //        );
+            //    input_state.mouse_dx = 0.0;
+            //}
+            //
+            //if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
+            //    game_state.player_state.pitch -= @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+            //    if (game_state.player_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
+            //        game_state.player_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
+            //    }
+            //    if (game_state.player_state.pitch < - std.math.pi / 2.0 + std.math.pi / 256.0) {
+            //        game_state.player_state.pitch =  - std.math.pi / 2.0 + std.math.pi / 256.0;
+            //    }
+            //    input_state.mouse_dy = 0.0;
+            //}
 
             // TODO make this based on a quaternion in player state
-            const look = zm.normalize3(@Vector(4, f32){
-                @as(f32, @floatCast(std.math.cos(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
-                @as(f32, @floatCast(std.math.sin(game_state.player_state.pitch))),
-                @as(f32, @floatCast(std.math.sin(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
-                0.0,
-            });
-            // Have this based on player gravity (an up in player state determined by logic/physics controllers)
-            const up : zm.Vec = game_state.player_state.up;
+            //const look = zm.normalize3(@Vector(4, f32){
+            //    @as(f32, @floatCast(std.math.cos(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
+            //    @as(f32, @floatCast(std.math.sin(game_state.player_state.pitch))),
+            //    @as(f32, @floatCast(std.math.sin(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
+            //    0.0,
+            //});
+            //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
+            const up : zm.Vec = .{0.0,1.0,0.0,0.0};
 
             const player_pos: zm.Vec = .{
                 @floatCast(bodies[game_state.player_state.physics_index].position[0]),
@@ -2650,7 +2664,12 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
                 0.0,
             };
             const view: zm.Mat = zm.lookToLh(player_pos, look, up);
-            const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
+            const projection: zm.Mat = zm.perspectiveFovLh(
+                1.0,
+                aspect_ratio,
+                0.1,
+                1000.0
+                );
             const view_proj: zm.Mat = zm.mul(view, projection);
             
             
@@ -2658,9 +2677,9 @@ pub fn render_thread(self: *VulkanState, game_state: *main.GameState, input_stat
             @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
             
             try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
-            const particle_count = try update_particle_ubo(self, bodies, 0);
+            try update_particle_ubo(self, bodies, 0);
 
-            self.render_targets.items[1].instance_count = particle_count;
+            self.render_targets.items[1].instance_count = render_frame.particle_count;
             
             // DRAW
             try self.draw_frame(current_frame_index, &self.render_targets.items);

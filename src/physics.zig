@@ -51,6 +51,7 @@ pub const Body = struct {
     half_size: zm.Vec,
    
     body_type: BodyType,
+    particle_time: u32 = 0,
 
     /// Returns the object's transform (for rendering or physics)
     /// for safety reasons should only be called on objects within f32's range.
