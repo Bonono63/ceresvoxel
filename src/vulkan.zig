@@ -150,8 +150,58 @@ pub const RenderFrame = struct {
     particle_count: u32 = 0,
     voxel_spaces: []chunk.VoxelSpace,
     player_index: u32,
-    camera_state: *const main.CameraState,
+    /// ONLY EVER READ FROM THE CAMERA STATE NEVER WRITE ANY DATA EVER
+    camera_state: *main.CameraState,
 };
+
+/// A "cyclic" buffer of RenderFrames for multithreading between the logic and render threads
+pub const RenderFrameBuffer = struct {
+    allocator: *std.mem.Allocator,
+    frame: [2]RenderFrame,
+    mutex: [2]std.Thread.Mutex = .{.{}, .{}},
+
+    pub fn init(self: *RenderFrameBuffer, camera_state: *main.CameraState, player_index: u32) !void {
+        self.frame[0] = .{
+            .voxel_spaces = try self.allocator.alloc(chunk.VoxelSpace, 0),
+            .bodies = try self.allocator.alloc(physics.Body, 0),
+            .player_index = player_index,
+            .camera_state = camera_state,
+        };
+        self.frame[1] = .{
+            .voxel_spaces = try self.allocator.alloc(chunk.VoxelSpace, 0),
+            .bodies = try self.allocator.alloc(physics.Body, 0),
+            .player_index = player_index,
+            .camera_state = camera_state,
+        };
+    }
+
+    pub fn update(self: *RenderFrameBuffer,
+        physics_state: *physics.PhysicsState,
+        voxel_spaces: *[]chunk.VoxelSpace,
+        frame_index: u32) !void {
+
+        self.frame[frame_index].voxel_spaces = try self.allocator.realloc(
+            self.frame[frame_index].voxel_spaces,
+            voxel_spaces.*.len
+            );
+        self.frame[frame_index].bodies = try self.allocator.realloc(
+            self.frame[frame_index].bodies,
+            physics_state.*.bodies.items.len
+            );
+        @memcpy(self.frame[frame_index].voxel_spaces, voxel_spaces.*);
+        @memcpy(self.frame[frame_index].bodies, physics_state.bodies.items);
+
+        self.frame[frame_index].particle_count = physics_state.particle_count;
+    }
+
+    pub fn deinit(self: *RenderFrameBuffer) void {
+        self.allocator.*.free(self.frame[0].voxel_spaces);
+        self.allocator.*.free(self.frame[0].bodies);
+        self.allocator.*.free(self.frame[1].voxel_spaces);
+        self.allocator.*.free(self.frame[1].bodies);
+    } 
+};
+
 
 /// image_views size should be of size MAX_CONCURRENT_FRAMES
 /// Current implementation also assumes 2D texture
@@ -234,8 +284,8 @@ pub const VulkanState = struct {
     render_targets: std.ArrayList(RenderInfo) = undefined,
     // TODO refactor how render targets are determined (should be produced during runtime instead of being static)
     // scenes will likely be simple enough to do a runtime determination
-    new_render_targets: [2]std.ArrayList(RenderInfo) = undefined,
-    new_index: u32 = 0,
+
+    //chunk_count: u32 = 0,
 
     /// keeps track of GPU memory (Vertex buffers)
     vertex_buffers: std.ArrayList(c.VkBuffer) = undefined,
@@ -1812,7 +1862,7 @@ pub const VulkanState = struct {
         }
         last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
        
-        const render_index = self.render_targets.items.len;
+        const render_index = 2 + space_index + last_space_chunk_index;
         try self.render_targets.append(
             .{
                 .vertex_index = render_index,
@@ -2232,7 +2282,7 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index
 ///
 /// ready is set to true once all boiler plate has been completed
 /// done is set to true once the rendering loop is complete
-pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, current_render_frame_index: *u32, ready: *bool, done: *bool) !void {
+pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer, ready: *bool, done: *bool) !void {
     self.shader_modules = std.ArrayList(c.VkShaderModule).init(self.allocator.*);
     defer self.shader_modules.deinit();
 
@@ -2331,57 +2381,6 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, c
     try self.create_vertex_buffer(0, @sizeOf(Vertex), @intCast(cursor_vertices.len * @sizeOf(Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
     try self.create_vertex_buffer(1, @sizeOf(Vertex), @intCast(block_selection_cube.len * @sizeOf(Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
 
-    var last_space_chunk_index: u32 = 0;
-    // TODO add entries in a chunk data storage buffer for chunk pos etc.
-    for (bodies) |body| {
-        if (body.body_type == .voxel_space) {
-            const vs = body.voxel_space;
-            try self.create_voxel_space(vs);
-        }
-    }
-    for (game_state.voxel_spaces.items, 0..game_state.voxel_spaces.items.len) |vs, space_index| {
-        var mesh_data = std.ArrayList(ChunkVertex).init(self.allocator.*);
-        defer mesh_data.deinit();
-
-        for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
-            // The goal is for this get chunk to be faster than reading the disk for an unmodified chunk
-            const data = try chunk.get_chunk_data(game_state.seed, @intCast(space_index), .{0,0,0});
-            const mesh_start: f64 = c.glfwGetTime();
-            const new_vertices_count = try mesh_generation.CullMesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
-            std.debug.print("[Debug] time: {d:.4}ms \n", .{(c.glfwGetTime() - mesh_start) * 1000.0});
-            _ = &new_vertices_count;
-            std.debug.print("[Debug] vertice count: {}\n", .{new_vertices_count});
-        }
-        last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
-
-        const render_index: u32 = 2 + @as(u32, @intCast(space_index));
-        game_state.voxel_spaces.items[space_index].render_index = render_index;
-        try self.render_targets.append(.{ .vertex_index = render_index, .pipeline_index = 2, .vertex_render_offset = 0});
-        try self.create_vertex_buffer(render_index, @sizeOf(ChunkVertex), @intCast(mesh_data.items.len * @sizeOf(ChunkVertex)), mesh_data.items.ptr);
-    }
-
-    //var buffer_create_info = c.VkBufferCreateInfo{
-    //    .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-    //    .size = 2 * @sizeOf(ChunkRenderData),
-    //    .usage = c.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-    //}; 
-    //
-    //const alloc_create_info = c.VmaAllocationCreateInfo{
-    //    .usage = c.VMA_MEMORY_USAGE_AUTO,
-    //    .flags = c.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-    //};
-    //
-    //const buffer_success = c.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &ssbo, &ssbo_alloc, null);
-    //
-    //if (buffer_success != c.VK_SUCCESS)
-    //{
-    //    std.debug.print("success: {}\n", .{buffer_success});
-    //    return VkAbstractionError.VertexBufferCreationFailure;
-    //}
-
-    //try self.ssbo_buffers.append(ssbo);
-    //try self.ssbo_allocs.append(ssbo_alloc);
-
     // RENDER INIT
 
     const BufferInfo = struct {
@@ -2426,20 +2425,6 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, c
         try self.ubo_buffers.append(ubo);
         try self.ubo_allocs.append(alloc);
     }
-
-
-//    for (0..self.vertex_buffers.items.len*self.MAX_CONCURRENT_FRAMES) |i|
-//    {
-//        _ = &i;
-//         
-//        var buffer: c.VkBuffer = undefined;
-//        var alloc: c.VmaAllocation = undefined;
-//        _ = c.vmaCreateBuffer(self.vma_allocator, &create_info, &ubo_alloc_create_info, &buffer, &alloc, null);
-//        
-//        _ = c.vmaCopyMemoryToAllocation(self.vma_allocator, &selector_transform, alloc, 0, @sizeOf(BlockSelectorTransform));
-//        try self.ubo_allocs.append(alloc);
-//        try self.ubo_buffers.append(buffer);
-//    }
 
     var image_info0 = ImageInfo{
         .depth = 1,
@@ -2614,16 +2599,10 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, c
     // TODO replace this with splat?
     @memset(&frame_time_cyclic_buffer, 0.0);
 
-    //var render_state: []RenderInfo = try self.allocator.alloc(RenderInfo, 0);
-    //defer self.allocator.free(render_state);
-
-    self.new_render_targets[0] = std.ArrayList(RenderInfo).init(self.allocator.*);
-    self.new_render_targets[1] = std.ArrayList(RenderInfo).init(self.allocator.*);
-    defer self.new_render_targets[0].deinit();
-    defer self.new_render_targets[1].deinit();
-
-    var bodies: []physics.Body = try self.allocator.alloc(physics.Body, 0);
-    defer self.allocator.free(bodies);
+    //self.new_render_targets[0] = std.ArrayList(RenderInfo).init(self.allocator.*);
+    //self.new_render_targets[1] = std.ArrayList(RenderInfo).init(self.allocator.*);
+    //defer self.new_render_targets[0].deinit();
+    //defer self.new_render_targets[1].deinit();
 
     // Time in milliseconds in between frames, 60 is 16.666, 0.0 is 
     var fps_limit: f32 = 0.0;//3.03030303;//8.333;
@@ -2633,6 +2612,9 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, c
 
     ready.* = true;
 
+    var previous_render_frame: RenderFrame = undefined;
+    _ = &previous_render_frame;
+
     while (c.glfwWindowShouldClose(self.window) == 0) {
         const current_time: f32 = @floatCast(c.glfwGetTime());
         const frame_delta: f32 = current_time - previous_frame_time;
@@ -2640,13 +2622,20 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, c
         c.glfwPollEvents();
 
         if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
-            current_render_frame_index.* = (current_render_frame_index.* + 1) % 2;
-            const render_frame: RenderFrame = render_frame_buffer.*[current_render_frame_index.*];
+            var render_frame: *RenderFrame = undefined;
+            var render_frame_index: u32 = 0;
+            if (render_frame_buffer.*.mutex[0].tryLock()) {
+                render_frame = &render_frame_buffer.*.frame[0];
+                render_frame_index = 0;
+            } else if (render_frame_buffer.*.mutex[1].tryLock()) {
+                render_frame = &render_frame_buffer.*.frame[1];
+                render_frame_index = 1;
+            }
 
-            const next_new_index: u32 = (self.new_index + 1) % 2;
-            try self.render_targets.appendSlice(self.new_render_targets[next_new_index].items);
-            self.new_render_targets[next_new_index].clearRetainingCapacity();
-            self.new_index = next_new_index;
+            //const next_new_index: u32 = (self.new_index + 1) % 2;
+            //try self.render_targets.appendSlice(self.new_render_targets[next_new_index].items);
+            //self.new_render_targets[next_new_index].clearRetainingCapacity();
+            //self.new_index = next_new_index;
 
             //const copy_index: u32 = physics_state.display_index; // If we keep referencing the original index variable it will change and segfault
             //bodies = try self.allocator.realloc(bodies, physics_state.display_bodies[copy_index].len);
@@ -2660,14 +2649,6 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, c
                 / @as(f32, @floatFromInt(window_height)
                     );
 
-            if (input_state.mouse_capture)
-            {
-                c.glfwSetInputMode(self.window, c.GLFW_CURSOR, c.GLFW_CURSOR_DISABLED);
-            }
-            else
-            {
-                c.glfwSetInputMode(self.window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
-            }
 
             // TODO move this out of the render loop somehow
             //  I think this is better than making the yaw a global state?
@@ -2690,23 +2671,16 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, c
             //    input_state.mouse_dy = 0.0;
             //}
 
-            // TODO make this based on a quaternion in player state
-            //const look = zm.normalize3(@Vector(4, f32){
-            //    @as(f32, @floatCast(std.math.cos(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
-            //    @as(f32, @floatCast(std.math.sin(game_state.player_state.pitch))),
-            //    @as(f32, @floatCast(std.math.sin(game_state.player_state.yaw) * std.math.cos(game_state.player_state.pitch))),
-            //    0.0,
-            //});
             //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
             const up : zm.Vec = .{0.0,1.0,0.0,0.0};
 
             const player_pos: zm.Vec = .{
-                @floatCast(bodies[game_state.player_state.physics_index].position[0]),
-                @floatCast(bodies[game_state.player_state.physics_index].position[1] - 0.5),
-                @floatCast(bodies[game_state.player_state.physics_index].position[2]),
+                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[0]),
+                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[1] - 0.5),
+                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[2]),
                 0.0,
             };
-            const view: zm.Mat = zm.lookToLh(player_pos, look, up);
+            const view: zm.Mat = zm.lookToLh(player_pos, render_frame.*.camera_state.*.look(), up);
             const projection: zm.Mat = zm.perspectiveFovLh(
                 1.0,
                 aspect_ratio,
@@ -2719,8 +2693,8 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, c
             @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
             @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
             
-            try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
-            try update_particle_ubo(self, bodies, 0);
+            //try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
+            try update_particle_ubo(self, render_frame.bodies, 0);
 
             self.render_targets.items[1].instance_count = render_frame.particle_count;
             
@@ -2736,13 +2710,13 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, c
 
 
             //std.debug.print("render state size: {} {any}\n", .{render_state.len, render_state});
-            std.debug.print("\t\t\t| {s} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
-                if (input_state.mouse_capture) "on " else "off",
-                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[0])), 
-                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[1])),
-                @as(f32, @floatCast(bodies[game_state.player_state.physics_index].position[2])),
-                game_state.player_state.yaw,
-                game_state.player_state.pitch,
+            std.debug.print("\t\t\t| pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
+                //if (input_state.mouse_capture) "on " else "off",
+                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])), 
+                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
+                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
+                render_frame.camera_state.yaw,
+                render_frame.camera_state.pitch,
                 average_frame_time * 1000.0,
                 1.0/average_frame_time,
             });
@@ -2756,6 +2730,8 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *[2]RenderFrame, c
 
             current_frame_index = (current_frame_index + 1) % self.MAX_CONCURRENT_FRAMES;
             frame_count += 1;
+
+            render_frame_buffer.*.mutex[render_frame_index].unlock();
         }
     }
     

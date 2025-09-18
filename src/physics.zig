@@ -97,16 +97,10 @@ pub const Contact = struct {
 // TODO maybe planets belong in a different array or structure, but for now they are the same
 pub const PhysicsState = struct {
     bodies: std.ArrayList(Body),
+    particle_count: u32 = 0,
     //broad_contact_list: std.ArrayList([2]*Body),
     sim_start_time: i64,
-
-    //Copies the current bodies to a double buffer and swaps between the two for the most recent data
-    //Should only ever be used for reads
-    display_bodies: [2][]Body = undefined,
-    display_index: u32 = 0,
-    copying: bool = false,
-
-    mutex: std.Thread.Mutex = std.Thread.Mutex{},
+    player_index: u32 = 0,
 };
 
 /// Integrates all linear forces, torques, angular velocities, linear velocities, positions,

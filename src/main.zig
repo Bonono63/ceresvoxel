@@ -32,7 +32,7 @@ pub const CameraState = struct {
     // free cam only
     speed: f32 = 5.0,
 
-    pub fn look(self: *CameraState) zm.Quat {
+    pub fn look(self: *const CameraState) zm.Quat {
         const result = cm.qnormalize(@Vector(4, f32){
             @cos(self.yaw / 2.0) * @cos(0.0),
             @sin(self.pitch / 2.0) * @cos(0.0),
@@ -43,15 +43,24 @@ pub const CameraState = struct {
         return result;
     }
     
-    pub fn lookV(self: *CameraState) zm.Vec {
+    pub fn lookV(self: *const CameraState) zm.Vec {
         const result = zm.normalize3(@Vector(4, f32){
-            @as(f32, @floatCast(std.math.cos(self.yaw) * std.math.cos(self.pitch))),
-            @as(f32, @floatCast(std.math.sin(self.pitch))),
-            @as(f32, @floatCast(std.math.sin(self.yaw) * std.math.cos(self.pitch))),
+            @cos(self.yaw) * @cos(self.pitch),
+            @sin(self.pitch),
+            @sin(self.yaw) * @cos(self.pitch),
             0.0,
         });
 
         return result;
+    }
+
+    pub fn up(self: *const CameraState) zm.Vec {
+        _ = &self;
+        return .{0.0,1.0,0.0,0.0};
+    }
+
+    pub fn right(self: *const CameraState) zm.Vec {
+        return zm.normalize3(zm.cross3(self.look(), self.up()));
     }
 };
 
@@ -64,10 +73,7 @@ pub const GameState = struct {
     camera_state: CameraState,
     completion_signal: bool,
     allocator: *std.mem.Allocator,
-    /// All the data required to render a frame
-    render_frames: [2]vulkan.RenderFrame = undefined,
-
-    current_render_frame_index: u32 = 0,
+    render_frame_buffer: vulkan.RenderFrameBuffer,
 };
 
 const ENGINE_NAME = "CeresVoxel";
@@ -127,6 +133,10 @@ pub fn main() !void {
         .completion_signal = true,
         .camera_state = CameraState{},
         .allocator = &allocator,
+        .render_frame_buffer = .{
+            .frame = .{undefined, undefined},
+            .allocator = &allocator,
+        }
     };
     defer game_state.voxel_spaces.deinit();
     
@@ -181,6 +191,23 @@ pub fn main() !void {
         .half_size = .{0.5, 1.0, 0.5, 0.0},
         .body_type = .player,
     });
+    physics_state.player_index = @intCast(physics_state.bodies.items.len - 1);
+    
+    try game_state.render_frame_buffer.init(
+        &game_state.camera_state,
+        physics_state.player_index
+        );
+    defer game_state.render_frame_buffer.deinit();
+    try game_state.render_frame_buffer.update(
+        &physics_state,
+        &game_state.voxel_spaces.items,
+        0
+        );
+    try game_state.render_frame_buffer.update(
+        &physics_state,
+        &game_state.voxel_spaces.items,
+        1
+        );
 
     // threading INIT
     var render_done: bool = false;
@@ -188,14 +215,9 @@ pub fn main() !void {
     var render_thread = try std.Thread.spawn(
         .{},
         vulkan.render_thread,
-        .{&vulkan_state, &game_state.render_frames, &game_state.current_render_frame_index, &render_ready, &render_done}
+        .{&vulkan_state, &game_state.render_frame_buffer, &render_ready, &render_done}
         );
     defer render_thread.join();
-
-    physics_state.display_bodies[0] = try game_state.allocator.alloc(physics.Body, 0);
-    physics_state.display_bodies[1] = try game_state.allocator.alloc(physics.Body, 0);
-    defer game_state.allocator.free(physics_state.display_bodies[0]);
-    defer game_state.allocator.free(physics_state.display_bodies[1]);
 
     // Game Loop and additional prerequisites
     var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
@@ -205,19 +227,14 @@ pub fn main() !void {
     var prev_time: i64 = 0;
     const MINIMUM_TICK_TIME: i64 = 20;
     
-    physics_state.display_bodies[physics_state.display_index] = try game_state.allocator.realloc(
-        physics_state.display_bodies[physics_state.display_index],
-        physics_state.bodies.items.len
-        );
-    @memcpy(physics_state.display_bodies[physics_state.display_index], physics_state.bodies.items);
-
     // This is to ensure we don't start before the render state is prepared (it crashes)
+    // TODO REMOVE THIS WITH RENDER FRAME BUFFER WE SHOULD BE OK
     while (!render_ready) {
         std.time.sleep(1);
     }
-
+    
     std.debug.print("[Debug] render ready\n", .{});
-    std.debug.print("player physics index: {}\n", .{game_state.player_state.physics_index});
+    //std.debug.print("player physics index: {}\n", .{game_state.player_state.physics_index});
 
     var contacts = std.ArrayList(physics.Contact).init(allocator);
     defer contacts.deinit();
@@ -234,52 +251,61 @@ pub fn main() !void {
         const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
 
         if (input_state.control) {
-            game_state.player_state.speed = 100.0;
+            game_state.camera_state.speed = 100.0;
         } else {
-            game_state.player_state.speed = 5.0;
+            game_state.camera_state.speed = 5.0;
         }
         
-        const look = game_state.player_state.lookV();
+        const look = game_state.camera_state.lookV();
+        const up = game_state.camera_state.up();
+        const right = game_state.camera_state.right();
 
-        const right = zm.normalize3(zm.cross3(look, game_state.player_state.up));
-
-        game_state.player_state.input_vec = .{0.0, 0.0, 0.0, 0.0};
+        var input_vec: zm.Vec = .{0.0, 0.0, 0.0, 0.0};
 
         if (input_state.space) {
-            game_state.player_state.input_vec -= cm.scale_f32(
-                game_state.player_state.up,
-                game_state.player_state.speed
+            input_vec -= cm.scale_f32(
+                up,
+                game_state.camera_state.speed
                 );
         }
         if (input_state.shift) {
-            game_state.player_state.input_vec += cm.scale_f32(
-                game_state.player_state.up,
-                game_state.player_state.speed
+            input_vec += cm.scale_f32(
+                up,
+                game_state.camera_state.speed
                 );
         }
         if (input_state.w) {
-            game_state.player_state.input_vec += cm.scale_f32(
+            input_vec += cm.scale_f32(
                 look,
-                game_state.player_state.speed
+                game_state.camera_state.speed
                 );
         }
         if (input_state.s) {
-            game_state.player_state.input_vec -= cm.scale_f32(
+            input_vec -= cm.scale_f32(
                 look,
-                game_state.player_state.speed
+                game_state.camera_state.speed
                 );
         }
         if (input_state.d) {
-            game_state.player_state.input_vec -= cm.scale_f32(
+            input_vec -= cm.scale_f32(
                 right,
-                game_state.player_state.speed
+                game_state.camera_state.speed
                 );
         }
         if (input_state.a) {
-            game_state.player_state.input_vec += cm.scale_f32(
+            input_vec += cm.scale_f32(
                 right,
-                game_state.player_state.speed
+                game_state.camera_state.speed
                 );
+        }
+            
+        if (input_state.mouse_capture)
+        {
+            c.glfwSetInputMode(vulkan_state.window, c.GLFW_CURSOR, c.GLFW_CURSOR_DISABLED);
+        }
+        else
+        {
+            c.glfwSetInputMode(vulkan_state.window, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
         }
 
         if (@abs(current_time - prev_tick_time) > MINIMUM_TICK_TIME) {
@@ -287,9 +313,9 @@ pub fn main() !void {
 
             prev_tick_time = current_time;
 
-            const player_physics_state: *physics.Body = &physics_state.bodies.items[game_state.player_state.physics_index];
+            const player_physics_state: *physics.Body = &physics_state.bodies.items[physics_state.player_index];
 
-            player_physics_state.*.velocity = game_state.player_state.input_vec;
+            player_physics_state.*.velocity = input_vec;
 
             for (physics_state.bodies.items, 0..physics_state.bodies.items.len) |body, index| {
                 if (body.body_type == .particle) {
@@ -312,14 +338,16 @@ pub fn main() !void {
                 try physics_state.bodies.append(.{
                         .position = player_physics_state.*.position,
                         .inverse_mass = 1.0 / 32.0,
-                        .orientation = game_state.player_state.look(),
+                        .orientation = game_state.camera_state.look(),
                         .velocity = cm.scale_f32(
-                            game_state.player_state.lookV(), 1.0 * 32.0)
+                            game_state.camera_state.lookV(), 1.0 * 32.0)
                             + player_physics_state.*.velocity,
                         //.angular_velocity = .{1.0,0.0,0.0,0.0},
                         .half_size = .{0.5, 0.5, 0.5, 0.0},
                         .body_type = .particle,
                 });
+
+                physics_state.particle_count += 1;
                 
                 vomit_cooldown_previous_time = current_time;
             }
@@ -331,13 +359,13 @@ pub fn main() !void {
             });
         }
         
-        const next_display_index = (physics_state.display_index + 1) % 2;
-        physics_state.display_bodies[next_display_index] = try game_state.allocator.realloc(
-            physics_state.display_bodies[next_display_index],
-            physics_state.bodies.items.len
-            );
-        @memcpy(physics_state.display_bodies[next_display_index], physics_state.bodies.items);
-        physics_state.display_index = next_display_index;
+        //const next_display_index = (physics_state.display_index + 1) % 2;
+        //physics_state.display_bodies[next_display_index] = try game_state.allocator.realloc(
+        //    physics_state.display_bodies[next_display_index],
+        //    physics_state.bodies.items.len
+        //    );
+        //@memcpy(physics_state.display_bodies[next_display_index], physics_state.bodies.items);
+        //physics_state.display_index = next_display_index;
         
         if (render_done) {
             game_state.completion_signal = false;
