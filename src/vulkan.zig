@@ -160,19 +160,36 @@ pub const RenderFrameBuffer = struct {
     frame: [2]RenderFrame,
     mutex: [2]std.Thread.Mutex = .{.{}, .{}},
 
-    pub fn init(self: *RenderFrameBuffer, camera_state: *main.CameraState, player_index: u32) !void {
+    pub fn init(self: *RenderFrameBuffer, camera_state: *main.CameraState, physics_state: *physics.PhysicsState, voxel_spaces: *[]chunk.VoxelSpace, player_index: u32) !void {
         self.frame[0] = .{
-            .voxel_spaces = try self.allocator.alloc(chunk.VoxelSpace, 0),
-            .bodies = try self.allocator.alloc(physics.Body, 0),
+            .voxel_spaces = try self.allocator.*.alloc(
+            chunk.VoxelSpace,
+            voxel_spaces.*.len
+            ),
+            .bodies = try self.allocator.*.alloc(
+            physics.Body,
+            physics_state.*.bodies.items.len
+            ),
             .player_index = player_index,
             .camera_state = camera_state,
         };
+        @memcpy(self.frame[0].voxel_spaces, voxel_spaces.*);
+        @memcpy(self.frame[0].bodies, physics_state.*.bodies.items);
+        
         self.frame[1] = .{
-            .voxel_spaces = try self.allocator.alloc(chunk.VoxelSpace, 0),
-            .bodies = try self.allocator.alloc(physics.Body, 0),
+            .voxel_spaces = try self.allocator.*.alloc(
+            chunk.VoxelSpace,
+            voxel_spaces.*.len
+            ),
+            .bodies = try self.allocator.*.alloc(
+            physics.Body,
+            physics_state.*.bodies.items.len
+            ),
             .player_index = player_index,
             .camera_state = camera_state,
         };
+        @memcpy(self.frame[1].voxel_spaces, voxel_spaces.*);
+        @memcpy(self.frame[1].bodies, physics_state.*.bodies.items);
     }
 
     pub fn update(self: *RenderFrameBuffer,
@@ -2615,11 +2632,15 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     var previous_render_frame: RenderFrame = undefined;
     _ = &previous_render_frame;
 
+    //std.debug.print("render frame 0: {}\n\n", .{render_frame_buffer.*.frame[0]});
+    //std.debug.print("render frame 1: {}\n\n", .{render_frame_buffer.*.frame[1]});
+
+
     while (c.glfwWindowShouldClose(self.window) == 0) {
         const current_time: f32 = @floatCast(c.glfwGetTime());
         const frame_delta: f32 = current_time - previous_frame_time;
         
-        c.glfwPollEvents();
+        //c.glfwPollEvents();
 
         if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
             var render_frame: *RenderFrame = undefined;
@@ -2631,6 +2652,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
                 render_frame = &render_frame_buffer.*.frame[1];
                 render_frame_index = 1;
             }
+            std.debug.print("render frame pointer {any}\n", .{render_frame.*.camera_state});
 
             //const next_new_index: u32 = (self.new_index + 1) % 2;
             //try self.render_targets.appendSlice(self.new_render_targets[next_new_index].items);

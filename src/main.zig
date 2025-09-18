@@ -195,19 +195,14 @@ pub fn main() !void {
     
     try game_state.render_frame_buffer.init(
         &game_state.camera_state,
+        &physics_state,
+        &game_state.voxel_spaces.items,
         physics_state.player_index
         );
     defer game_state.render_frame_buffer.deinit();
-    try game_state.render_frame_buffer.update(
-        &physics_state,
-        &game_state.voxel_spaces.items,
-        0
-        );
-    try game_state.render_frame_buffer.update(
-        &physics_state,
-        &game_state.voxel_spaces.items,
-        1
-        );
+
+    //std.debug.print("render frame 0 {}\n\n", .{game_state.render_frame_buffer.frame[0]});
+    //std.debug.print("render frame 1 {}\n\n", .{game_state.render_frame_buffer.frame[1]});
 
     // threading INIT
     var render_done: bool = false;
@@ -250,6 +245,8 @@ pub fn main() !void {
         const delta_time: i64 = current_time - prev_tick_time;
         const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
 
+        c.glfwPollEvents();
+        
         if (input_state.control) {
             game_state.camera_state.speed = 100.0;
         } else {
@@ -366,6 +363,19 @@ pub fn main() !void {
         //    );
         //@memcpy(physics_state.display_bodies[next_display_index], physics_state.bodies.items);
         //physics_state.display_index = next_display_index;
+        
+        var render_frame_index: u32 = 0;
+        if (game_state.render_frame_buffer.mutex[0].tryLock()) {
+            render_frame_index = 0;
+        } else if (game_state.render_frame_buffer.mutex[1].tryLock()) {
+            render_frame_index = 1;
+        }
+
+        try game_state.render_frame_buffer.update(
+            &physics_state,
+            &game_state.voxel_spaces.items,
+            render_frame_index
+            );
         
         if (render_done) {
             game_state.completion_signal = false;
