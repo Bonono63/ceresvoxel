@@ -1,9 +1,18 @@
 //!Imported C libraries 
-pub usingnamespace @cImport({
+pub const c = @cImport({
     @cInclude("stdlib.h");
-    @cInclude("stb_image.h");
+});
+
+pub const vulkan = @cImport({
     @cInclude("vk_mem_alloc.h");
     @cInclude("vulkan/vulkan.h");
+});
+
+pub const stb = @cImport({
+    @cInclude("stb_image.h");
+});
+
+pub const glfw = @cImport({
     @cDefine("GLFW_INCLUDE_NONE", {});
     @cInclude("GLFW/glfw3.h");
 });

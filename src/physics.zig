@@ -70,6 +70,19 @@ pub const Body = struct {
         return zm.mul(result, world_pos);
     }
 
+    /// Returns the object's transform (for rendering or physics)
+    /// for safety reasons should only be called on objects within f32's range.
+    pub fn render_transform(self: *const Body, player_pos: @Vector(3, f128)) zm.Mat {
+        //const center: zm.Vec = cm.scale_f32(self.half_size, 1.0);
+        const world_pos: zm.Mat = zm.translationV(.{
+                @as(f32, @floatCast(self.position[0] - player_pos[0])),
+                @as(f32, @floatCast(self.position[1] - player_pos[1])),
+                @as(f32, @floatCast(self.position[2] - player_pos[2])),
+                0.0,
+            });
+        return zm.mul(zm.matFromQuat(self.orientation), world_pos);
+    }
+
     /// Returns the X axis given the body's current transform 
     pub fn getXAxis(self: *const Body) zm.Vec {
         return zm.mul(self.transform(), zm.Vec{1.0,0.0,0.0,0.0});

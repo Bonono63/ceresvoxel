@@ -113,7 +113,7 @@ const validation_layers = [_][*:0]const u8{
 };
 
 const device_extensions = [_][*:0]const u8{
-    c.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    c.vulkan.VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
 const swapchain_support = struct {
@@ -157,46 +157,41 @@ pub const RenderFrame = struct {
 /// A "cyclic" buffer of RenderFrames for multithreading between the logic and render threads
 pub const RenderFrameBuffer = struct {
     allocator: *std.mem.Allocator,
-    frame: [2]RenderFrame,
-    mutex: [2]std.Thread.Mutex = .{.{}, .{}},
+    size: u32,
+    frame: []RenderFrame = undefined,
+    mutex: []std.Thread.Mutex = undefined,
 
     pub fn init(self: *RenderFrameBuffer, camera_state: *main.CameraState, physics_state: *physics.PhysicsState, voxel_spaces: *[]chunk.VoxelSpace, player_index: u32) !void {
-        self.frame[0] = .{
-            .voxel_spaces = try self.allocator.*.alloc(
-            chunk.VoxelSpace,
-            voxel_spaces.*.len
-            ),
-            .bodies = try self.allocator.*.alloc(
-            physics.Body,
-            physics_state.*.bodies.items.len
-            ),
-            .player_index = player_index,
-            .camera_state = camera_state,
-        };
-        @memcpy(self.frame[0].voxel_spaces, voxel_spaces.*);
-        @memcpy(self.frame[0].bodies, physics_state.*.bodies.items);
-        
-        self.frame[1] = .{
-            .voxel_spaces = try self.allocator.*.alloc(
-            chunk.VoxelSpace,
-            voxel_spaces.*.len
-            ),
-            .bodies = try self.allocator.*.alloc(
-            physics.Body,
-            physics_state.*.bodies.items.len
-            ),
-            .player_index = player_index,
-            .camera_state = camera_state,
-        };
-        @memcpy(self.frame[1].voxel_spaces, voxel_spaces.*);
-        @memcpy(self.frame[1].bodies, physics_state.*.bodies.items);
+        self.frame = try self.allocator.*.alloc(RenderFrame, self.size);
+        self.mutex = try self.allocator.*.alloc(std.Thread.Mutex, self.size);
+
+        for (0..self.size) |i| {
+            self.mutex[i] = std.Thread.Mutex{};
+
+            self.frame[i] = .{
+                .voxel_spaces = try self.allocator.*.alloc(
+                chunk.VoxelSpace,
+                voxel_spaces.*.len
+                ),
+                .bodies = try self.allocator.*.alloc(
+                physics.Body,
+                physics_state.*.bodies.items.len
+                ),
+                .player_index = player_index,
+                .camera_state = camera_state,
+            };
+            @memcpy(self.frame[i].voxel_spaces, voxel_spaces.*);
+            @memcpy(self.frame[i].bodies, physics_state.*.bodies.items);
+        }
     }
 
+    /// This locks and unlocks the mutex associated with the buffer
     pub fn update(self: *RenderFrameBuffer,
         physics_state: *physics.PhysicsState,
-        voxel_spaces: *[]chunk.VoxelSpace,
-        frame_index: u32) !void {
+        voxel_spaces: *[]chunk.VoxelSpace) !void {
 
+        const frame_index: u32 = self.lock_render_frame();
+        
         self.frame[frame_index].voxel_spaces = try self.allocator.realloc(
             self.frame[frame_index].voxel_spaces,
             voxel_spaces.*.len
@@ -209,6 +204,19 @@ pub const RenderFrameBuffer = struct {
         @memcpy(self.frame[frame_index].bodies, physics_state.bodies.items);
 
         self.frame[frame_index].particle_count = physics_state.particle_count;
+
+        self.mutex[frame_index].unlock();
+    }
+
+    /// locks a mutex in the render frame buffer and returns
+    pub fn lock_render_frame(self: *RenderFrameBuffer) u32 {
+        // TODO add buffer priorities
+        for (0..self.size) |i| {
+            if (self.mutex[i].tryLock()) {
+                return @intCast(i);
+            }
+        }
+        return 0;
     }
 
     pub fn deinit(self: *RenderFrameBuffer) void {
@@ -263,15 +271,15 @@ pub const VulkanState = struct {
     allocator: *const std.mem.Allocator,
 
     /// GPU memory allocator
-    vma_allocator: c.VmaAllocator = undefined,
+    vma_allocator: c.vulkan.VmaAllocator = undefined,
 
-    vk_instance: c.VkInstance = undefined,
-    window: *c.GLFWwindow = undefined,
-    surface: c.VkSurfaceKHR = undefined,
+    vk_instance: c.vulkan.VkInstance = undefined,
+    window: *c.glfw.GLFWwindow = undefined,
+    surface: c.vulkan.VkSurfaceKHR = undefined,
 
-    physical_device: c.VkPhysicalDevice = undefined,
-    physical_device_properties: c.VkPhysicalDeviceProperties = undefined,
-    mem_properties: c.VkPhysicalDeviceMemoryProperties = undefined,
+    physical_device: c.vulkan.VkPhysicalDevice = undefined,
+    physical_device_properties: c.vulkan.VkPhysicalDeviceProperties = undefined,
+    mem_properties: c.vulkan.VkPhysicalDeviceMemoryProperties = undefined,
 
     device: c.VkDevice = undefined,
     queue_family_index: u32 = 0,
@@ -2279,12 +2287,14 @@ pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index: u
 /// Generates the unique data sent to the GPU for particles
 ///
 /// returns the number of particles sent to the GPU (used for instance rendering)
-pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index: u32) VkAbstractionError!void {
+pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, player_index: u32, ubo_index: u32) VkAbstractionError!void {
     var data = std.ArrayList(zm.Mat).init(self.allocator.*);
     defer data.deinit();
 
     for (bodies) |body| {
-        try data.append(body.transform());
+        if (body.body_type == .particle) {
+            try data.append(body.render_transform(bodies[player_index].position));
+        }
     }
 
     if (data.items.len > 0) {
@@ -2613,13 +2623,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     var frame_time_buffer_index: u32 = 0;
     const FTCB_SIZE: u32 = 128;
     var frame_time_cyclic_buffer: [FTCB_SIZE]f32 = undefined;
-    // TODO replace this with splat?
     @memset(&frame_time_cyclic_buffer, 0.0);
-
-    //self.new_render_targets[0] = std.ArrayList(RenderInfo).init(self.allocator.*);
-    //self.new_render_targets[1] = std.ArrayList(RenderInfo).init(self.allocator.*);
-    //defer self.new_render_targets[0].deinit();
-    //defer self.new_render_targets[1].deinit();
 
     // Time in milliseconds in between frames, 60 is 16.666, 0.0 is 
     var fps_limit: f32 = 0.0;//3.03030303;//8.333;
@@ -2632,36 +2636,16 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     var previous_render_frame: RenderFrame = undefined;
     _ = &previous_render_frame;
 
-    //std.debug.print("render frame 0: {}\n\n", .{render_frame_buffer.*.frame[0]});
-    //std.debug.print("render frame 1: {}\n\n", .{render_frame_buffer.*.frame[1]});
-
 
     while (c.glfwWindowShouldClose(self.window) == 0) {
         const current_time: f32 = @floatCast(c.glfwGetTime());
         const frame_delta: f32 = current_time - previous_frame_time;
         
-        //c.glfwPollEvents();
+        c.glfwPollEvents();
 
         if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
-            var render_frame: *RenderFrame = undefined;
-            var render_frame_index: u32 = 0;
-            if (render_frame_buffer.*.mutex[0].tryLock()) {
-                render_frame = &render_frame_buffer.*.frame[0];
-                render_frame_index = 0;
-            } else if (render_frame_buffer.*.mutex[1].tryLock()) {
-                render_frame = &render_frame_buffer.*.frame[1];
-                render_frame_index = 1;
-            }
-            std.debug.print("render frame pointer {any}\n", .{render_frame.*.camera_state});
-
-            //const next_new_index: u32 = (self.new_index + 1) % 2;
-            //try self.render_targets.appendSlice(self.new_render_targets[next_new_index].items);
-            //self.new_render_targets[next_new_index].clearRetainingCapacity();
-            //self.new_index = next_new_index;
-
-            //const copy_index: u32 = physics_state.display_index; // If we keep referencing the original index variable it will change and segfault
-            //bodies = try self.allocator.realloc(bodies, physics_state.display_bodies[copy_index].len);
-            //@memcpy(bodies, physics_state.display_bodies[copy_index]);
+            const render_frame_index: u32 = render_frame_buffer.lock_render_frame();
+            const render_frame: *RenderFrame = &render_frame_buffer.*.frame[render_frame_index];
 
             previous_frame_time = current_time;
 
@@ -2674,24 +2658,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
 
             // TODO move this out of the render loop somehow
             //  I think this is better than making the yaw a global state?
-            //if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
-            //    game_state.player_state.yaw += @as(f32, 
-            //        @floatCast(input_state.mouse_dx * std.math.pi
-            //            / 180.0 * input_state.MOUSE_SENSITIVITY)
-            //        );
-            //    input_state.mouse_dx = 0.0;
-            //}
             //
-            //if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
-            //    game_state.player_state.pitch -= @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
-            //    if (game_state.player_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
-            //        game_state.player_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
-            //    }
-            //    if (game_state.player_state.pitch < - std.math.pi / 2.0 + std.math.pi / 256.0) {
-            //        game_state.player_state.pitch =  - std.math.pi / 2.0 + std.math.pi / 256.0;
-            //    }
-            //    input_state.mouse_dy = 0.0;
-            //}
 
             //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
             const up : zm.Vec = .{0.0,1.0,0.0,0.0};
@@ -2702,7 +2669,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
                 0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[2]),
                 0.0,
             };
-            const view: zm.Mat = zm.lookToLh(player_pos, render_frame.*.camera_state.*.look(), up);
+            const view: zm.Mat = zm.lookToLh(player_pos, render_frame.*.camera_state.*.lookV(), up);
             const projection: zm.Mat = zm.perspectiveFovLh(
                 1.0,
                 aspect_ratio,
@@ -2716,7 +2683,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
             @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
             
             //try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
-            try update_particle_ubo(self, render_frame.bodies, 0);
+            try update_particle_ubo(self, render_frame.bodies, render_frame.player_index, 0);
 
             self.render_targets.items[1].instance_count = render_frame.particle_count;
             
@@ -2731,7 +2698,6 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
             average_frame_time /= FTCB_SIZE;
 
 
-            //std.debug.print("render state size: {} {any}\n", .{render_state.len, render_state});
             std.debug.print("\t\t\t| pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
                 //if (input_state.mouse_capture) "on " else "off",
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])), 

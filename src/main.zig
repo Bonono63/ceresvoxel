@@ -60,7 +60,7 @@ pub const CameraState = struct {
     }
 
     pub fn right(self: *const CameraState) zm.Vec {
-        return zm.normalize3(zm.cross3(self.look(), self.up()));
+        return zm.normalize3(zm.cross3(self.up(), self.lookV()));
     }
 };
 
@@ -134,8 +134,8 @@ pub fn main() !void {
         .camera_state = CameraState{},
         .allocator = &allocator,
         .render_frame_buffer = .{
-            .frame = .{undefined, undefined},
             .allocator = &allocator,
+            .size = 3,
         }
     };
     defer game_state.voxel_spaces.deinit();
@@ -245,12 +245,32 @@ pub fn main() !void {
         const delta_time: i64 = current_time - prev_tick_time;
         const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
 
-        c.glfwPollEvents();
+        //c.glfwPollEvents();
         
         if (input_state.control) {
             game_state.camera_state.speed = 100.0;
         } else {
             game_state.camera_state.speed = 5.0;
+        }
+
+
+        if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
+            game_state.camera_state.yaw -= @as(f32, 
+                @floatCast(input_state.mouse_dx * std.math.pi
+                    / 180.0 * input_state.MOUSE_SENSITIVITY)
+                );
+            input_state.mouse_dx = 0.0;
+        }
+        
+        if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
+            game_state.camera_state.pitch += @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+            if (game_state.camera_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
+                game_state.camera_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
+            }
+            if (game_state.camera_state.pitch < - std.math.pi / 2.0 + std.math.pi / 256.0) {
+                game_state.camera_state.pitch =  - std.math.pi / 2.0 + std.math.pi / 256.0;
+            }
+            input_state.mouse_dy = 0.0;
         }
         
         const look = game_state.camera_state.lookV();
@@ -284,19 +304,20 @@ pub fn main() !void {
                 );
         }
         if (input_state.d) {
-            input_vec -= cm.scale_f32(
-                right,
-                game_state.camera_state.speed
-                );
-        }
-        if (input_state.a) {
             input_vec += cm.scale_f32(
                 right,
                 game_state.camera_state.speed
                 );
         }
+        if (input_state.a) {
+            input_vec -= cm.scale_f32(
+                right,
+                game_state.camera_state.speed
+                );
+        }
             
-        if (input_state.mouse_capture)
+        // TODO make this only work while glfw is initialized it is producing that error
+        if (input_state.mouse_capture and !render_done)
         {
             c.glfwSetInputMode(vulkan_state.window, c.GLFW_CURSOR, c.GLFW_CURSOR_DISABLED);
         }
@@ -316,10 +337,12 @@ pub fn main() !void {
 
             for (physics_state.bodies.items, 0..physics_state.bodies.items.len) |body, index| {
                 if (body.body_type == .particle) {
-                    if (body.particle_time < 200) {
+                    const MAX_PARTICLE_TIME: u32 = 1000;
+                    if (body.particle_time < MAX_PARTICLE_TIME) {
                         physics_state.bodies.items[index].particle_time += 1;
                     } else {
                         _ = physics_state.bodies.orderedRemove(index);
+                        physics_state.particle_count -= 1;
                     }
                 }
             }
@@ -355,28 +378,12 @@ pub fn main() !void {
                 std.time.milliTimestamp() - current_time
             });
         }
-        
-        //const next_display_index = (physics_state.display_index + 1) % 2;
-        //physics_state.display_bodies[next_display_index] = try game_state.allocator.realloc(
-        //    physics_state.display_bodies[next_display_index],
-        //    physics_state.bodies.items.len
-        //    );
-        //@memcpy(physics_state.display_bodies[next_display_index], physics_state.bodies.items);
-        //physics_state.display_index = next_display_index;
-        
-        var render_frame_index: u32 = 0;
-        if (game_state.render_frame_buffer.mutex[0].tryLock()) {
-            render_frame_index = 0;
-        } else if (game_state.render_frame_buffer.mutex[1].tryLock()) {
-            render_frame_index = 1;
-        }
 
         try game_state.render_frame_buffer.update(
             &physics_state,
             &game_state.voxel_spaces.items,
-            render_frame_index
             );
-        
+
         if (render_done) {
             game_state.completion_signal = false;
         }
