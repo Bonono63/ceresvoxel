@@ -364,14 +364,14 @@ pub const VulkanState = struct {
         const required_extensions = c.glfw.glfwGetRequiredInstanceExtensions(&required_extension_count) orelse return VkAbstractionError.RequiredExtensionsFailure;
 
         var extensions_arraylist = try std.ArrayList([*:0]const u8).initCapacity(self.allocator.*, 16);
-        defer extensions_arraylist.deinit();
+        defer extensions_arraylist.deinit(self.allocator.*);
 
         for (0..required_extension_count) |i| {
-            try extensions_arraylist.append(required_extensions[i]);
+            try extensions_arraylist.append(self.allocator.*, required_extensions[i]);
         }
 
         for (instance_extensions) |extension| {
-            try extensions_arraylist.append(extension);
+            try extensions_arraylist.append(self.allocator.*, extension);
         }
 
         std.debug.print("[Info] Vulkan Instance Extensions ({}):\n", .{extensions_arraylist.items.len});
@@ -380,7 +380,7 @@ pub const VulkanState = struct {
         }
 
         var available_layers_count: u32 = 0;
-        if (c.vulkan.vkEnumerateInstanceLayerProperties(&available_layers_count, null) != c.VK_SUCCESS) {
+        if (c.vulkan.vkEnumerateInstanceLayerProperties(&available_layers_count, null) != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.InstanceLayerEnumerationFailure;
         }
 
@@ -421,7 +421,7 @@ pub const VulkanState = struct {
     }
 
     pub fn create_surface(self: *VulkanState) VkAbstractionError!void {
-        const success = c.vulkan.glfwCreateWindowSurface(self.vk_instance, self.window, null, &self.surface);
+        const success = c.glfw.glfwCreateWindowSurface(self.vk_instance, self.window, null, &self.surface);
 
         if (success != c.vulkan.VK_SUCCESS) {
             std.debug.print("[Error] Surface Creation Failure: {}\n", .{success});
@@ -533,7 +533,8 @@ pub const VulkanState = struct {
         var format_index: u32 = 0;
 
         for (support.formats, 0..support.formats.len) |format, i| {
-            if (format.format == c.vulkan.VK_FORMAT_B8G8R8A8_SRGB and format.colorSpace == c.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            if (format.format == c.vulkan.VK_FORMAT_B8G8R8A8_SRGB
+                and format.colorSpace == c.vulkan.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
                 format_index = @intCast(i);
                 surface_format = format;
                 break;
@@ -556,7 +557,7 @@ pub const VulkanState = struct {
             extent = support.capabilities.currentExtent;
         } else {
             // This returns a signed integer
-            c.vulkan.glfwGetFramebufferSize(self.window, &width, &height);
+            c.glfw.glfwGetFramebufferSize(self.window, &width, &height);
 
             if (width < 0 or height < 0) {
                 return VkAbstractionError.InappropriateGLFWFrameBufferSizeReturn;
@@ -820,7 +821,7 @@ pub const VulkanState = struct {
             .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
             .depthClampEnable = c.vulkan.VK_FALSE,
             .rasterizerDiscardEnable = c.vulkan.VK_FALSE,
-            .polygonMode = if (wireframe) c.vulkan.VK_POLYGON_MODE_LINE else c.VK_POLYGON_MODE_FILL,
+            .polygonMode = if (wireframe) c.vulkan.VK_POLYGON_MODE_LINE else c.vulkan.VK_POLYGON_MODE_FILL,
             .lineWidth = 1.0,
             .cullMode = c.vulkan.VK_CULL_MODE_BACK_BIT,
             .frontFace = c.vulkan.VK_FRONT_FACE_CLOCKWISE,
@@ -841,7 +842,11 @@ pub const VulkanState = struct {
         };
 
         const color_blending_attachment_create_info = c.vulkan.VkPipelineColorBlendAttachmentState{
-            .colorWriteMask = c.vulkan.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
+            .colorWriteMask = 
+                c.vulkan.VK_COLOR_COMPONENT_R_BIT
+                | c.vulkan.VK_COLOR_COMPONENT_G_BIT
+                | c.vulkan.VK_COLOR_COMPONENT_B_BIT
+                | c.vulkan.VK_COLOR_COMPONENT_A_BIT,
             .blendEnable = c.vulkan.VK_FALSE,
         };
 
@@ -1000,7 +1005,11 @@ pub const VulkanState = struct {
         };
 
         const color_blending_attachment_create_info = c.vulkan.VkPipelineColorBlendAttachmentState{
-            .colorWriteMask = c.vulkan.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
+            .colorWriteMask =
+                c.vulkan.VK_COLOR_COMPONENT_R_BIT
+                | c.vulkan.VK_COLOR_COMPONENT_G_BIT
+                | c.vulkan.VK_COLOR_COMPONENT_B_BIT
+                | c.vulkan.VK_COLOR_COMPONENT_A_BIT,
             .blendEnable = c.vulkan.VK_FALSE,
         };
 
@@ -1066,7 +1075,7 @@ pub const VulkanState = struct {
             return VkAbstractionError.CreateShaderModuleFailure;
         }
 
-        try self.shader_modules.append(shader_module);
+        try self.shader_modules.append(self.allocator.*, shader_module);
     }
 
     pub fn create_framebuffers(self: *VulkanState) VkAbstractionError!void {
@@ -1114,7 +1123,7 @@ pub const VulkanState = struct {
             .commandBufferCount = @intCast(self.command_buffers.len),
         };
 
-        if (c.vulkan.vkAllocateCommandBuffers(self.device, &allocation_info, self.command_buffers.ptr) != c.VK_SUCCESS) {
+        if (c.vulkan.vkAllocateCommandBuffers(self.device, &allocation_info, self.command_buffers.ptr) != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.CommandBufferAllocationFailure;
         }
     }
@@ -1128,7 +1137,7 @@ pub const VulkanState = struct {
             .flags = 0,
         };
 
-        if (c.vulkan.vkBeginCommandBuffer(command_buffer, &begin_info) != c.VK_SUCCESS) {
+        if (c.vulkan.vkBeginCommandBuffer(command_buffer, &begin_info) != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.BeginRenderPassFailure;
         }
 
@@ -1148,7 +1157,7 @@ pub const VulkanState = struct {
             .pClearValues = &clear_colors,
         };
 
-        c.vulkan.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.VK_SUBPASS_CONTENTS_INLINE);
+        c.vulkan.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.vulkan.VK_SUBPASS_CONTENTS_INLINE);
 
         const viewport = c.vulkan.VkViewport{
             .x = 0.0,
@@ -1169,8 +1178,8 @@ pub const VulkanState = struct {
         c.vulkan.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
         
         // Camera
-        c.vulkan.vkCmdPushConstants(command_buffer, self.pipeline_layout, c.VK_SHADER_STAGE_ALL, 0, self.push_constant_info.size, &self.push_constant_data[0]);
-        c.vulkan.vkCmdBindDescriptorSets(command_buffer, c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
+        c.vulkan.vkCmdPushConstants(command_buffer, self.pipeline_layout, c.vulkan.VK_SHADER_STAGE_ALL, 0, self.push_constant_info.size, &self.push_constant_data[0]);
+        c.vulkan.vkCmdBindDescriptorSets(command_buffer, c.vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 
         var previous_pipeline_index: u32 = std.math.maxInt(u32);
         for (render_state.*) |target| {
@@ -1258,9 +1267,24 @@ pub const VulkanState = struct {
         };
 
         const attribute_description: [3]c.vulkan.VkVertexInputAttributeDescription = .{ 
-            c.vulkan.VkVertexInputAttributeDescription{ .binding = 0, .location = 0, .format = c.VK_FORMAT_R32_UINT, .offset = 0 }, // chunk index
-            c.vulkan.VkVertexInputAttributeDescription{ .binding = 0, .location = 1, .format = c.VK_FORMAT_R32G32_SFLOAT, .offset = @sizeOf(u32) }, // uv
-            c.vulkan.VkVertexInputAttributeDescription{ .binding = 0, .location = 2, .format = c.VK_FORMAT_R32G32B32_SFLOAT, .offset = @sizeOf(u32) + @sizeOf(@Vector(2, f32)) }, // pos
+            c.vulkan.VkVertexInputAttributeDescription{
+                .binding = 0,
+                .location = 0,
+                .format = c.vulkan.VK_FORMAT_R32_UINT,
+                .offset = 0
+            }, // chunk index
+            c.vulkan.VkVertexInputAttributeDescription{
+                .binding = 0,
+                .location = 1,
+                .format = c.vulkan.VK_FORMAT_R32G32_SFLOAT,
+                .offset = @sizeOf(u32)
+            }, // uv
+            c.vulkan.VkVertexInputAttributeDescription{
+                .binding = 0,
+                .location = 2,
+                .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = @sizeOf(u32) + @sizeOf(@Vector(2, f32))
+            }, // pos
         };
 
         const vertex_input_info = c.vulkan.VkPipelineVertexInputStateCreateInfo{
@@ -1303,7 +1327,7 @@ pub const VulkanState = struct {
             .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
             .depthClampEnable = c.vulkan.VK_FALSE,
             .rasterizerDiscardEnable = c.vulkan.VK_FALSE,
-            .polygonMode = if (wireframe) c.vulkan.VK_POLYGON_MODE_LINE else c.VK_POLYGON_MODE_FILL,
+            .polygonMode = if (wireframe) c.vulkan.VK_POLYGON_MODE_LINE else c.vulkan.VK_POLYGON_MODE_FILL,
             .lineWidth = 1.0,
             .cullMode = c.vulkan.VK_CULL_MODE_BACK_BIT,
             .frontFace = c.vulkan.VK_FRONT_FACE_CLOCKWISE,
@@ -1324,7 +1348,11 @@ pub const VulkanState = struct {
         };
 
         const color_blending_attachment_create_info = c.vulkan.VkPipelineColorBlendAttachmentState{
-            .colorWriteMask = c.vulkan.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
+            .colorWriteMask = 
+                c.vulkan.VK_COLOR_COMPONENT_R_BIT
+                | c.vulkan.VK_COLOR_COMPONENT_G_BIT
+                | c.vulkan.VK_COLOR_COMPONENT_B_BIT
+                | c.vulkan.VK_COLOR_COMPONENT_A_BIT,
             .blendEnable = c.vulkan.VK_FALSE,
         };
 
@@ -1419,10 +1447,13 @@ pub const VulkanState = struct {
         const subpass_dependency = c.vulkan.VkSubpassDependency{
             .srcSubpass = c.vulkan.VK_SUBPASS_EXTERNAL,
             .dstSubpass = 0,
-            .srcStageMask = c.vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+            .srcStageMask = c.vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                | c.vulkan.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
             .srcAccessMask = 0,
-            .dstStageMask = c.vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-            .dstAccessMask = c.vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | c.VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .dstStageMask = c.vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                | c.vulkan.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+            .dstAccessMask = c.vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                | c.vulkan.VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
         };
 
         const renderpass_create_info = c.vulkan.VkRenderPassCreateInfo{
@@ -1460,7 +1491,7 @@ pub const VulkanState = struct {
             const success_b = c.vulkan.vkCreateSemaphore(self.device, &image_completion_semaphore_info, null, &self.image_completion_semaphores[i]);
             const success_c = c.vulkan.vkCreateFence(self.device, &in_flight_fence_info, null, &self.in_flight_fences[i]);
 
-            if (success_a != c.vulkan.VK_SUCCESS or success_b != c.VK_SUCCESS or success_c != c.VK_SUCCESS) {
+            if (success_a != c.vulkan.VK_SUCCESS or success_b != c.vulkan.VK_SUCCESS or success_c != c.vulkan.VK_SUCCESS) {
                 return VkAbstractionError.CreateSyncObjectsFailure;
             }
         }
@@ -1469,7 +1500,7 @@ pub const VulkanState = struct {
     /// Determines which buffer to use (according to the number of concurrent frames and which was the previous one)
     /// It then submits the commands generated by record_command_buffer()
     pub fn draw_frame(self: *VulkanState, frame_index: u32, render_state: *[]RenderInfo) VkAbstractionError!void {
-        const fence_wait = c.vulkan.vkWaitForFences(self.device, 1, &self.in_flight_fences[frame_index], c.VK_TRUE, std.math.maxInt(u64));
+        const fence_wait = c.vulkan.vkWaitForFences(self.device, 1, &self.in_flight_fences[frame_index], c.vulkan.VK_TRUE, std.math.maxInt(u64));
         if (fence_wait != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
         }
@@ -1477,7 +1508,7 @@ pub const VulkanState = struct {
         var image_index: u32 = 0;
         const acquire_next_image_success = c.vulkan.vkAcquireNextImageKHR(self.device, self.swapchain, std.math.maxInt(u64), self.image_available_semaphores[frame_index], null, &image_index);
 
-        if (acquire_next_image_success == c.vulkan.VK_ERROR_OUT_OF_DATE_KHR or acquire_next_image_success == c.VK_SUBOPTIMAL_KHR or self.framebuffer_resized) {
+        if (acquire_next_image_success == c.vulkan.VK_ERROR_OUT_OF_DATE_KHR or acquire_next_image_success == c.vulkan.VK_SUBOPTIMAL_KHR or self.framebuffer_resized) {
             try recreate_swapchain(self);
             self.framebuffer_resized = false;
             return;
@@ -1491,7 +1522,7 @@ pub const VulkanState = struct {
             return VkAbstractionError.OutOfMemory;
         }
 
-        if (c.vulkan.vkResetCommandBuffer(self.command_buffers[frame_index], 0) != c.VK_SUCCESS) {
+        if (c.vulkan.vkResetCommandBuffer(self.command_buffers[frame_index], 0) != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
         }
 
@@ -1533,7 +1564,7 @@ pub const VulkanState = struct {
         };
 
         const present_success = c.vulkan.vkQueuePresentKHR(self.present_queue, &present_info);
-        if (present_success == c.vulkan.VK_SUBOPTIMAL_KHR or present_success == c.VK_ERROR_OUT_OF_DATE_KHR or self.framebuffer_resized)
+        if (present_success == c.vulkan.VK_SUBOPTIMAL_KHR or present_success == c.vulkan.VK_ERROR_OUT_OF_DATE_KHR or self.framebuffer_resized)
         {
             try recreate_swapchain(self);
             self.framebuffer_resized = false;
@@ -1547,8 +1578,16 @@ pub const VulkanState = struct {
     /// Image format does not matter
     pub fn create_depth_resources(self: *VulkanState) VkAbstractionError!void
     {
-        const candidates: [3]c.vulkan.VkFormat = .{c.VK_FORMAT_D32_SFLOAT, c.VK_FORMAT_D32_SFLOAT_S8_UINT, c.VK_FORMAT_D24_UNORM_S8_UINT};
-        const format = try self.depth_texture_format(&candidates, c.vulkan.VK_IMAGE_TILING_OPTIMAL, c.VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        const candidates: [3]c.vulkan.VkFormat = .{
+            c.vulkan.VK_FORMAT_D32_SFLOAT,
+            c.vulkan.VK_FORMAT_D32_SFLOAT_S8_UINT,
+            c.vulkan.VK_FORMAT_D24_UNORM_S8_UINT
+        };
+        const format = try self.depth_texture_format(
+            &candidates,
+            c.vulkan.VK_IMAGE_TILING_OPTIMAL,
+            c.vulkan.VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+            );
         self.depth_format = format;
 
         const image_create_info = c.vulkan.VkImageCreateInfo{
@@ -1601,8 +1640,13 @@ pub const VulkanState = struct {
     }
 
     /// Determines and returns the (best) supported depth resource format
-    fn depth_texture_format(self: *VulkanState, candidates: []const c.vulkan.VkFormat, tiling: c.VkImageTiling, features: c.VkFormatFeatureFlags) VkAbstractionError!c.VkFormat
-    {
+    fn depth_texture_format(
+        self: *VulkanState,
+        candidates: []const c.vulkan.VkFormat,
+        tiling: c.vulkan.VkImageTiling,
+        features: c.vulkan.VkFormatFeatureFlags
+        ) VkAbstractionError!c.vulkan.VkFormat {
+        
         for (candidates) |format|
         {
             var properties : c.vulkan.VkFormatProperties = undefined;
@@ -1639,10 +1683,10 @@ pub const VulkanState = struct {
     pub fn recreate_swapchain(self: *VulkanState) VkAbstractionError!void {
         var width: i32 = 0;
         var height: i32 = 0;
-        c.vulkan.glfwGetFramebufferSize(self.window, &width, &height);
+        c.glfw.glfwGetFramebufferSize(self.window, &width, &height);
         while (width == 0 or height == 0) {
-            c.vulkan.glfwGetFramebufferSize(self.window, &width, &height);
-            c.vulkan.glfwWaitEvents();
+            c.glfw.glfwGetFramebufferSize(self.window, &width, &height);
+            c.glfw.glfwWaitEvents();
         }
 
         _ = c.vulkan.vkDeviceWaitIdle(self.device);
@@ -1679,7 +1723,7 @@ pub const VulkanState = struct {
 
         const staging_alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
             .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
-            .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | c.VMA_ALLOCATION_CREATE_MAPPED_BIT,
+            .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | c.vulkan.VMA_ALLOCATION_CREATE_MAPPED_BIT,
         };
 
         var staging_alloc : c.vulkan.VmaAllocation = undefined;
@@ -1725,7 +1769,18 @@ pub const VulkanState = struct {
             .dstAccessMask = c.vulkan.VK_ACCESS_TRANSFER_WRITE_BIT,
         };
 
-        c.vulkan.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 1, &transfer_barrier, 0, null);
+        c.vulkan.vkCmdPipelineBarrier(
+            command_buffer,
+            c.vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0,
+            null,
+            1,
+            &transfer_barrier,
+            0,
+            null
+            );
         
         const region = c.vulkan.VkBufferCopy{
             .srcOffset = 0,
@@ -1746,7 +1801,18 @@ pub const VulkanState = struct {
             .size = size,
         };
 
-        c.vulkan.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TRANSFER_BIT, c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, null, 1, &buffer_read_barrier, 0, null);
+        c.vulkan.vkCmdPipelineBarrier(
+            command_buffer,
+            c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            c.vulkan.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0,
+            0,
+            null,
+            1,
+            &buffer_read_barrier,
+            0,
+            null
+            );
 
         _ = c.vulkan.vkEndCommandBuffer(command_buffer);
 
@@ -1772,7 +1838,7 @@ pub const VulkanState = struct {
         var buffer_create_info = c.vulkan.VkBufferCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size = size,
-            .usage = c.vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            .usage = c.vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         }; 
     
         const alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
@@ -1790,8 +1856,8 @@ pub const VulkanState = struct {
 
         try self.copy_data_via_staging_buffer(&vertex_buffer, size, ptr);
 
-        try self.vertex_buffers.append(vertex_buffer);
-        try self.vertex_allocs.append(alloc);
+        try self.vertex_buffers.append(self.allocator.*, vertex_buffer);
+        try self.vertex_allocs.append(self.allocator.*, alloc);
         const vertex_count = size / stride_size;
         self.render_targets.items[render_index].vertex_count = vertex_count;
     }
@@ -1806,7 +1872,7 @@ pub const VulkanState = struct {
         var buffer_create_info = c.vulkan.VkBufferCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size = size,
-            .usage = c.vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            .usage = c.vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         }; 
     
         const alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
@@ -1848,7 +1914,7 @@ pub const VulkanState = struct {
         var buffer_create_info = c.vulkan.VkBufferCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size = size,
-            .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         }; 
     
         const alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
@@ -1866,8 +1932,8 @@ pub const VulkanState = struct {
 
         try self.copy_data_via_staging_buffer(&ssbo, size, ptr);
 
-        try self.ssbo_buffers.append(ssbo);
-        try self.ssbo_allocs.append(alloc);
+        try self.ssbo_buffers.append(self.allocator.*, ssbo);
+        try self.ssbo_allocs.append(self.allocator.*, alloc);
     }
 
     pub fn create_voxel_space(self: *VulkanState, voxel_space: *chunk.VoxelSpace, space_index: u32) !void {
@@ -1889,6 +1955,7 @@ pub const VulkanState = struct {
        
         const render_index = 2 + space_index + last_space_chunk_index;
         try self.render_targets.append(
+            self.allocator.*,
             .{
                 .vertex_index = render_index,
                 .pipeline_index = 2,
@@ -1950,8 +2017,8 @@ pub const VulkanState = struct {
         c.vulkan.vmaDestroyAllocator(self.vma_allocator);
         c.vulkan.vkDestroyDevice(self.device, null);
         c.vulkan.vkDestroyInstance(self.vk_instance, null);
-        c.vulkan.glfwDestroyWindow(self.window);
-        c.vulkan.glfwTerminate();
+        c.glfw.glfwDestroyWindow(self.window);
+        c.glfw.glfwTerminate();
     }
 };
 
@@ -1971,7 +2038,7 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
 
         const staging_alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
             .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
-            .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | c.VMA_ALLOCATION_CREATE_MAPPED_BIT,
+            .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | c.vulkan.VMA_ALLOCATION_CREATE_MAPPED_BIT,
         };
 
         var staging_alloc : c.vulkan.VmaAllocation = undefined;
@@ -1992,7 +2059,7 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
             .format = c.vulkan.VK_FORMAT_R8G8B8A8_SRGB,
             .tiling = c.vulkan.VK_IMAGE_TILING_OPTIMAL,
             .initialLayout = c.vulkan.VK_IMAGE_LAYOUT_UNDEFINED,
-            .usage = c.vulkan.VK_IMAGE_USAGE_SAMPLED_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            .usage = c.vulkan.VK_IMAGE_USAGE_SAMPLED_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             .samples = c.vulkan.VK_SAMPLE_COUNT_1_BIT,
             .sharingMode = c.vulkan.VK_SHARING_MODE_EXCLUSIVE,
         };
@@ -2051,7 +2118,18 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
             .dstAccessMask = c.vulkan.VK_ACCESS_TRANSFER_WRITE_BIT,
         };
 
-        c.vulkan.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 1, &transfer_barrier);
+        c.vulkan.vkCmdPipelineBarrier(
+            command_buffer,
+            c.vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0,
+            null,
+            0,
+            null,
+            1,
+            &transfer_barrier
+            );
         
         // copy from staging buffer to image gpu destination
         const image_subresource = c.vulkan.VkImageSubresourceLayers{
@@ -2070,7 +2148,14 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
             .imageExtent = .{ .width = @intCast(image_info.width), .height = @intCast(image_info.height), .depth = 1 },
         };
 
-        c.vulkan.vkCmdCopyBufferToImage(command_buffer, staging_buffer, image_info.image, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+        c.vulkan.vkCmdCopyBufferToImage(
+            command_buffer,
+            staging_buffer,
+            image_info.image,
+            c.vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1,
+            &region
+            );
         // Optimal shader layout translation
         const shader_read_barrier = c.vulkan.VkImageMemoryBarrier{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -2084,9 +2169,20 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
             .dstAccessMask = c.vulkan.VK_ACCESS_SHADER_READ_BIT,
         };
 
-        c.vulkan.vkCmdPipelineBarrier(command_buffer, c.VK_PIPELINE_STAGE_TRANSFER_BIT, c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, null, 0, null, 1, &shader_read_barrier);
+        c.vulkan.vkCmdPipelineBarrier(
+            command_buffer,
+            c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            c.vulkan.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0,
+            0,
+            null,
+            0,
+            null,
+            1,
+            &shader_read_barrier
+            );
 
-        _ = c.vulkan.vkEndCommandBuffer(command_buffer);
+_ = c.vulkan.vkEndCommandBuffer(command_buffer);
 
         const submit_info = c.vulkan.VkSubmitInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -2122,8 +2218,14 @@ pub fn create_image_view(device: c.vulkan.VkDevice, image_info: *const ImageInfo
     }
 }
 
-pub fn create_samplers(instance: *VulkanState, image_info: *ImageInfo, filter: c.vulkan.VkFilter, repeat_mode: c.VkSamplerAddressMode, anisotropy: bool) VkAbstractionError!void
-{
+pub fn create_samplers(
+    instance: *VulkanState,
+    image_info: *ImageInfo,
+    filter: c.vulkan.VkFilter,
+    repeat_mode: c.vulkan.VkSamplerAddressMode,
+    anisotropy: bool
+    ) VkAbstractionError!void {
+
     const sampler_info = c.vulkan.VkSamplerCreateInfo{
         .sType = c.vulkan.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter = filter,//c.vulkan.VK_FILTER_LINEAR
@@ -2131,7 +2233,7 @@ pub fn create_samplers(instance: *VulkanState, image_info: *ImageInfo, filter: c
         .addressModeU = repeat_mode,//VK_SAMPLER_ADDRESS_MODE_REPEAT
         .addressModeV = repeat_mode,
         .addressModeW = repeat_mode,
-        .anisotropyEnable = if (anisotropy) c.vulkan.VK_TRUE else c.VK_FALSE,
+        .anisotropyEnable = if (anisotropy) c.vulkan.VK_TRUE else c.vulkan.VK_FALSE,
         .maxAnisotropy = instance.physical_device_properties.limits.maxSamplerAnisotropy,
         .borderColor = c.vulkan.VK_BORDER_COLOR_INT_OPAQUE_BLACK,
         .unnormalizedCoordinates = c.vulkan.VK_FALSE,
@@ -2228,7 +2330,7 @@ fn query_swapchain_support(self: *VulkanState) VkAbstractionError!swapchain_supp
 
 /// Initializes GLFW and checks for Vulkan support
 pub fn glfw_initialization() VkAbstractionError!void {
-    if (c.vulkan.glfwInit() != c.GLFW_TRUE) {
+    if (c.glfw.glfwInit() != c.glfw.GLFW_TRUE) {
         return VkAbstractionError.GLFWInitializationFailure;
     }
 
@@ -2238,17 +2340,17 @@ pub fn glfw_initialization() VkAbstractionError!void {
         return VkAbstractionError.VulkanUnavailable;
     }
 
-    _ = c.vulkan.glfwSetErrorCallback(glfw_error_callback);
+    _ = c.glfw.glfwSetErrorCallback(glfw_error_callback);
 }
 
-pub fn glfw_error_callback(code: c_int, description: [*c]const u8) callconv(.C) void {
+pub export fn glfw_error_callback(code: c_int, description: [*c]const u8) void {
     std.debug.print("[Error] [GLFW] {} {s}\n", .{ code, description });
 }
 
 /// Generates the unique data sent to the GPU for chunks
 pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index: u32) VkAbstractionError!void {
     var data = try std.ArrayList(ChunkRenderData).initCapacity(self.allocator.*, 16);
-    defer data.deinit();
+    defer data.deinit(self.allocator.*);
 
     // Iterating through every single physics body reeks a little to me,
     // but tbh, not sure I can do much about that atm
@@ -2273,7 +2375,9 @@ pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index: u
 
                 const model = zm.mul(zm.quatToMat(bodies[vs.physics_index].orientation), zm.translationV(pos));
 
-                try data.append(.{
+                try data.append(
+                    self.allocator.*,
+                    .{
                     .model = model,
                     .size = vs.size,
                 });
@@ -2289,11 +2393,14 @@ pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index: u
 /// returns the number of particles sent to the GPU (used for instance rendering)
 pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, player_index: u32, ubo_index: u32) VkAbstractionError!void {
     var data = try std.ArrayList(zm.Mat).initCapacity(self.allocator.*, 64);
-    defer data.deinit();
+    defer data.deinit(self.allocator.*);
 
     for (bodies) |body| {
         if (body.body_type == .particle) {
-            try data.append(body.render_transform(bodies[player_index].position));
+            try data.append(
+                self.allocator.*,
+                body.render_transform(bodies[player_index].position)
+                );
         }
     }
 
@@ -2311,23 +2418,23 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, player_in
 /// done is set to true once the rendering loop is complete
 pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer, ready: *bool, done: *bool) !void {
     self.shader_modules = try std.ArrayList(c.vulkan.VkShaderModule).initCapacity(self.allocator.*, 8);
-    defer self.shader_modules.deinit();
+    defer self.shader_modules.deinit(self.allocator.*);
 
     self.pipelines = try self.allocator.*.alloc(c.vulkan.VkPipeline, 3);
     defer self.allocator.*.free(self.pipelines);
 
     self.vertex_buffers = try std.ArrayList(c.vulkan.VkBuffer).initCapacity(self.allocator.*, 8);
-    defer self.vertex_buffers.deinit();
+    defer self.vertex_buffers.deinit(self.allocator.*);
     self.vertex_allocs = try std.ArrayList(c.vulkan.VmaAllocation).initCapacity(self.allocator.*, 8);
-    defer self.vertex_allocs.deinit();
+    defer self.vertex_allocs.deinit(self.allocator.*);
    
     self.ubo_buffers = try std.ArrayList(c.vulkan.VkBuffer).initCapacity(self.allocator.*, 8);
-    defer self.ubo_buffers.deinit();
+    defer self.ubo_buffers.deinit(self.allocator.*);
     self.ubo_allocs = try std.ArrayList(c.vulkan.VmaAllocation).initCapacity(self.allocator.*, 8);
-    defer self.ubo_allocs.deinit();
+    defer self.ubo_allocs.deinit(self.allocator.*);
 
     self.render_targets = try std.ArrayList(RenderInfo).initCapacity(self.allocator.*, 8);
-    defer self.render_targets.deinit();
+    defer self.render_targets.deinit(self.allocator.*);
 
     self.command_buffers = try self.allocator.*.alloc(c.vulkan.VkCommandBuffer, self.MAX_CONCURRENT_FRAMES);
     defer self.allocator.*.free(self.command_buffers);
@@ -2398,15 +2505,31 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     try self.create_sync_objects();
 
     // GLFW INIT
-    c.vulkan.glfwSetWindowSizeLimits(self.window, 480, 270, c.GLFW_DONT_CARE, c.GLFW_DONT_CARE);
+    c.glfw.glfwSetWindowSizeLimits(self.window, 480, 270, c.glfw.GLFW_DONT_CARE, c.glfw.GLFW_DONT_CARE);
 
     // cursor
-    try self.render_targets.append(.{ .vertex_index = 0, .pipeline_index = 0});
+    try self.render_targets.append(
+        self.allocator.*,
+        .{ .vertex_index = 0, .pipeline_index = 0}
+        );
     // outline
-    try self.render_targets.append(.{ .vertex_index = 1, .pipeline_index = 1, .instance_count = 0});
+    try self.render_targets.append(
+        self.allocator.*,
+        .{ .vertex_index = 1, .pipeline_index = 1, .instance_count = 0}
+        );
     
-    try self.create_vertex_buffer(0, @sizeOf(Vertex), @intCast(cursor_vertices.len * @sizeOf(Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
-    try self.create_vertex_buffer(1, @sizeOf(Vertex), @intCast(block_selection_cube.len * @sizeOf(Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
+    try self.create_vertex_buffer(
+        0,
+        @sizeOf(Vertex),
+        @intCast(cursor_vertices.len * @sizeOf(Vertex)),
+        @ptrCast(@constCast(&cursor_vertices[0]))
+        );
+    try self.create_vertex_buffer(
+        1,
+        @sizeOf(Vertex),
+        @intCast(block_selection_cube.len * @sizeOf(Vertex)),
+        @ptrCast(@constCast(&block_selection_cube[0]))
+        );
 
     // RENDER INIT
 
@@ -2419,7 +2542,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
         .{  .create_info = .{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 .size = 500 * @sizeOf(zm.Mat),
-                .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             },
             .alloc_info = .{
                 .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
@@ -2429,7 +2552,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
         .{  .create_info = .{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 .size = 256 * @sizeOf(ChunkRenderData),
-                .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             },
             .alloc_info = .{
                 .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
@@ -2449,8 +2572,8 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
             return VkAbstractionError.UBOBufferCreationFailure;
         }
 
-        try self.ubo_buffers.append(ubo);
-        try self.ubo_allocs.append(alloc);
+        try self.ubo_buffers.append(self.allocator.*, ubo);
+        try self.ubo_allocs.append(self.allocator.*, alloc);
     }
 
     var image_info0 = ImageInfo{
@@ -2469,7 +2592,13 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     defer self.allocator.*.free(image_info0.samplers);
    
     // TODO turn this into a one line conditional
-    const image_data0 = c.stb.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.STBI_rgb_alpha);
+    const image_data0 = c.stb.stbi_load(
+        "fortnite.jpg",
+        &image_info0.width,
+        &image_info0.height,
+        &image_info0.channels,
+        c.stb.STBI_rgb_alpha
+        );
     if (image_data0 == null){
         std.debug.print("Unable to find image file \n", .{});
         return;
@@ -2483,7 +2612,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     c.stb.stbi_image_free(image_info0.data);
 
     try create_image_view(self.device, &image_info0);
-    try create_samplers(self, &image_info0, c.vulkan.VK_FILTER_LINEAR, c.VK_SAMPLER_ADDRESS_MODE_REPEAT, true);
+    try create_samplers(self, &image_info0, c.vulkan.VK_FILTER_LINEAR, c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT, true);
     
     var image_info1 = ImageInfo{
         .depth = 1,
@@ -2501,7 +2630,13 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     defer self.allocator.*.free(image_info1.samplers);
    
     // TODO turn this into a one line conditional
-    const image_data1 = c.stb.stbi_load("blocks.png", &image_info1.width, &image_info1.height, &image_info1.channels, c.STBI_rgb_alpha);
+    const image_data1 = c.stb.stbi_load(
+        "blocks.png",
+        &image_info1.width,
+        &image_info1.height,
+        &image_info1.channels,
+        c.stb.STBI_rgb_alpha
+        );
     if (image_data1 == null){
         std.debug.print("Unable to find image file \n", .{});
         return;
@@ -2515,7 +2650,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     c.stb.stbi_image_free(image_info1.data);
 
     try create_image_view(self.device, &image_info1);
-    try create_samplers(self, &image_info1, c.vulkan.VK_FILTER_NEAREST, c.VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
+    try create_samplers(self, &image_info1, c.vulkan.VK_FILTER_NEAREST, c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
 
     // Descriptor Sets
     
@@ -2527,7 +2662,11 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
         .pSetLayouts = &layouts,
     };
 
-    if (c.vulkan.vkAllocateDescriptorSets(self.device, &descriptor_alloc_info, self.descriptor_sets.ptr) != c.VK_SUCCESS) {
+    if (c.vulkan.vkAllocateDescriptorSets(
+            self.device,
+            &descriptor_alloc_info,
+            self.descriptor_sets.ptr
+            ) != c.vulkan.VK_SUCCESS) {
         std.debug.print("Unable to allocate Descriptor Sets\n", .{});
     }
     
@@ -2615,7 +2754,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
 
     var frame_count: u64 = 0;
     var current_frame_index: u32 = 0;
-    var previous_frame_time: f32 = @floatCast(c.vulkan.glfwGetTime());
+    var previous_frame_time: f32 = @floatCast(c.glfw.glfwGetTime());
 
     var window_height: i32 = 0;
     var window_width: i32 = 0;
@@ -2637,11 +2776,11 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     _ = &previous_render_frame;
 
 
-    while (c.vulkan.glfwWindowShouldClose(self.window) == 0) {
-        const current_time: f32 = @floatCast(c.vulkan.glfwGetTime());
+    while (c.glfw.glfwWindowShouldClose(self.window) == 0) {
+        const current_time: f32 = @floatCast(c.glfw.glfwGetTime());
         const frame_delta: f32 = current_time - previous_frame_time;
         
-        c.vulkan.glfwPollEvents();
+        c.glfw.glfwPollEvents();
 
         if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
             const render_frame_index: u32 = render_frame_buffer.lock_render_frame();
@@ -2649,7 +2788,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
 
             previous_frame_time = current_time;
 
-            c.vulkan.glfwGetWindowSize(self.window, &window_width, &window_height);
+            c.glfw.glfwGetWindowSize(self.window, &window_width, &window_height);
             const aspect_ratio : f32 = @as(f32, 
                 @floatFromInt(window_width))
                 / @as(f32, @floatFromInt(window_height)

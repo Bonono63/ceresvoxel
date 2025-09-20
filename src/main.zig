@@ -138,20 +138,23 @@ pub fn main() !void {
             .size = 3,
         }
     };
-    defer game_state.voxel_spaces.deinit();
+    defer game_state.voxel_spaces.deinit(allocator);
     
     var physics_state = physics.PhysicsState{
         .bodies = try std.ArrayList(physics.Body).initCapacity(allocator, 64),
         .sim_start_time = std.time.milliTimestamp(),
     };
-    defer physics_state.bodies.deinit();
+    defer physics_state.bodies.deinit(allocator);
     
-    try game_state.voxel_spaces.append(.{
-        .size = .{1,1,1},
-    });
+    try game_state.voxel_spaces.append(
+        allocator,
+        .{ .size = .{1,1,1}, }
+    );
     
     // "Sun"
-    try physics_state.bodies.append(.{
+    try physics_state.bodies.append(
+        allocator,
+        .{
         .position = .{0.0, 0.0, 0.0},
         .inverse_mass = 0.0,
         .planet = false,
@@ -160,37 +163,45 @@ pub fn main() !void {
         .half_size = .{0.5, 0.5, 0.5, 0.0},
         .body_type = .voxel_space,
         .voxel_space = &game_state.voxel_spaces.items[game_state.voxel_spaces.items.len - 1],
-    });
+    }
+    );
     
     
     for (2..9) |index| {
         const rand = std.crypto.random;
         
-        try game_state.voxel_spaces.append(.{
-            .size = .{1,1,1},
-        });
+        try game_state.voxel_spaces.append(
+            allocator,
+            .{ .size = .{1,1,1}, }
+        );
         
-        try physics_state.bodies.append(.{
-            .position = .{0.0, 0.0, 0.0},
-            .inverse_mass = 0.0,
-            .planet = true,
-            .gravity = false,
-            .orbit_radius = @as(f128, @floatFromInt(index * index * index * 3)),
-            .eccentricity = 1.0,
-            .eccliptic_offset = .{rand.float(f32) / 10.0, rand.float(f32) / 10.0},
-            .half_size = .{0.5, 0.5, 0.5, 0.0},
-            .body_type = .voxel_space,
-            .voxel_space = &game_state.voxel_spaces.items[game_state.voxel_spaces.items.len - 1],
-        });
+        try physics_state.bodies.append(
+            allocator,
+            .{
+                .position = .{0.0, 0.0, 0.0},
+                .inverse_mass = 0.0,
+                .planet = true,
+                .gravity = false,
+                .orbit_radius = @as(f128, @floatFromInt(index * index * index * 3)),
+                .eccentricity = 1.0,
+                .eccliptic_offset = .{rand.float(f32) / 10.0, rand.float(f32) / 10.0},
+                .half_size = .{0.5, 0.5, 0.5, 0.0},
+                .body_type = .voxel_space,
+                .voxel_space = &game_state.voxel_spaces.items[game_state.voxel_spaces.items.len - 1],
+            }
+        );
     }
 
     // player
-    try physics_state.bodies.append(.{
-        .position = .{0.0, 100, 0.0},
-        .inverse_mass = (1.0/100.0),
-        .half_size = .{0.5, 1.0, 0.5, 0.0},
-        .body_type = .player,
-    });
+    try physics_state.bodies.append(
+        allocator,
+        .{
+            .position = .{0.0, 100, 0.0},
+            .inverse_mass = (1.0/100.0),
+            .half_size = .{0.5, 1.0, 0.5, 0.0},
+            .body_type = .player,
+        }
+    );
     physics_state.player_index = @intCast(physics_state.bodies.items.len - 1);
     
     try game_state.render_frame_buffer.init(
@@ -225,14 +236,14 @@ pub fn main() !void {
     // This is to ensure we don't start before the render state is prepared (it crashes)
     // TODO REMOVE THIS WITH RENDER FRAME BUFFER WE SHOULD BE OK
     while (!render_ready) {
-        std.time.sleep(1);
+        std.posix.nanosleep(1, 0);
     }
     
     std.debug.print("[Debug] render ready\n", .{});
     //std.debug.print("player physics index: {}\n", .{game_state.player_state.physics_index});
 
     var contacts = try std.ArrayList(physics.Contact).initCapacity(allocator, 64);
-    defer contacts.deinit();
+    defer contacts.deinit(allocator);
 
     // The responsibility of the main thread is to handle input and manage
     // all the other threads
@@ -346,6 +357,7 @@ pub fn main() !void {
             }
             
             try physics.physics_tick(
+                &allocator,
                 delta_time_float,
                 physics_state.sim_start_time,
                 physics_state.bodies.items,
@@ -353,7 +365,9 @@ pub fn main() !void {
                 );
             
             if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
-                try physics_state.bodies.append(.{
+                try physics_state.bodies.append(
+                    allocator,
+                    .{
                         .position = player_physics_state.*.position,
                         .inverse_mass = 1.0 / 32.0,
                         .orientation = game_state.camera_state.look(),
@@ -363,7 +377,8 @@ pub fn main() !void {
                         //.angular_velocity = .{1.0,0.0,0.0,0.0},
                         .half_size = .{0.5, 0.5, 0.5, 0.0},
                         .body_type = .particle,
-                });
+                    }
+                );
 
                 physics_state.particle_count += 1;
                 
@@ -389,7 +404,7 @@ pub fn main() !void {
 }
 
 
-pub fn key_callback(window: ?*c.glfw.GLFWwindow, key: i32, scancode: i32, action: i32, mods: i32) callconv(.C) void {
+pub export fn key_callback(window: ?*c.glfw.GLFWwindow, key: i32, scancode: i32, action: i32, mods: i32) void {
     _ = &scancode;
     _ = &mods;
 
@@ -477,7 +492,7 @@ pub fn key_callback(window: ?*c.glfw.GLFWwindow, key: i32, scancode: i32, action
     }
 }
 
-pub fn cursor_pos_callback(window: ?*c.glfw.GLFWwindow, _xpos: f64, _ypos: f64) callconv(.C) void {
+pub export fn cursor_pos_callback(window: ?*c.glfw.GLFWwindow, _xpos: f64, _ypos: f64)  void {
     _ = &window;
     dx = _xpos - xpos;
     dy = _ypos - ypos;
@@ -491,7 +506,7 @@ pub fn cursor_pos_callback(window: ?*c.glfw.GLFWwindow, _xpos: f64, _ypos: f64) 
     }
 }
 
-pub fn mouse_button_input_callback(window: ?*c.glfw.GLFWwindow, button: i32, action: i32, mods: i32) callconv(.C) void {
+pub export fn mouse_button_input_callback(window: ?*c.glfw.GLFWwindow, button: i32, action: i32, mods: i32) void {
     _ = &button;
     _ = &window;
     _ = &mods;
@@ -518,7 +533,7 @@ pub fn mouse_button_input_callback(window: ?*c.glfw.GLFWwindow, button: i32, act
     }
 }
 
-pub fn window_resize_callback(window: ?*c.GLFWwindow, width: c_int, height: c_int) callconv(.C) void {
+pub export fn window_resize_callback(window: ?*c.glfw.GLFWwindow, width: c_int, height: c_int) void {
     _ = &width;
     _ = &height;
     const instance: *vulkan.VulkanState = @ptrCast(@alignCast(c.glfw.glfwGetWindowUserPointer(window)));

@@ -128,6 +128,7 @@ pub const PhysicsState = struct {
 /// 
 /// bodies: the bodies to be simulated over
 pub fn physics_tick(
+    allocator: *std.mem.Allocator,
     delta_time: f64,
     sim_start_time: i64,
     bodies: []Body,
@@ -163,7 +164,7 @@ pub fn physics_tick(
         for ((a+1)..bodies.len) |b| {
             if (a != b) {
                 if (cm.distance_f128(bodies[a].position, bodies[b].position) < 2.0) {
-                    try generate_contacts(&bodies[a], &bodies[b], contacts);
+                    try generate_contacts(&bodies[a], &bodies[b], contacts, allocator);
                 }
             }
         }
@@ -245,8 +246,12 @@ pub fn physics_tick(
 /// Up to 15 contacts per resolution
 ///
 /// 
-fn generate_contacts(a: *Body, b: *Body, contacts: *std.ArrayList(Contact)) !void {
-    _ = &contacts;
+fn generate_contacts(
+    a: *Body,
+    b: *Body,
+    contacts: *std.ArrayList(Contact),
+    allocator: *std.mem.Allocator
+    ) !void {
 
     const ab_center_line_f128 = a.*.position - b.*.position;
     // this cast should be safe since the 2 bodies should be close enough for it to not be a problem
@@ -311,7 +316,7 @@ fn generate_contacts(a: *Body, b: *Body, contacts: *std.ArrayList(Contact)) !voi
         .friction = 0.1,
     };
 
-    try contacts.append(contact);
+    try contacts.append(allocator.*, contact);
 }
 
 fn SAT_axis(i: u32, a: *Body, b: *Body) zm.Vec {
