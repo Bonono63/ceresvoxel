@@ -21,6 +21,7 @@ const BLOCK_COUNT: f32 = 4.0;
 pub fn BasicMesh(
     data : *const [32768]u8,
     chunk_index: u32,
+    allocator: *std.mem.Allocator,
     list: *std.ArrayList(vulkan.ChunkVertex)
     ) !u32 {
     var size: u32 = 0;
@@ -39,58 +40,58 @@ pub fn BasicMesh(
             const z : f32 = @floatFromInt(i / 32 / 32 % 32);
             
             //Front
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index});
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tr, .index = chunk_index});
-            try list.append(.{.pos = .{ x, y, z }, .uv = br , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y + 1.0, z }, .uv = tr, .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y, z }, .uv = br , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x, y, z }, .uv = br , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = bl , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y, z }, .uv = br , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y, z }, .uv = bl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tl , .index = chunk_index});
 
             //Right
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y + 1.0, z }, .uv = tr , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y, z }, .uv = br , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x + 1.0, y, z }, .uv = br , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y, z }, .uv = br , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
 
             //Back
-            try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl , .index = chunk_index});
-            try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y, z + 1.0 }, .uv = bl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = br , .index = chunk_index});
-            try list.append(.{.pos = .{ x, y, z + 1.0 }, .uv = bl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = br , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y, z + 1.0 }, .uv = bl , .index = chunk_index});
             
             //Left
-            try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br , .index = chunk_index});
-            try list.append(.{.pos = .{ x, y, z }, .uv = bl , .index = chunk_index});
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y, z + 1.0}, .uv = br , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y, z }, .uv = bl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y + 1.0, z }, .uv = tl , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br , .index = chunk_index});
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = tl , .index = chunk_index});
-            try list.append(.{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y, z + 1.0}, .uv = br , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y + 1.0, z }, .uv = tl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr , .index = chunk_index});
             
             //Bottom
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z}, .uv = bl , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y + 1.0, z }, .uv = br , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y + 1.0, z}, .uv = bl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
-            try list.append(.{.pos = .{ x, y + 1.0, z + 1.0}, .uv = tr , .index = chunk_index});
-            try list.append(.{.pos = .{ x, y + 1.0, z }, .uv = br , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y + 1.0, z + 1.0}, .uv = tr , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y + 1.0, z }, .uv = br , .index = chunk_index});
             
             //Top
-            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y, z}, .uv = tl , .index = chunk_index});
-            try list.append(.{.pos = .{ x, y, z }, .uv = tr , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y, z}, .uv = tl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y, z }, .uv = tr , .index = chunk_index});
             
-            try list.append(.{.pos = .{ x, y, z }, .uv = tr , .index = chunk_index});
-            try list.append(.{.pos = .{ x, y, z + 1.0}, .uv = br , .index = chunk_index});
-            try list.append(.{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y, z }, .uv = tr , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x, y, z + 1.0}, .uv = br , .index = chunk_index});
+            try list.append(allocator.*, .{.pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl , .index = chunk_index});
             size += 36;
         }
     }
@@ -109,13 +110,13 @@ pub fn BasicMesh(
 /// containing more than one chunk (Should be deprecated)
 ///
 /// return: number of new additions to the given array list
-pub fn CullMesh(data : *const [32768]u8, chunk_index: u32, list: *std.ArrayList(vulkan.ChunkVertex)) !u32
+pub fn CullMesh(data : *const [32768]u8, chunk_index: u32, allocator: *std.mem.Allocator, list: *std.ArrayList(vulkan.ChunkVertex)) !u32
 {
     _ = &chunk_index;
     var size: u32 = 0;
 
     for (data[0..32768], 0..32768) |val, index| {
-        try list.ensureUnusedCapacity(2048);
+        try list.ensureUnusedCapacity(allocator.*, 2048);
         if (val != 0) {
             const step: f32 = 1.0/BLOCK_COUNT;
             const uv_index: f32 = step * @as(f32, @floatFromInt(val-1));
