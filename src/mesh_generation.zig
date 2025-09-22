@@ -372,7 +372,7 @@ pub fn CullMesh(data : *const [32768]u8, chunk_index: u32, allocator: *std.mem.A
     return size;
 }
 
-//pub fn lattice_chunk
+//pub fn lattice_chunk () []vulkan.Vertex
 ////number of floats per vertex
 //        const int vertex_stride = 6;
 //        //number of vertices per index / number of vertices required for a face

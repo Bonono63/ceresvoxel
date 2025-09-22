@@ -131,7 +131,6 @@ pub const Vertex = struct {
 /// Chunk specific vertex format
 /// Given the uniqueness of each chunk's vertices it needs to have an index field for it's place in the UBO (or SBO)
 pub const ChunkVertex = packed struct {
-    //TODO compact this once we are 100% settled on this data
     index: u32,
     uv: @Vector(2, f32), // TODO Make the UV split into a texture index and the normal values (we can do basic lighting and have access to all textures using a texture atlas essentially with the same amount of data)
     pos: @Vector(3, f32),
@@ -161,7 +160,14 @@ pub const RenderFrameBuffer = struct {
     frame: []RenderFrame = undefined,
     mutex: []std.Thread.Mutex = undefined,
 
-    pub fn init(self: *RenderFrameBuffer, camera_state: *main.CameraState, physics_state: *physics.PhysicsState, voxel_spaces: *[]chunk.VoxelSpace, player_index: u32) !void {
+    pub fn init(
+        self: *RenderFrameBuffer,
+        camera_state: *main.CameraState,
+        physics_state: *physics.PhysicsState,
+        voxel_spaces: *[]chunk.VoxelSpace,
+        player_index: u32
+        ) !void {
+
         self.frame = try self.allocator.*.alloc(RenderFrame, self.size);
         self.mutex = try self.allocator.*.alloc(std.Thread.Mutex, self.size);
 
@@ -210,20 +216,43 @@ pub const RenderFrameBuffer = struct {
 
     /// locks a mutex in the render frame buffer and returns
     pub fn lock_render_frame(self: *RenderFrameBuffer) u32 {
-        // TODO add buffer priorities
-        for (0..self.size) |i| {
-            if (self.mutex[i].tryLock()) {
-                return @intCast(i);
-            }
+        var i: u32 = 0;
+        var locked: bool = false;
+        while (!locked) {
+            //switch (calling_thread) {
+            //    .logic => {
+                    if (self.mutex[i].tryLock()) {
+                        locked = true;
+                    } else {
+                        i = (i + 1) % self.size;
+                    }
+            //    },
+            //    .render => {
+            //        if (self.last_thread[i] != calling_thread) {
+            //            if (self.mutex[i].tryLock()) {
+            //                locked = true;
+            //            } else {
+            //                i = (i + 1) % self.size;
+            //            }
+            //        }
+            //    },
+            //}
         }
-        return 0;
+
+        //self.last_thread[i] = calling_thread;
+
+        //std.debug.print("{}\n", .{i});
+        return i;
     }
 
     pub fn deinit(self: *RenderFrameBuffer) void {
-        self.allocator.*.free(self.frame[0].voxel_spaces);
-        self.allocator.*.free(self.frame[0].bodies);
-        self.allocator.*.free(self.frame[1].voxel_spaces);
-        self.allocator.*.free(self.frame[1].bodies);
+
+        for (0..self.size) |i| {
+            self.allocator.*.free(self.frame[i].voxel_spaces);
+            self.allocator.*.free(self.frame[i].bodies);
+        }
+        self.allocator.*.free(self.frame);
+        self.allocator.*.free(self.mutex);
     } 
 };
 
@@ -274,7 +303,7 @@ pub const VulkanState = struct {
     vma_allocator: c.vulkan.VmaAllocator = undefined,
 
     vk_instance: c.vulkan.VkInstance = undefined,
-    window: *c.glfw.GLFWwindow = undefined,
+    window: *c.vulkan.GLFWwindow = undefined,
     surface: c.vulkan.VkSurfaceKHR = undefined,
 
     physical_device: c.vulkan.VkPhysicalDevice = undefined,
@@ -341,12 +370,11 @@ pub const VulkanState = struct {
     push_constant_data: []u8 = undefined,
     push_constant_info: c.vulkan.VkPushConstantRange = undefined,
 
-    // TODO move the GLFW code out and make this a vulkan only function
     /// Creates our Vulkan instance and GLFW window
     pub fn window_setup(self: *VulkanState, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
-        c.glfw.glfwWindowHint(c.glfw.GLFW_CLIENT_API, c.glfw.GLFW_NO_API);
+        c.vulkan.glfwWindowHint(c.vulkan.GLFW_CLIENT_API, c.vulkan.GLFW_NO_API);
 
-        self.window = c.glfw.glfwCreateWindow(800, 600, application_name.ptr, null, null) orelse return VkAbstractionError.NullWindow;
+        self.window = c.vulkan.glfwCreateWindow(800, 600, application_name.ptr, null, null) orelse return VkAbstractionError.NullWindow;
 
         const application_info = c.vulkan.VkApplicationInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -361,7 +389,7 @@ pub const VulkanState = struct {
         std.debug.print("\tEngine name: {s}\n", .{application_info.pEngineName});
 
         var required_extension_count: u32 = 0;
-        const required_extensions = c.glfw.glfwGetRequiredInstanceExtensions(&required_extension_count) orelse return VkAbstractionError.RequiredExtensionsFailure;
+        const required_extensions = c.vulkan.glfwGetRequiredInstanceExtensions(&required_extension_count) orelse return VkAbstractionError.RequiredExtensionsFailure;
 
         var extensions_arraylist = try std.ArrayList([*:0]const u8).initCapacity(self.allocator.*, 16);
         defer extensions_arraylist.deinit(self.allocator.*);
@@ -421,7 +449,7 @@ pub const VulkanState = struct {
     }
 
     pub fn create_surface(self: *VulkanState) VkAbstractionError!void {
-        const success = c.glfw.glfwCreateWindowSurface(self.vk_instance, self.window, null, &self.surface);
+        const success = c.vulkan.glfwCreateWindowSurface(self.vk_instance, self.window, null, &self.surface);
 
         if (success != c.vulkan.VK_SUCCESS) {
             std.debug.print("[Error] Surface Creation Failure: {}\n", .{success});
@@ -526,8 +554,6 @@ pub const VulkanState = struct {
 
         //if (support.present_size > 0 and support.formats_size > 0) {
         var surface_format: c.vulkan.VkSurfaceFormatKHR = support.formats[0];
-        // TODO Come up with a solution for why adding 1 to the image count causes a serious memory leak (Nvidia Linux Proprietary driver only?)...
-        // Time between frames significantly decreases when allocating at least one more image than the minimum on some systems
         std.debug.print("[Info] Swapchain minimum image count: {}\n", .{support.capabilities.minImageCount});
         var image_count: u32 = support.capabilities.minImageCount + 1;
         var format_index: u32 = 0;
@@ -557,7 +583,7 @@ pub const VulkanState = struct {
             extent = support.capabilities.currentExtent;
         } else {
             // This returns a signed integer
-            c.glfw.glfwGetFramebufferSize(self.window, &width, &height);
+            c.vulkan.glfwGetFramebufferSize(self.window, &width, &height);
 
             if (width < 0 or height < 0) {
                 return VkAbstractionError.InappropriateGLFWFrameBufferSizeReturn;
@@ -1683,10 +1709,10 @@ pub const VulkanState = struct {
     pub fn recreate_swapchain(self: *VulkanState) VkAbstractionError!void {
         var width: i32 = 0;
         var height: i32 = 0;
-        c.glfw.glfwGetFramebufferSize(self.window, &width, &height);
+        c.vulkan.glfwGetFramebufferSize(self.window, &width, &height);
         while (width == 0 or height == 0) {
-            c.glfw.glfwGetFramebufferSize(self.window, &width, &height);
-            c.glfw.glfwWaitEvents();
+            c.vulkan.glfwGetFramebufferSize(self.window, &width, &height);
+            c.vulkan.glfwWaitEvents();
         }
 
         _ = c.vulkan.vkDeviceWaitIdle(self.device);
@@ -2017,8 +2043,8 @@ pub const VulkanState = struct {
         c.vulkan.vmaDestroyAllocator(self.vma_allocator);
         c.vulkan.vkDestroyDevice(self.device, null);
         c.vulkan.vkDestroyInstance(self.vk_instance, null);
-        c.glfw.glfwDestroyWindow(self.window);
-        c.glfw.glfwTerminate();
+        c.vulkan.glfwDestroyWindow(self.window);
+        c.vulkan.glfwTerminate();
     }
 };
 
@@ -2330,17 +2356,17 @@ fn query_swapchain_support(self: *VulkanState) VkAbstractionError!swapchain_supp
 
 /// Initializes GLFW and checks for Vulkan support
 pub fn glfw_initialization() VkAbstractionError!void {
-    if (c.glfw.glfwInit() != c.glfw.GLFW_TRUE) {
+    if (c.vulkan.glfwInit() != c.vulkan.GLFW_TRUE) {
         return VkAbstractionError.GLFWInitializationFailure;
     }
 
-    const vulkan_support = c.glfw.glfwVulkanSupported();
-    if (vulkan_support != c.glfw.GLFW_TRUE) {
+    const vulkan_support = c.vulkan.glfwVulkanSupported();
+    if (vulkan_support != c.vulkan.GLFW_TRUE) {
         std.debug.print("[Error] GLFW could not find Vulkan support.\n", .{});
         return VkAbstractionError.VulkanUnavailable;
     }
 
-    _ = c.glfw.glfwSetErrorCallback(glfw_error_callback);
+    _ = c.vulkan.glfwSetErrorCallback(glfw_error_callback);
 }
 
 pub export fn glfw_error_callback(code: c_int, description: [*c]const u8) void {
@@ -2505,7 +2531,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     try self.create_sync_objects();
 
     // GLFW INIT
-    c.glfw.glfwSetWindowSizeLimits(self.window, 480, 270, c.glfw.GLFW_DONT_CARE, c.glfw.GLFW_DONT_CARE);
+    c.vulkan.glfwSetWindowSizeLimits(self.window, 480, 270, c.vulkan.GLFW_DONT_CARE, c.vulkan.GLFW_DONT_CARE);
 
     // cursor
     try self.render_targets.append(
@@ -2591,7 +2617,6 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     defer self.allocator.*.free(image_info0.views);
     defer self.allocator.*.free(image_info0.samplers);
    
-    // TODO turn this into a one line conditional
     const image_data0 = c.stb.stbi_load(
         "fortnite.jpg",
         &image_info0.width,
@@ -2629,7 +2654,6 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     defer self.allocator.*.free(image_info1.views);
     defer self.allocator.*.free(image_info1.samplers);
    
-    // TODO turn this into a one line conditional
     const image_data1 = c.stb.stbi_load(
         "blocks.png",
         &image_info1.width,
@@ -2754,7 +2778,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
 
     var frame_count: u64 = 0;
     var current_frame_index: u32 = 0;
-    var previous_frame_time: f32 = @floatCast(c.glfw.glfwGetTime());
+    var previous_frame_time: f32 = @floatCast(c.vulkan.glfwGetTime());
 
     var window_height: i32 = 0;
     var window_width: i32 = 0;
@@ -2776,11 +2800,12 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     _ = &previous_render_frame;
 
 
-    while (c.glfw.glfwWindowShouldClose(self.window) == 0) {
-        const current_time: f32 = @floatCast(c.glfw.glfwGetTime());
+    //var previous_frame_index: u32 = 0;
+    while (c.vulkan.glfwWindowShouldClose(self.window) == 0) {
+        const current_time: f32 = @floatCast(c.vulkan.glfwGetTime());
         const frame_delta: f32 = current_time - previous_frame_time;
         
-        c.glfw.glfwPollEvents();
+        c.vulkan.glfwPollEvents();
 
         if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
             const render_frame_index: u32 = render_frame_buffer.lock_render_frame();
@@ -2788,16 +2813,11 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
 
             previous_frame_time = current_time;
 
-            c.glfw.glfwGetWindowSize(self.window, &window_width, &window_height);
+            c.vulkan.glfwGetWindowSize(self.window, &window_width, &window_height);
             const aspect_ratio : f32 = @as(f32, 
                 @floatFromInt(window_width))
                 / @as(f32, @floatFromInt(window_height)
                     );
-
-
-            // TODO move this out of the render loop somehow
-            //  I think this is better than making the yaw a global state?
-            //
 
             //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
             const up : zm.Vec = .{0.0,1.0,0.0,0.0};

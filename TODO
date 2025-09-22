@@ -1,4 +1,4 @@
 
-add a way to remove physics bodies
-Make render data buffer generated during runtime instead of just incremental (add and remove rendering stuff based on constraints)
+
+
 add physics interpolation for frames (Physics is running at 50 fps (~20ms per frame) faster objects should appear to move smoother given a higher rendering fps)

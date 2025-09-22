@@ -119,12 +119,12 @@ pub fn main() !void {
     try vulkan_state.window_setup(vulkan_state.ENGINE_NAME, vulkan_state.ENGINE_NAME);
    
     // GLFW Callbacks
-    _ = c.glfw.glfwSetKeyCallback(vulkan_state.window, key_callback);
+    _ = c.vulkan.glfwSetKeyCallback(vulkan_state.window, key_callback);
 
-    _ = c.glfw.glfwSetCursorPosCallback(vulkan_state.window, cursor_pos_callback);
-    _ = c.glfw.glfwSetWindowUserPointer(vulkan_state.window, @constCast(&vulkan_state));
-    _ = c.glfw.glfwSetFramebufferSizeCallback(vulkan_state.window, window_resize_callback);
-    _ = c.glfw.glfwSetMouseButtonCallback(vulkan_state.window, mouse_button_input_callback);
+    _ = c.vulkan.glfwSetCursorPosCallback(vulkan_state.window, cursor_pos_callback);
+    _ = c.vulkan.glfwSetWindowUserPointer(vulkan_state.window, @constCast(&vulkan_state));
+    _ = c.vulkan.glfwSetFramebufferSizeCallback(vulkan_state.window, window_resize_callback);
+    _ = c.vulkan.glfwSetMouseButtonCallback(vulkan_state.window, mouse_button_input_callback);
 
     // game and physics INIT
 
@@ -196,7 +196,7 @@ pub fn main() !void {
     try physics_state.bodies.append(
         allocator,
         .{
-            .position = .{0.0, 100, 0.0},
+            .position = .{0.0, 0.0, 0.0},
             .inverse_mass = (1.0/100.0),
             .half_size = .{0.5, 1.0, 0.5, 0.0},
             .body_type = .player,
@@ -212,9 +212,6 @@ pub fn main() !void {
         );
     defer game_state.render_frame_buffer.deinit();
 
-    //std.debug.print("render frame 0 {}\n\n", .{game_state.render_frame_buffer.frame[0]});
-    //std.debug.print("render frame 1 {}\n\n", .{game_state.render_frame_buffer.frame[1]});
-
     // threading INIT
     var render_done: bool = false;
     var render_ready: bool = false;
@@ -227,7 +224,7 @@ pub fn main() !void {
 
     // Game Loop and additional prerequisites
     var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
-    const VOMIT_COOLDOWN: i64 = 60;
+    const VOMIT_COOLDOWN: i64 = 20;
 
     var prev_tick_time: i64 = 0;
     var prev_time: i64 = 0;
@@ -236,11 +233,10 @@ pub fn main() !void {
     // This is to ensure we don't start before the render state is prepared (it crashes)
     // TODO REMOVE THIS WITH RENDER FRAME BUFFER WE SHOULD BE OK
     while (!render_ready) {
-        std.posix.nanosleep(1, 0);
+        std.posix.nanosleep(0, 100);
     }
     
-    std.debug.print("[Debug] render ready\n", .{});
-    //std.debug.print("player physics index: {}\n", .{game_state.player_state.physics_index});
+    //std.debug.print("[Debug] render ready\n", .{});
 
     var contacts = try std.ArrayList(physics.Contact).initCapacity(allocator, 64);
     defer contacts.deinit(allocator);
@@ -328,11 +324,11 @@ pub fn main() !void {
         // TODO make this only work while glfw is initialized it is producing that error
         if (input_state.mouse_capture and !render_done)
         {
-            c.glfw.glfwSetInputMode(vulkan_state.window, c.glfw.GLFW_CURSOR, c.glfw.GLFW_CURSOR_DISABLED);
+            c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_DISABLED);
         }
         else
         {
-            c.glfw.glfwSetInputMode(vulkan_state.window, c.glfw.GLFW_CURSOR, c.glfw.GLFW_CURSOR_NORMAL);
+            c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_NORMAL);
         }
 
         if (@abs(current_time - prev_tick_time) > MINIMUM_TICK_TIME) {
@@ -404,80 +400,80 @@ pub fn main() !void {
 }
 
 
-pub export fn key_callback(window: ?*c.glfw.GLFWwindow, key: i32, scancode: i32, action: i32, mods: i32) void {
+pub export fn key_callback(window: ?*c.vulkan.GLFWwindow, key: i32, scancode: i32, action: i32, mods: i32) void {
     _ = &scancode;
     _ = &mods;
 
     switch (key) {
-        c.glfw.GLFW_KEY_ESCAPE => {
-            c.glfw.glfwSetWindowShouldClose(window, c.glfw.GLFW_TRUE);
+        c.vulkan.GLFW_KEY_ESCAPE => {
+            c.vulkan.glfwSetWindowShouldClose(window, c.vulkan.GLFW_TRUE);
         },
-        c.glfw.GLFW_KEY_LEFT_CONTROL => {
-            if (action == c.glfw.GLFW_PRESS) {
+        c.vulkan.GLFW_KEY_LEFT_CONTROL => {
+            if (action == c.vulkan.GLFW_PRESS) {
                 input_state.control = true;
             }
-            if (action == c.glfw.GLFW_RELEASE) {
+            if (action == c.vulkan.GLFW_RELEASE) {
                 input_state.control = false;
             }
         },
-        c.glfw.GLFW_KEY_SPACE => {
-            if (action == c.glfw.GLFW_PRESS) {
+        c.vulkan.GLFW_KEY_SPACE => {
+            if (action == c.vulkan.GLFW_PRESS) {
                 input_state.space = true;
             }
-            if (action == c.glfw.GLFW_RELEASE) {
+            if (action == c.vulkan.GLFW_RELEASE) {
                 input_state.space = false;
             }
         },
-        c.glfw.GLFW_KEY_LEFT_SHIFT => {
-            if (action == c.glfw.GLFW_PRESS) {
+        c.vulkan.GLFW_KEY_LEFT_SHIFT => {
+            if (action == c.vulkan.GLFW_PRESS) {
                 input_state.shift = true;
             }
-            if (action == c.glfw.GLFW_RELEASE) {
+            if (action == c.vulkan.GLFW_RELEASE) {
                 input_state.shift = false;
             }
         },
-        c.glfw.GLFW_KEY_W => {
-            if (action == c.glfw.GLFW_PRESS) {
+        c.vulkan.GLFW_KEY_W => {
+            if (action == c.vulkan.GLFW_PRESS) {
                 input_state.w = true;
             }
-            if (action == c.glfw.GLFW_RELEASE) {
+            if (action == c.vulkan.GLFW_RELEASE) {
                 input_state.w = false;
             }
         },
-        c.glfw.GLFW_KEY_A => {
-            if (action == c.glfw.GLFW_PRESS) {
+        c.vulkan.GLFW_KEY_A => {
+            if (action == c.vulkan.GLFW_PRESS) {
                 input_state.a = true;
             }
-            if (action == c.glfw.GLFW_RELEASE) {
+            if (action == c.vulkan.GLFW_RELEASE) {
                 input_state.a = false;
             }
         },
-        c.glfw.GLFW_KEY_S => {
-            if (action == c.glfw.GLFW_PRESS) {
+        c.vulkan.GLFW_KEY_S => {
+            if (action == c.vulkan.GLFW_PRESS) {
                 input_state.s = true;
             }
-            if (action == c.glfw.GLFW_RELEASE) {
+            if (action == c.vulkan.GLFW_RELEASE) {
                 input_state.s = false;
             }
         },
-        c.glfw.GLFW_KEY_D => {
-            if (action == c.glfw.GLFW_PRESS) {
+        c.vulkan.GLFW_KEY_D => {
+            if (action == c.vulkan.GLFW_PRESS) {
                 input_state.d = true;
             }
-            if (action == c.glfw.GLFW_RELEASE) {
+            if (action == c.vulkan.GLFW_RELEASE) {
                 input_state.d = false;
             }
         },
-        c.glfw.GLFW_KEY_E => {
-            if (action == c.glfw.GLFW_PRESS) {
+        c.vulkan.GLFW_KEY_E => {
+            if (action == c.vulkan.GLFW_PRESS) {
                 input_state.e = true;
             }
-            if (action == c.glfw.GLFW_RELEASE) {
+            if (action == c.vulkan.GLFW_RELEASE) {
                 input_state.e = false;
             }
         },
-        c.glfw.GLFW_KEY_T => {
-            if (action == c.glfw.GLFW_RELEASE) {
+        c.vulkan.GLFW_KEY_T => {
+            if (action == c.vulkan.GLFW_RELEASE) {
                 if (input_state.mouse_capture == true)
                 {
                     input_state.mouse_capture = false;
@@ -492,7 +488,7 @@ pub export fn key_callback(window: ?*c.glfw.GLFWwindow, key: i32, scancode: i32,
     }
 }
 
-pub export fn cursor_pos_callback(window: ?*c.glfw.GLFWwindow, _xpos: f64, _ypos: f64)  void {
+pub export fn cursor_pos_callback(window: ?*c.vulkan.GLFWwindow, _xpos: f64, _ypos: f64)  void {
     _ = &window;
     dx = _xpos - xpos;
     dy = _ypos - ypos;
@@ -506,26 +502,26 @@ pub export fn cursor_pos_callback(window: ?*c.glfw.GLFWwindow, _xpos: f64, _ypos
     }
 }
 
-pub export fn mouse_button_input_callback(window: ?*c.glfw.GLFWwindow, button: i32, action: i32, mods: i32) void {
+pub export fn mouse_button_input_callback(window: ?*c.vulkan.GLFWwindow, button: i32, action: i32, mods: i32) void {
     _ = &button;
     _ = &window;
     _ = &mods;
     _ = &action;
 
     switch (button) {
-        c.glfw.GLFW_MOUSE_BUTTON_LEFT => {
-            if (action == c.glfw.GLFW_PRESS) {
+        c.vulkan.GLFW_MOUSE_BUTTON_LEFT => {
+            if (action == c.vulkan.GLFW_PRESS) {
                 input_state.left_click = true;
             }
-            if (action == c.glfw.GLFW_RELEASE) {
+            if (action == c.vulkan.GLFW_RELEASE) {
                 input_state.left_click = false;
             }
         },
-        c.glfw.GLFW_MOUSE_BUTTON_RIGHT => {
-            if (action == c.glfw.GLFW_PRESS) {
+        c.vulkan.GLFW_MOUSE_BUTTON_RIGHT => {
+            if (action == c.vulkan.GLFW_PRESS) {
                 input_state.right_click = true;
             }
-            if (action == c.glfw.GLFW_RELEASE) {
+            if (action == c.vulkan.GLFW_RELEASE) {
                 input_state.right_click = false;
             }
         },
@@ -533,10 +529,10 @@ pub export fn mouse_button_input_callback(window: ?*c.glfw.GLFWwindow, button: i
     }
 }
 
-pub export fn window_resize_callback(window: ?*c.glfw.GLFWwindow, width: c_int, height: c_int) void {
+pub export fn window_resize_callback(window: ?*c.vulkan.GLFWwindow, width: c_int, height: c_int) void {
     _ = &width;
     _ = &height;
-    const instance: *vulkan.VulkanState = @ptrCast(@alignCast(c.glfw.glfwGetWindowUserPointer(window)));
+    const instance: *vulkan.VulkanState = @ptrCast(@alignCast(c.vulkan.glfwGetWindowUserPointer(window)));
     instance.framebuffer_resized = true;
 }
 

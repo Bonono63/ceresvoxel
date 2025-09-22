@@ -158,6 +158,7 @@ pub fn physics_tick(
 
     // Contact Generation
 
+    // TODO when this exceeds 20 ms the entire thing slows down SIGNIFICANTLY
     // TODO implement 3D sweep and prune as a broad phase
     //const start_time = std.time.milliTimestamp();
     for (0..bodies.len) |a| {
