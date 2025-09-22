@@ -214,6 +214,8 @@ pub const RenderFrameBuffer = struct {
         self.mutex[frame_index].unlock();
     }
 
+    // TODO add some way to prioritize less frequently used frames so we don't lock 
+    // up when the logic thread hits its maximum delta time
     /// locks a mutex in the render frame buffer and returns
     pub fn lock_render_frame(self: *RenderFrameBuffer) u32 {
         var i: u32 = 0;
@@ -339,8 +341,6 @@ pub const VulkanState = struct {
     // TODO refactor how render targets are determined (should be produced during runtime instead of being static)
     // scenes will likely be simple enough to do a runtime determination
 
-    //chunk_count: u32 = 0,
-
     /// keeps track of GPU memory (Vertex buffers)
     vertex_buffers: std.ArrayList(c.vulkan.VkBuffer) = undefined,
     vertex_allocs: std.ArrayList(c.vulkan.VmaAllocation) = undefined,
@@ -369,6 +369,8 @@ pub const VulkanState = struct {
     PUSH_CONSTANT_SIZE: u32,
     push_constant_data: []u8 = undefined,
     push_constant_info: c.vulkan.VkPushConstantRange = undefined,
+
+    chunk_render_style: mesh_generation.style,
 
     /// Creates our Vulkan instance and GLFW window
     pub fn window_setup(self: *VulkanState, application_name: []const u8, engine_name: []const u8) VkAbstractionError!void {
@@ -751,15 +753,35 @@ pub const VulkanState = struct {
             .pBindings = &layout_bindings,
         };
 
-        const descriptor_set_success = c.vulkan.vkCreateDescriptorSetLayout(self.device, &layout_info, null, &self.descriptor_set_layout);
+        const descriptor_set_success = c.vulkan.vkCreateDescriptorSetLayout(
+            self.device,
+            &layout_info,
+            null,
+            &self.descriptor_set_layout
+            );
+
         if (descriptor_set_success != c.vulkan.VK_SUCCESS) {
-            std.debug.print("[Error] Unable to create descriptor set: {}\n", .{descriptor_set_success});
+            
+            std.debug.print(
+                "[Error] Unable to create descriptor set: {}\n",
+                .{descriptor_set_success}
+                );
+            
             return VkAbstractionError.DescriptorSetCreationFailure;
         }
     }
 
     /// Pipeline for arbitrary 3D geometry (vertices)
-    pub fn create_generic_pipeline(self: *VulkanState, vert_source: []align(4) u8, frag_source: []align(4) u8, wireframe: bool) VkAbstractionError!c.vulkan.VkPipeline {
+    pub fn create_pipeline(
+        self: *VulkanState,
+        vert_source: []align(4) u8,
+        frag_source: []align(4) u8,
+        wireframe: bool,
+        binding_description: []c.vulkan.VkVertexInputBindingDescription,
+        attribute_description: []c.vulkan.VkVertexInputAttributeDescription,
+        primitive: c.
+        ) VkAbstractionError!c.vulkan.VkPipeline {
+
         const vert_index = self.shader_modules.items.len;
         try create_shader_module(self, vert_source);
         const frag_index = self.shader_modules.items.len;
@@ -780,7 +802,10 @@ pub const VulkanState = struct {
             .pName = "main",
         };
 
-        const shader_stages: [2]c.vulkan.VkPipelineShaderStageCreateInfo = .{vertex_shader_stage, fragment_shader_stage};
+        const shader_stages: [2]c.vulkan.VkPipelineShaderStageCreateInfo = .{
+            vertex_shader_stage,
+            fragment_shader_stage,
+        };
 
         const dynamic_state = [_]c.vulkan.VkDynamicState{
             c.vulkan.VK_DYNAMIC_STATE_VIEWPORT,
@@ -793,31 +818,40 @@ pub const VulkanState = struct {
             .pDynamicStates = &dynamic_state,
         };
 
-        var binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{ 
-            c.vulkan.VkVertexInputBindingDescription{
-                .binding = 0,
-                .stride = @sizeOf(Vertex),
-                .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
-            }
-        };
+        //var binding_description: [1] = .{ 
+        //    c.vulkan.VkVertexInputBindingDescription{
+        //        .binding = 0,
+        //        .stride = @sizeOf(Vertex),
+        //        .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
+        //    }
+        //};
 
-        var attribute_description: []c.vulkan.VkVertexInputAttributeDescription = undefined;
-        attribute_description = try self.allocator.*.alloc(c.vulkan.VkVertexInputAttributeDescription, 2);
-        defer self.allocator.*.free(attribute_description);
-        attribute_description[0] = .{ .binding = 0, .location = 0, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = 0 };
-        attribute_description[1] = .{ .binding = 0, .location = 1, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = @sizeOf(@Vector(3, f32)) };
+        //const attribute_description: [2]c.vulkan.VkVertexInputAttributeDescription = .{
+        //    .{
+        //        .binding = 0,
+        //        .location = 0,
+        //        .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
+        //        .offset = 0
+        //    },
+        //    .{
+        //        .binding = 0,
+        //        .location = 1,
+        //        .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
+        //        .offset = @sizeOf(@Vector(3, f32))
+        //    },
+        //};
 
         const vertex_input_info = c.vulkan.VkPipelineVertexInputStateCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
             .vertexBindingDescriptionCount = @intCast(binding_description.len),
             .pVertexBindingDescriptions = &binding_description,
             .vertexAttributeDescriptionCount = @intCast(attribute_description.len),
-            .pVertexAttributeDescriptions = attribute_description.ptr,
+            .pVertexAttributeDescriptions = &attribute_description,
         };
 
         const assembly_create_info = c.vulkan.VkPipelineInputAssemblyStateCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-            .topology = c.vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            .topology = primitive,
             .primitiveRestartEnable = c.vulkan.VK_FALSE,
         };
 
@@ -2519,7 +2553,7 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     try self.create_render_pass();
 
     // cursor
-    self.pipelines[0] = try self.create_generic_pipeline(cursor_vert_source, cursor_frag_source, false);
+    self.pipelines[0] = try self.create_pipeline(cursor_vert_source, cursor_frag_source, false);
     // outline
     self.pipelines[1] = try self.create_outline_pipeline(outline_vert_source, outline_frag_source);
     // simple chunk

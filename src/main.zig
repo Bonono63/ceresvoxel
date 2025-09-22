@@ -113,6 +113,7 @@ pub fn main() !void {
         .allocator = &allocator,
         .MAX_CONCURRENT_FRAMES = 2, // basically double buffering
         .PUSH_CONSTANT_SIZE = @sizeOf(zm.Mat) + @sizeOf(f32),
+        .chunk_render_style = .basic,
     };
 
     try vulkan.glfw_initialization();
@@ -136,7 +137,7 @@ pub fn main() !void {
         .render_frame_buffer = .{
             .allocator = &allocator,
             .size = 3,
-        }
+        },
     };
     defer game_state.voxel_spaces.deinit(allocator);
     

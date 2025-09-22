@@ -7,6 +7,16 @@ const vulkan = @import("vulkan.zig");
 // TODO add a lattice algorithm
 // TODO add a glass panes algorithm
 
+pub const style = enum {
+    basic,
+    cull,
+    greedy,
+    greedyVertexPull,
+    lattice,
+    glassPane
+};
+
+// Number of blocks in blocks.png
 const BLOCK_COUNT: f32 = 4.0;
 
 /// An unoptimized simple voxel meshing algorithm.
