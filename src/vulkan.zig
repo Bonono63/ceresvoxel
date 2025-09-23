@@ -934,169 +934,6 @@ pub const VulkanState = struct {
         return pipeline;
     }
 
-    /// Pipeline for arbitrary 3D geometry (lines)
-    pub fn create_outline_pipeline(self: *VulkanState, vert_source: []align(4) u8, frag_source: []align(4) u8) VkAbstractionError!c.vulkan.VkPipeline {
-        const vert_index = self.shader_modules.items.len;
-        try create_shader_module(self, vert_source);
-        const frag_index = self.shader_modules.items.len;
-        try create_shader_module(self, frag_source);
-
-        const vertex_shader_stage = c.vulkan.VkPipelineShaderStageCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = c.vulkan.VK_SHADER_STAGE_VERTEX_BIT,
-            .module = self.shader_modules.items[vert_index],
-            .pName = "main",
-        };
-
-        const fragment_shader_stage = c.vulkan.VkPipelineShaderStageCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = c.vulkan.VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = self.shader_modules.items[frag_index],
-            .pName = "main",
-        };
-
-        const shader_stages: [2]c.vulkan.VkPipelineShaderStageCreateInfo = .{vertex_shader_stage, fragment_shader_stage};
-
-        const dynamic_state = [_]c.vulkan.VkDynamicState{
-            c.vulkan.VK_DYNAMIC_STATE_VIEWPORT,
-            c.vulkan.VK_DYNAMIC_STATE_SCISSOR,
-        };
-
-        const dynamic_state_create_info = c.vulkan.VkPipelineDynamicStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-            .dynamicStateCount = dynamic_state.len,
-            .pDynamicStates = &dynamic_state,
-        };
-
-        var binding_description: []c.vulkan.VkVertexInputBindingDescription = undefined;
-        binding_description = try self.allocator.*.alloc(c.vulkan.VkVertexInputBindingDescription, 1);
-        defer self.allocator.*.free(binding_description);
-        binding_description[0] = .{
-            .binding = 0,
-            .stride = @sizeOf(Vertex),
-            .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
-        };
-
-        var attribute_description: []c.vulkan.VkVertexInputAttributeDescription = undefined;
-        attribute_description = try self.allocator.*.alloc(c.vulkan.VkVertexInputAttributeDescription, 2);
-        defer self.allocator.*.free(attribute_description);
-        attribute_description[0] = .{ .binding = 0, .location = 0, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = 0 };
-        attribute_description[1] = .{ .binding = 0, .location = 1, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = @sizeOf(@Vector(3, f32)) };
-
-        const vertex_input_info = c.vulkan.VkPipelineVertexInputStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-            .vertexBindingDescriptionCount = @intCast(binding_description.len),
-            .pVertexBindingDescriptions = binding_description.ptr,
-            .vertexAttributeDescriptionCount = @intCast(attribute_description.len),
-            .pVertexAttributeDescriptions = attribute_description.ptr,
-        };
-
-        const assembly_create_info = c.vulkan.VkPipelineInputAssemblyStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-            .topology = c.vulkan.VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,
-            .primitiveRestartEnable = c.vulkan.VK_FALSE,
-        };
-
-        const viewport = c.vulkan.VkViewport{
-            .x = 0.0,
-            .y = 0.0,
-            .width = @floatFromInt(self.swapchain_extent.width),
-            .height = @floatFromInt(self.swapchain_extent.height),
-            .minDepth = 0.0,
-            .maxDepth = 1.0,
-        };
-
-        const scissor = c.vulkan.VkRect2D{
-            .offset = .{ .x = 0, .y = 0 },
-            .extent = self.swapchain_extent,
-        };
-
-        const viewport_create_info = c.vulkan.VkPipelineViewportStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-            .viewportCount = 1,
-            .pViewports = &viewport,
-            .scissorCount = 1,
-            .pScissors = &scissor,
-        };
-
-        const rasterization_create_info = c.vulkan.VkPipelineRasterizationStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-            .depthClampEnable = c.vulkan.VK_FALSE,
-            .rasterizerDiscardEnable = c.vulkan.VK_FALSE,
-            .polygonMode = c.vulkan.VK_POLYGON_MODE_LINE,
-            .lineWidth = 2.0,
-            .cullMode = c.vulkan.VK_CULL_MODE_NONE,
-            .frontFace = c.vulkan.VK_FRONT_FACE_CLOCKWISE,
-            .depthBiasEnable = c.vulkan.VK_FALSE,
-            .depthBiasConstantFactor = 0.0,
-            .depthBiasClamp = 0.0,
-            .depthBiasSlopeFactor = 0.0,
-        };
-
-        const multisampling_create_info = c.vulkan.VkPipelineMultisampleStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-            .sampleShadingEnable = c.vulkan.VK_FALSE,
-            .rasterizationSamples = c.vulkan.VK_SAMPLE_COUNT_1_BIT,
-            .minSampleShading = 1.0,
-            .pSampleMask = null,
-            .alphaToCoverageEnable = c.vulkan.VK_FALSE,
-            .alphaToOneEnable = c.vulkan.VK_FALSE,
-        };
-
-        const color_blending_attachment_create_info = c.vulkan.VkPipelineColorBlendAttachmentState{
-            .colorWriteMask =
-                c.vulkan.VK_COLOR_COMPONENT_R_BIT
-                | c.vulkan.VK_COLOR_COMPONENT_G_BIT
-                | c.vulkan.VK_COLOR_COMPONENT_B_BIT
-                | c.vulkan.VK_COLOR_COMPONENT_A_BIT,
-            .blendEnable = c.vulkan.VK_FALSE,
-        };
-
-        const color_blending_create_info = c.vulkan.VkPipelineColorBlendStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-            .logicOpEnable = c.vulkan.VK_FALSE,
-            .logicOp = c.vulkan.VK_LOGIC_OP_COPY,
-            .attachmentCount = 1,
-            .pAttachments = &color_blending_attachment_create_info,
-        };
-
-        const depth_stencil_state_info = c.vulkan.VkPipelineDepthStencilStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-            .depthTestEnable = c.vulkan.VK_TRUE,
-            .depthWriteEnable = c.vulkan.VK_TRUE,
-            .depthCompareOp = c.vulkan.VK_COMPARE_OP_LESS,
-            .depthBoundsTestEnable = c.vulkan.VK_FALSE,
-            .minDepthBounds = 0.0,
-            .maxDepthBounds = 1.0,
-            .stencilTestEnable = c.vulkan.VK_FALSE,
-        };
-
-        const pipeline_create_info = c.vulkan.VkGraphicsPipelineCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-            .stageCount = @intCast(shader_stages.len),
-            .pStages = &shader_stages,
-            .pVertexInputState = &vertex_input_info,
-            .pInputAssemblyState = &assembly_create_info,
-            .pViewportState = &viewport_create_info,
-            .pRasterizationState = &rasterization_create_info,
-            .pMultisampleState = &multisampling_create_info,
-            .pDepthStencilState = &depth_stencil_state_info,
-            .pColorBlendState = &color_blending_create_info,
-            .pDynamicState = &dynamic_state_create_info,
-            .layout = self.pipeline_layout,
-            .renderPass = self.renderpass,
-            .subpass = 0,
-        };
-
-        var pipeline: c.vulkan.VkPipeline = undefined;
-        const pipeline_success = c.vulkan.vkCreateGraphicsPipelines(self.device, null, 1, &pipeline_create_info, null, &pipeline);
-        if (pipeline_success != c.vulkan.VK_SUCCESS) {
-            return VkAbstractionError.CreatingGraphicsPipelineFailure;
-        }
-
-        return pipeline;
-    }
-
     /// Creates a shader module and appends the handler to the state's shader array list
     pub fn create_shader_module(self: *VulkanState, file_source : [] const align(4) u8) VkAbstractionError!void {
         var shader_module: c.vulkan.VkShaderModule = undefined;
@@ -1260,184 +1097,6 @@ pub const VulkanState = struct {
         if (pipeline_layout_success != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.CreatePipelineLayoutFailure;
         }
-    }
-
-    /// Produces a pipeline for chunks (Chunk Vertices)
-    pub fn create_simple_chunk_pipeline(self: *VulkanState, vert_source: []align(4) u8, frag_source: []align(4) u8, wireframe: bool) VkAbstractionError!c.vulkan.VkPipeline {
-        const vert_index = self.shader_modules.items.len;
-        try create_shader_module(self, vert_source);
-        const frag_index = self.shader_modules.items.len;
-        try create_shader_module(self, frag_source);
-
-
-        const vertex_shader_stage = c.vulkan.VkPipelineShaderStageCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = c.vulkan.VK_SHADER_STAGE_VERTEX_BIT,
-            .module = self.shader_modules.items[vert_index],
-            .pName = "main",
-        };
-
-        const fragment_shader_stage = c.vulkan.VkPipelineShaderStageCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = c.vulkan.VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = self.shader_modules.items[frag_index],
-            .pName = "main",
-        };
-
-        const shader_stages: [2]c.vulkan.VkPipelineShaderStageCreateInfo = .{vertex_shader_stage, fragment_shader_stage};
-
-        const dynamic_state = [_]c.vulkan.VkDynamicState{
-            c.vulkan.VK_DYNAMIC_STATE_VIEWPORT,
-            c.vulkan.VK_DYNAMIC_STATE_SCISSOR,
-        };
-
-        const dynamic_state_create_info = c.vulkan.VkPipelineDynamicStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-            .dynamicStateCount = dynamic_state.len,
-            .pDynamicStates = &dynamic_state,
-        };
-
-        const binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{
-            c.vulkan.VkVertexInputBindingDescription{
-                .binding = 0,
-                .stride = @sizeOf(ChunkVertex),
-                .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
-            },
-        };
-
-        const attribute_description: [3]c.vulkan.VkVertexInputAttributeDescription = .{ 
-            c.vulkan.VkVertexInputAttributeDescription{
-                .binding = 0,
-                .location = 0,
-                .format = c.vulkan.VK_FORMAT_R32_UINT,
-                .offset = 0
-            }, // chunk index
-            c.vulkan.VkVertexInputAttributeDescription{
-                .binding = 0,
-                .location = 1,
-                .format = c.vulkan.VK_FORMAT_R32G32_SFLOAT,
-                .offset = @sizeOf(u32)
-            }, // uv
-            c.vulkan.VkVertexInputAttributeDescription{
-                .binding = 0,
-                .location = 2,
-                .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
-                .offset = @sizeOf(u32) + @sizeOf(@Vector(2, f32))
-            }, // pos
-        };
-
-        const vertex_input_info = c.vulkan.VkPipelineVertexInputStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-            .vertexBindingDescriptionCount = @intCast(binding_description.len),
-            .pVertexBindingDescriptions = &binding_description,
-            .vertexAttributeDescriptionCount = @intCast(attribute_description.len),
-            .pVertexAttributeDescriptions = &attribute_description,
-        };
-
-        const assembly_create_info = c.vulkan.VkPipelineInputAssemblyStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-            .topology = c.vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-            .primitiveRestartEnable = c.vulkan.VK_FALSE,
-        };
-
-        const viewport = c.vulkan.VkViewport{
-            .x = 0.0,
-            .y = 0.0,
-            .width = @floatFromInt(self.swapchain_extent.width),
-            .height = @floatFromInt(self.swapchain_extent.height),
-            .minDepth = 0.0,
-            .maxDepth = 1.0,
-        };
-
-        const scissor = c.vulkan.VkRect2D{
-            .offset = .{ .x = 0, .y = 0 },
-            .extent = self.swapchain_extent,
-        };
-
-        const viewport_create_info = c.vulkan.VkPipelineViewportStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-            .viewportCount = 1,
-            .pViewports = &viewport,
-            .scissorCount = 1,
-            .pScissors = &scissor,
-        };
-
-        const rasterization_create_info = c.vulkan.VkPipelineRasterizationStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-            .depthClampEnable = c.vulkan.VK_FALSE,
-            .rasterizerDiscardEnable = c.vulkan.VK_FALSE,
-            .polygonMode = if (wireframe) c.vulkan.VK_POLYGON_MODE_LINE else c.vulkan.VK_POLYGON_MODE_FILL,
-            .lineWidth = 1.0,
-            .cullMode = c.vulkan.VK_CULL_MODE_BACK_BIT,
-            .frontFace = c.vulkan.VK_FRONT_FACE_CLOCKWISE,
-            .depthBiasEnable = c.vulkan.VK_FALSE,
-            .depthBiasConstantFactor = 0.0,
-            .depthBiasClamp = 0.0,
-            .depthBiasSlopeFactor = 0.0,
-        };
-
-        const multisampling_create_info = c.vulkan.VkPipelineMultisampleStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-            .sampleShadingEnable = c.vulkan.VK_FALSE,
-            .rasterizationSamples = c.vulkan.VK_SAMPLE_COUNT_1_BIT,
-            .minSampleShading = 1.0,
-            .pSampleMask = null,
-            .alphaToCoverageEnable = c.vulkan.VK_FALSE,
-            .alphaToOneEnable = c.vulkan.VK_FALSE,
-        };
-
-        const color_blending_attachment_create_info = c.vulkan.VkPipelineColorBlendAttachmentState{
-            .colorWriteMask = 
-                c.vulkan.VK_COLOR_COMPONENT_R_BIT
-                | c.vulkan.VK_COLOR_COMPONENT_G_BIT
-                | c.vulkan.VK_COLOR_COMPONENT_B_BIT
-                | c.vulkan.VK_COLOR_COMPONENT_A_BIT,
-            .blendEnable = c.vulkan.VK_FALSE,
-        };
-
-        const color_blending_create_info = c.vulkan.VkPipelineColorBlendStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-            .logicOpEnable = c.vulkan.VK_FALSE,
-            .logicOp = c.vulkan.VK_LOGIC_OP_COPY,
-            .attachmentCount = 1,
-            .pAttachments = &color_blending_attachment_create_info,
-        };
-
-        const depth_stencil_state_info = c.vulkan.VkPipelineDepthStencilStateCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-            .depthTestEnable = c.vulkan.VK_TRUE,
-            .depthWriteEnable = c.vulkan.VK_TRUE,
-            .depthCompareOp = c.vulkan.VK_COMPARE_OP_LESS,
-            .depthBoundsTestEnable = c.vulkan.VK_FALSE,
-            .minDepthBounds = 0.0,
-            .maxDepthBounds = 1.0,
-            .stencilTestEnable = c.vulkan.VK_FALSE,
-        };
-
-        const pipeline_create_info = c.vulkan.VkGraphicsPipelineCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-            .stageCount = @intCast(shader_stages.len),
-            .pStages = &shader_stages,
-            .pVertexInputState = &vertex_input_info,
-            .pInputAssemblyState = &assembly_create_info,
-            .pViewportState = &viewport_create_info,
-            .pRasterizationState = &rasterization_create_info,
-            .pMultisampleState = &multisampling_create_info,
-            .pDepthStencilState = &depth_stencil_state_info,
-            .pColorBlendState = &color_blending_create_info,
-            .pDynamicState = &dynamic_state_create_info,
-            .layout = self.pipeline_layout,
-            .renderPass = self.renderpass,
-            .subpass = 0,
-        };
-
-        var pipeline: c.vulkan.VkPipeline = undefined;
-        const pipeline_success = c.vulkan.vkCreateGraphicsPipelines(self.device, null, 1, &pipeline_create_info, null, &pipeline);
-        if (pipeline_success != c.vulkan.VK_SUCCESS) {
-            return VkAbstractionError.CreatingGraphicsPipelineFailure;
-        }
-
-        return pipeline;
     }
 
     pub fn create_render_pass(self: *VulkanState) VkAbstractionError!void {
@@ -2539,13 +2198,13 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
         }
     };
     
-    //var chunk_binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{ 
-    //    c.vulkan.VkVertexInputBindingDescription{
-    //        .binding = 0,
-    //        .stride = @sizeOf(ChunkVertex),
-    //        .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
-    //    }
-    //};
+    var chunk_binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{ 
+        c.vulkan.VkVertexInputBindingDescription{
+            .binding = 0,
+            .stride = @sizeOf(ChunkVertex),
+            .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
+        }
+    };
     
     var generic_attribute_description: [2]c.vulkan.VkVertexInputAttributeDescription =    .{
         .{
@@ -2561,6 +2220,27 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
             .offset = @sizeOf(@Vector(3, f32))
         },
     };
+    
+    var chunk_attribute_description: [3]c.vulkan.VkVertexInputAttributeDescription =    .{
+        .{
+            .binding = 0,
+            .location = 0,
+            .format = c.vulkan.VK_FORMAT_R32_UINT,
+            .offset = 0
+        },
+        .{
+            .binding = 0,
+            .location = 1,
+            .format = c.vulkan.VK_FORMAT_R32G32_SFLOAT,
+            .offset = @sizeOf(u32)
+        },
+        .{
+            .binding = 0,
+            .location = 2,
+            .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = @sizeOf(u32) + @sizeOf(@Vector(2, f32))
+        },
+    };
 
     // cursor
     self.pipelines[0] = try self.create_pipeline(
@@ -2574,9 +2254,27 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
         c.vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
         );
     // outline
-    self.pipelines[1] = try self.create_outline_pipeline(outline_vert_source, outline_frag_source);
+    self.pipelines[1] = try self.create_pipeline(
+        outline_vert_source,
+        outline_frag_source,
+        false,
+        &generic_binding_description,
+        @intCast(generic_binding_description.len),
+        &generic_attribute_description,
+        @intCast(generic_attribute_description.len),
+        c.vulkan.VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,
+        );
     // simple chunk
-    self.pipelines[2] = try self.create_simple_chunk_pipeline(chunk_vert_source, chunk_frag_source, false);
+    self.pipelines[2] = try self.create_pipeline(
+        chunk_vert_source,
+        chunk_frag_source,
+        false,
+        &chunk_binding_description,
+        @intCast(chunk_binding_description.len),
+        &chunk_attribute_description,
+        @intCast(chunk_attribute_description.len),
+        c.vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        );
     
     try self.create_framebuffers();
     try self.create_command_pool();
