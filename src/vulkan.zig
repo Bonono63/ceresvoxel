@@ -777,16 +777,17 @@ pub const VulkanState = struct {
         vert_source: []align(4) u8,
         frag_source: []align(4) u8,
         wireframe: bool,
-        binding_description: []c.vulkan.VkVertexInputBindingDescription,
-        attribute_description: []c.vulkan.VkVertexInputAttributeDescription,
-        primitive: c.
+        binding_description: [*c]c.vulkan.VkVertexInputBindingDescription,
+        binding_description_size: u32,
+        attribute_description: [*c]c.vulkan.VkVertexInputAttributeDescription,
+        attribute_description_size: u32,
+        primitive: c.vulkan.VkPrimitiveTopology
         ) VkAbstractionError!c.vulkan.VkPipeline {
 
         const vert_index = self.shader_modules.items.len;
         try create_shader_module(self, vert_source);
         const frag_index = self.shader_modules.items.len;
         try create_shader_module(self, frag_source);
-
 
         const vertex_shader_stage = c.vulkan.VkPipelineShaderStageCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -818,35 +819,13 @@ pub const VulkanState = struct {
             .pDynamicStates = &dynamic_state,
         };
 
-        //var binding_description: [1] = .{ 
-        //    c.vulkan.VkVertexInputBindingDescription{
-        //        .binding = 0,
-        //        .stride = @sizeOf(Vertex),
-        //        .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
-        //    }
-        //};
-
-        //const attribute_description: [2]c.vulkan.VkVertexInputAttributeDescription = .{
-        //    .{
-        //        .binding = 0,
-        //        .location = 0,
-        //        .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
-        //        .offset = 0
-        //    },
-        //    .{
-        //        .binding = 0,
-        //        .location = 1,
-        //        .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
-        //        .offset = @sizeOf(@Vector(3, f32))
-        //    },
-        //};
 
         const vertex_input_info = c.vulkan.VkPipelineVertexInputStateCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-            .vertexBindingDescriptionCount = @intCast(binding_description.len),
-            .pVertexBindingDescriptions = &binding_description,
-            .vertexAttributeDescriptionCount = @intCast(attribute_description.len),
-            .pVertexAttributeDescriptions = &attribute_description,
+            .vertexBindingDescriptionCount = binding_description_size,
+            .pVertexBindingDescriptions = binding_description,
+            .vertexAttributeDescriptionCount = attribute_description_size,
+            .pVertexAttributeDescriptions = attribute_description,
         };
 
         const assembly_create_info = c.vulkan.VkPipelineInputAssemblyStateCreateInfo{
@@ -2551,9 +2530,49 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
     
     try self.create_pipeline_layout();
     try self.create_render_pass();
+    
+    var generic_binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{ 
+        c.vulkan.VkVertexInputBindingDescription{
+            .binding = 0,
+            .stride = @sizeOf(Vertex),
+            .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
+        }
+    };
+    
+    //var chunk_binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{ 
+    //    c.vulkan.VkVertexInputBindingDescription{
+    //        .binding = 0,
+    //        .stride = @sizeOf(ChunkVertex),
+    //        .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
+    //    }
+    //};
+    
+    var generic_attribute_description: [2]c.vulkan.VkVertexInputAttributeDescription =    .{
+        .{
+            .binding = 0,
+            .location = 0,
+            .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = 0
+        },
+        .{
+            .binding = 0,
+            .location = 1,
+            .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = @sizeOf(@Vector(3, f32))
+        },
+    };
 
     // cursor
-    self.pipelines[0] = try self.create_pipeline(cursor_vert_source, cursor_frag_source, false);
+    self.pipelines[0] = try self.create_pipeline(
+        cursor_vert_source,
+        cursor_frag_source,
+        false,
+        &generic_binding_description,
+        @intCast(generic_binding_description.len),
+        &generic_attribute_description,
+        @intCast(generic_attribute_description.len),
+        c.vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        );
     // outline
     self.pipelines[1] = try self.create_outline_pipeline(outline_vert_source, outline_frag_source);
     // simple chunk
