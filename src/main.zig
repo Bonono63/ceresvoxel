@@ -68,6 +68,8 @@ const particle_max_time: u32 = 1000;
 
 ///Stores arbitrary state of the game
 pub const GameState = struct {
+    /// .{voxel_space_index: u32, chunk_pos: @Vector(3, u32), chunk_data}
+    chunks: std.AutoArrayHashMapUnmanaged(@Vector(4,u32), [32768]u8),
     voxel_spaces: std.ArrayList(chunk.VoxelSpace),
     seed: u64 = 0,
     camera_state: CameraState,
@@ -149,7 +151,17 @@ pub fn main() !void {
     
     try game_state.voxel_spaces.append(
         allocator,
-        .{ .size = .{1,1,1}, }
+        .{ 
+            .size = .{1,1,1}, 
+            .data = try std.AutoArrayHashMapUnmanaged(
+                @Vector(3, u32),
+                [32768]u8
+                ).init(
+                allocator,
+                .{},
+                .{}
+                ),
+        },
     );
     
     // "Sun"
@@ -173,7 +185,17 @@ pub fn main() !void {
         
         try game_state.voxel_spaces.append(
             allocator,
-            .{ .size = .{1,1,1}, }
+            .{
+                .size = .{1,1,1},
+                .data = try std.AutoArrayHashMapUnmanaged(
+                    @Vector(3, u32),
+                    [32768]u8
+                    ).init(
+                    allocator,
+                    undefined,
+                    undefined
+                    ),
+            }
         );
         
         try physics_state.bodies.append(

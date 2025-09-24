@@ -7,7 +7,6 @@ const zm = @import("zmath");
 ///The fundamental structure of any array of voxels
 pub const VoxelSpace = struct {
     size: @Vector(3, u32),
-    //data: [32768]u8,
 };
 
 /// Returns a chunk with of random noise for voxels 
