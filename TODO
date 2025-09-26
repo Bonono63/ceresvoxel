@@ -1,4 +1,4 @@
 
-
+execute the physics tick on a seperate thread and join it back before rendering
 
 add physics interpolation for frames (Physics is running at 50 fps (~20ms per frame) faster objects should appear to move smoother given a higher rendering fps)

@@ -68,14 +68,13 @@ const particle_max_time: u32 = 1000;
 
 ///Stores arbitrary state of the game
 pub const GameState = struct {
-    /// .{voxel_space_index: u32, chunk_pos: @Vector(3, u32), chunk_data}
-    chunks: std.AutoArrayHashMapUnmanaged(@Vector(4,u32), [32768]u8),
-    voxel_spaces: std.ArrayList(chunk.VoxelSpace),
+    chunks: [10000][32768]u8,
+    chunks_len: u32 = 0,
+    voxel_space_sizes: [100]@Vector(3, u32), // Is 100 voxel spaces enough? 1000?
     seed: u64 = 0,
     camera_state: CameraState,
     completion_signal: bool,
     allocator: *std.mem.Allocator,
-    render_frame_buffer: vulkan.RenderFrameBuffer,
 };
 
 const ENGINE_NAME = "CeresVoxel";
@@ -132,37 +131,16 @@ pub fn main() !void {
     // game and physics INIT
 
     var game_state = GameState{
-        .voxel_spaces = try std.ArrayList(chunk.VoxelSpace).initCapacity(allocator, 8),
         .completion_signal = true,
         .camera_state = CameraState{},
         .allocator = &allocator,
-        .render_frame_buffer = .{
-            .allocator = &allocator,
-            .size = 3,
-        },
     };
-    defer game_state.voxel_spaces.deinit(allocator);
     
     var physics_state = physics.PhysicsState{
         .bodies = try std.ArrayList(physics.Body).initCapacity(allocator, 64),
         .sim_start_time = std.time.milliTimestamp(),
     };
     defer physics_state.bodies.deinit(allocator);
-    
-    try game_state.voxel_spaces.append(
-        allocator,
-        .{ 
-            .size = .{1,1,1}, 
-            .data = try std.AutoArrayHashMapUnmanaged(
-                @Vector(3, u32),
-                [32768]u8
-                ).init(
-                allocator,
-                .{},
-                .{}
-                ),
-        },
-    );
     
     // "Sun"
     try physics_state.bodies.append(
@@ -174,29 +152,13 @@ pub fn main() !void {
         .gravity = false,
         .torque_accumulation = .{std.math.pi, 0.0, 0.0, 0.0},
         .half_size = .{0.5, 0.5, 0.5, 0.0},
-        .body_type = .voxel_space,
-        .voxel_space = &game_state.voxel_spaces.items[game_state.voxel_spaces.items.len - 1],
+        .body_type = .voxel_space
     }
     );
     
     
     for (2..9) |index| {
         const rand = std.crypto.random;
-        
-        try game_state.voxel_spaces.append(
-            allocator,
-            .{
-                .size = .{1,1,1},
-                .data = try std.AutoArrayHashMapUnmanaged(
-                    @Vector(3, u32),
-                    [32768]u8
-                    ).init(
-                    allocator,
-                    undefined,
-                    undefined
-                    ),
-            }
-        );
         
         try physics_state.bodies.append(
             allocator,
@@ -210,7 +172,6 @@ pub fn main() !void {
                 .eccliptic_offset = .{rand.float(f32) / 10.0, rand.float(f32) / 10.0},
                 .half_size = .{0.5, 0.5, 0.5, 0.0},
                 .body_type = .voxel_space,
-                .voxel_space = &game_state.voxel_spaces.items[game_state.voxel_spaces.items.len - 1],
             }
         );
     }
@@ -227,23 +188,7 @@ pub fn main() !void {
     );
     physics_state.player_index = @intCast(physics_state.bodies.items.len - 1);
     
-    try game_state.render_frame_buffer.init(
-        &game_state.camera_state,
-        &physics_state,
-        &game_state.voxel_spaces.items,
-        physics_state.player_index
-        );
-    defer game_state.render_frame_buffer.deinit();
-
-    // threading INIT
-    var render_done: bool = false;
-    var render_ready: bool = false;
-    var render_thread = try std.Thread.spawn(
-        .{},
-        vulkan.render_thread,
-        .{&vulkan_state, &game_state.render_frame_buffer, &render_ready, &render_done}
-        );
-    defer render_thread.join();
+    vulkan_state.init();
 
     // Game Loop and additional prerequisites
     var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
@@ -251,36 +196,54 @@ pub fn main() !void {
 
     var prev_tick_time: i64 = 0;
     var prev_time: i64 = 0;
-    const MINIMUM_TICK_TIME: i64 = 20;
-    
-    // This is to ensure we don't start before the render state is prepared (it crashes)
-    // TODO REMOVE THIS WITH RENDER FRAME BUFFER WE SHOULD BE OK
-    while (!render_ready) {
-        std.posix.nanosleep(0, 100);
-    }
-    
-    //std.debug.print("[Debug] render ready\n", .{});
+    const MINIMUM_PHYSICS_TICK_TIME: i64 = 20;
+    const MINIMUM_RENDER_TICK_TIME: i64 = 0;
 
     var contacts = try std.ArrayList(physics.Contact).initCapacity(allocator, 64);
     defer contacts.deinit(allocator);
+
+    var frame_count: u64 = 0;
+    var current_frame_index: u32 = 0;
+    var previous_frame_time: f32 = @floatCast(c.vulkan.glfwGetTime());
+
+    var window_height: i32 = 0;
+    var window_width: i32 = 0;
+
+    var frame_time_buffer_index: u32 = 0;
+    const FTCB_SIZE: u32 = 128;
+    var frame_time_cyclic_buffer: [FTCB_SIZE]f32 = undefined;
+    @memset(&frame_time_cyclic_buffer, 0.0);
+
+    // Time in milliseconds in between frames, 60 is 16.666, 0.0 is 
+    var fps_limit: f32 = 0.0;//3.03030303;//8.333;
+    _ = &fps_limit;
+
+    std.debug.print("fps limit: {}\n", .{fps_limit});
+
+    
+    // TODO memcpy the previous RenderFrame here for physics interpolation?
+    // Maybe we can do physics interpolation on the current frame and it won't matter?
+    var previous_render_frame: RenderFrame = undefined;
+    _ = &previous_render_frame;
 
     // The responsibility of the main thread is to handle input and manage
     // all the other threads
     // This will ensure the lowest input state for the various threads and have slightly
     // better seperation of responsiblities
     // Camera state (yaw, pitch, and freecam) are all handled here as well
-    while (!render_done) {
+    while (c.vulkan.glfwWindowShouldClose(self.window) == 0) {
         const current_time: i64 = std.time.milliTimestamp();
         prev_time = current_time;
         const delta_time: i64 = current_time - prev_tick_time;
         const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
+        
+        c.vulkan.glfwPollEvents();
         
         if (input_state.control) {
             game_state.camera_state.speed = 100.0;
         } else {
             game_state.camera_state.speed = 5.0;
         }
-
 
         if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
             game_state.camera_state.yaw -= @as(f32, 
@@ -354,7 +317,7 @@ pub fn main() !void {
             c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_NORMAL);
         }
 
-        if (@abs(current_time - prev_tick_time) > MINIMUM_TICK_TIME) {
+        if (@abs(current_time - prev_tick_time) > MINIMUM_PHYSICS_TICK_TIME) {
             // PHYSICS AND LOGIC SECTION
 
             prev_tick_time = current_time;
@@ -374,7 +337,8 @@ pub fn main() !void {
                     }
                 }
             }
-            
+           
+            // TODO throw this into a different thread and join when the tick is done
             try physics.physics_tick(
                 &allocator,
                 delta_time_float,
@@ -410,16 +374,79 @@ pub fn main() !void {
                 std.time.milliTimestamp() - current_time
             });
         }
+        
+        if (@abs(current_time - prev_tick_time) > MINIMUM_RENDER_TICK_TIME) {
+            c.vulkan.glfwGetWindowSize(self.window, &window_width, &window_height);
+            const aspect_ratio : f32 = @as(f32, 
+                @floatFromInt(window_width))
+                / @as(f32, @floatFromInt(window_height)
+                    );
 
-        try game_state.render_frame_buffer.update(
-            &physics_state,
-            &game_state.voxel_spaces.items,
-            );
+            //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
+            const up : zm.Vec = .{0.0,1.0,0.0,0.0};
 
-        if (render_done) {
-            game_state.completion_signal = false;
+            const player_pos: zm.Vec = .{
+                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[0]),
+                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[1] - 0.5),
+                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[2]),
+                0.0,
+            };
+            const view: zm.Mat = zm.lookToLh(player_pos, render_frame.*.camera_state.*.lookV(), up);
+            const projection: zm.Mat = zm.perspectiveFovLh(
+                1.0,
+                aspect_ratio,
+                0.1,
+                1000.0
+                );
+            const view_proj: zm.Mat = zm.mul(view, projection);
+            
+            
+            @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
+            @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+            
+            //try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
+            try update_particle_ubo(self, render_frame.bodies, render_frame.player_index, 0);
+
+            self.render_targets.items[1].instance_count = render_frame.particle_count;
+            
+            // DRAW
+            try self.draw_frame(current_frame_index, &self.render_targets.items);
+
+            std.debug.print("\t\t\t| pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
+                //if (input_state.mouse_capture) "on " else "off",
+                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])), 
+                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
+                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
+                render_frame.camera_state.yaw,
+                render_frame.camera_state.pitch,
+                average_frame_time * 1000.0,
+                1.0/average_frame_time,
+            });
+            
+            var average_frame_time: f32 = 0;
+            for (frame_time_cyclic_buffer) |time|
+            {
+                average_frame_time += time;
+            }
+            average_frame_time /= FTCB_SIZE;
+            
+            frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
+            if (frame_time_buffer_index < FTCB_SIZE - 1) {
+                frame_time_buffer_index += 1;
+            } else {
+                frame_time_buffer_index = 0;
+            }
+
+            current_frame_index = (current_frame_index + 1) % self.MAX_CONCURRENT_FRAMES;
+            frame_count += 1;
         }
     }
+    
+    _ = c.vulkan.vkDeviceWaitIdle(self.device);
+    
+    image_cleanup(self, &image_info0);
+    image_cleanup(self, &image_info1);
+    self.cleanup();
 }
 
 

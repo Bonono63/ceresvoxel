@@ -5,9 +5,9 @@ const zm = @import("zmath");
 //TODO add chunk saving and loading
 
 ///The fundamental structure of any array of voxels
-pub const VoxelSpace = struct {
-    size: @Vector(3, u32),
-};
+//pub const VoxelSpace = struct {
+//    size: @Vector(3, u32),
+//};
 
 /// Returns a chunk with of random noise for voxels 
 ///

@@ -694,7 +694,12 @@ pub const VulkanState = struct {
             .descriptorCount = 10,
         };
 
-        const pool_sizes : [3]c.vulkan.VkDescriptorPoolSize = .{ubo_pool_size, storage_pool_size, image_pool_size};
+        const pool_sizes : [3]c.vulkan.VkDescriptorPoolSize = 
+            .{
+                ubo_pool_size,
+                storage_pool_size,
+                image_pool_size,
+            };
 
         const pool_info = c.vulkan.VkDescriptorPoolCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -704,7 +709,12 @@ pub const VulkanState = struct {
             .flags = c.vulkan.VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
         };
         
-        const success = c.vulkan.vkCreateDescriptorPool(self.device, &pool_info, null, &self.descriptor_pool);
+        const success = c.vulkan.vkCreateDescriptorPool(
+            self.device,
+            &pool_info,
+            null,
+            &self.descriptor_pool
+            );
         if (success != c.vulkan.VK_SUCCESS)
         {
             std.debug.print("[Error] Unable to create Descriptor Pool: {}\n", .{success});
@@ -1053,7 +1063,6 @@ pub const VulkanState = struct {
 
         c.vulkan.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
         
-        // Camera
         c.vulkan.vkCmdPushConstants(command_buffer, self.pipeline_layout, c.vulkan.VK_SHADER_STAGE_ALL, 0, self.push_constant_info.size, &self.push_constant_data[0]);
         c.vulkan.vkCmdBindDescriptorSets(command_buffer, c.vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 
@@ -2109,12 +2118,8 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, player_in
 
 
 //THREAD
-
-/// The main entry point for the rendering code.
-///
-/// ready is set to true once all boiler plate has been completed
-/// done is set to true once the rendering loop is complete
-pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer, ready: *bool, done: *bool) !void {
+/// Initializes all required boilerplate for the render state
+pub fn render_init(self: *VulkanState) !void {
     self.shader_modules = try std.ArrayList(c.vulkan.VkShaderModule).initCapacity(self.allocator.*, 8);
     defer self.shader_modules.deinit(self.allocator.*);
 
@@ -2526,120 +2531,6 @@ pub fn render_thread(self: *VulkanState, render_frame_buffer: *RenderFrameBuffer
 
     self.push_constant_data = try self.allocator.*.alloc(u8, self.PUSH_CONSTANT_SIZE);
     defer self.allocator.*.free(self.push_constant_data);
-
-    var frame_count: u64 = 0;
-    var current_frame_index: u32 = 0;
-    var previous_frame_time: f32 = @floatCast(c.vulkan.glfwGetTime());
-
-    var window_height: i32 = 0;
-    var window_width: i32 = 0;
-
-    var frame_time_buffer_index: u32 = 0;
-    const FTCB_SIZE: u32 = 128;
-    var frame_time_cyclic_buffer: [FTCB_SIZE]f32 = undefined;
-    @memset(&frame_time_cyclic_buffer, 0.0);
-
-    // Time in milliseconds in between frames, 60 is 16.666, 0.0 is 
-    var fps_limit: f32 = 0.0;//3.03030303;//8.333;
-    _ = &fps_limit;
-
-    std.debug.print("fps limit: {}\n", .{fps_limit});
-
-    ready.* = true;
-
-    var previous_render_frame: RenderFrame = undefined;
-    _ = &previous_render_frame;
-
-
-    //var previous_frame_index: u32 = 0;
-    while (c.vulkan.glfwWindowShouldClose(self.window) == 0) {
-        const current_time: f32 = @floatCast(c.vulkan.glfwGetTime());
-        const frame_delta: f32 = current_time - previous_frame_time;
-        
-        c.vulkan.glfwPollEvents();
-
-        if (frame_delta * 1000.0 >= fps_limit or fps_limit == 0.0) {
-            const render_frame_index: u32 = render_frame_buffer.lock_render_frame();
-            const render_frame: *RenderFrame = &render_frame_buffer.*.frame[render_frame_index];
-
-            previous_frame_time = current_time;
-
-            c.vulkan.glfwGetWindowSize(self.window, &window_width, &window_height);
-            const aspect_ratio : f32 = @as(f32, 
-                @floatFromInt(window_width))
-                / @as(f32, @floatFromInt(window_height)
-                    );
-
-            //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
-            const up : zm.Vec = .{0.0,1.0,0.0,0.0};
-
-            const player_pos: zm.Vec = .{
-                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[0]),
-                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[1] - 0.5),
-                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[2]),
-                0.0,
-            };
-            const view: zm.Mat = zm.lookToLh(player_pos, render_frame.*.camera_state.*.lookV(), up);
-            const projection: zm.Mat = zm.perspectiveFovLh(
-                1.0,
-                aspect_ratio,
-                0.1,
-                1000.0
-                );
-            const view_proj: zm.Mat = zm.mul(view, projection);
-            
-            
-            @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
-            @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
-            
-            //try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
-            try update_particle_ubo(self, render_frame.bodies, render_frame.player_index, 0);
-
-            self.render_targets.items[1].instance_count = render_frame.particle_count;
-            
-            // DRAW
-            try self.draw_frame(current_frame_index, &self.render_targets.items);
-            
-            var average_frame_time: f32 = 0;
-            for (frame_time_cyclic_buffer) |time|
-            {
-                average_frame_time += time;
-            }
-            average_frame_time /= FTCB_SIZE;
-
-
-            std.debug.print("\t\t\t| pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
-                //if (input_state.mouse_capture) "on " else "off",
-                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])), 
-                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
-                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
-                render_frame.camera_state.yaw,
-                render_frame.camera_state.pitch,
-                average_frame_time * 1000.0,
-                1.0/average_frame_time,
-            });
-
-            frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
-            if (frame_time_buffer_index < FTCB_SIZE - 1) {
-                frame_time_buffer_index += 1;
-            } else {
-                frame_time_buffer_index = 0;
-            }
-
-            current_frame_index = (current_frame_index + 1) % self.MAX_CONCURRENT_FRAMES;
-            frame_count += 1;
-
-            render_frame_buffer.*.mutex[render_frame_index].unlock();
-        }
-    }
-    
-    _ = c.vulkan.vkDeviceWaitIdle(self.device);
-    
-    image_cleanup(self, &image_info0);
-    image_cleanup(self, &image_info1);
-    self.cleanup();
-    
-    done.* = true;
 }
 
 //                                                     ..::::------:::...                                                 
