@@ -147,7 +147,6 @@ const ChunkRenderData = struct {
 pub const RenderFrame = struct {
     bodies: []physics.Body,
     particle_count: u32 = 0,
-    voxel_spaces: []chunk.VoxelSpace,
     player_index: u32,
     /// ONLY EVER READ FROM THE CAMERA STATE NEVER WRITE ANY DATA EVER
     camera_state: *main.CameraState,
@@ -349,7 +348,7 @@ pub const VulkanState = struct {
     ubo_buffers: std.ArrayList(c.vulkan.VkBuffer) = undefined,
     ubo_allocs: std.ArrayList(c.vulkan.VmaAllocation) = undefined,
 
-    images: []ImageInfo = undefined,
+    images: std.ArrayList(ImageInfo) = undefined,
 
     command_pool: c.vulkan.VkCommandPool = undefined,
     command_buffers: []c.vulkan.VkCommandBuffer = undefined,
@@ -1678,6 +1677,21 @@ pub const VulkanState = struct {
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called
     pub fn cleanup(self: *VulkanState) void {
+        self.shader_modules.deinit(self.allocator.*);
+        self.allocator.*.free(self.pipelines);
+        self.vertex_buffers.deinit(self.allocator.*);
+        self.vertex_allocs.deinit(self.allocator.*);
+        self.ubo_buffers.deinit(self.allocator.*);
+        self.ubo_allocs.deinit(self.allocator.*);
+        self.render_targets.deinit(self.allocator.*);
+        self.allocator.*.free(self.command_buffers);
+        self.allocator.*.free(self.descriptor_sets);
+        self.allocator.*.free(self.image_available_semaphores);
+        self.allocator.*.free(self.image_completion_semaphores);
+        self.allocator.*.free(self.in_flight_fences);
+        self.images.deinit(self.allocator.*);
+        self.allocator.*.free(self.push_constant_data);
+
         for (0..self.ubo_buffers.items.len) |i|
         {
             c.vulkan.vmaDestroyBuffer(self.vma_allocator, self.ubo_buffers.items[i], self.ubo_allocs.items[i]);
@@ -1687,10 +1701,6 @@ pub const VulkanState = struct {
             c.vulkan.vmaDestroyBuffer(self.vma_allocator, self.vertex_buffers.items[i], self.vertex_allocs.items[i]);
         }
         
-        //for (0..self.ssbo_buffers.items.len) |i| {
-        //    c.vulkan.vmaDestroyBuffer(self.vma_allocator, self.ssbo_buffers.items[i], self.ssbo_allocs.items[i]);
-        //}
-
         for (0..self.MAX_CONCURRENT_FRAMES) |i| {
             c.vulkan.vkDestroySemaphore(self.device, self.image_available_semaphores[i], null);
             c.vulkan.vkDestroySemaphore(self.device, self.image_completion_semaphores[i], null);
@@ -2121,36 +2131,26 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, player_in
 /// Initializes all required boilerplate for the render state
 pub fn render_init(self: *VulkanState) !void {
     self.shader_modules = try std.ArrayList(c.vulkan.VkShaderModule).initCapacity(self.allocator.*, 8);
-    defer self.shader_modules.deinit(self.allocator.*);
 
     self.pipelines = try self.allocator.*.alloc(c.vulkan.VkPipeline, 3);
-    defer self.allocator.*.free(self.pipelines);
 
     self.vertex_buffers = try std.ArrayList(c.vulkan.VkBuffer).initCapacity(self.allocator.*, 8);
-    defer self.vertex_buffers.deinit(self.allocator.*);
     self.vertex_allocs = try std.ArrayList(c.vulkan.VmaAllocation).initCapacity(self.allocator.*, 8);
-    defer self.vertex_allocs.deinit(self.allocator.*);
    
     self.ubo_buffers = try std.ArrayList(c.vulkan.VkBuffer).initCapacity(self.allocator.*, 8);
-    defer self.ubo_buffers.deinit(self.allocator.*);
     self.ubo_allocs = try std.ArrayList(c.vulkan.VmaAllocation).initCapacity(self.allocator.*, 8);
-    defer self.ubo_allocs.deinit(self.allocator.*);
 
     self.render_targets = try std.ArrayList(RenderInfo).initCapacity(self.allocator.*, 8);
-    defer self.render_targets.deinit(self.allocator.*);
 
     self.command_buffers = try self.allocator.*.alloc(c.vulkan.VkCommandBuffer, self.MAX_CONCURRENT_FRAMES);
-    defer self.allocator.*.free(self.command_buffers);
 
     self.descriptor_sets = try self.allocator.*.alloc(c.vulkan.VkDescriptorSet, self.MAX_CONCURRENT_FRAMES);
-    defer self.allocator.*.free(self.descriptor_sets);
 
     self.image_available_semaphores = try self.allocator.*.alloc(c.vulkan.VkSemaphore, self.MAX_CONCURRENT_FRAMES);
-    defer self.allocator.*.free(self.image_available_semaphores);
     self.image_completion_semaphores = try self.allocator.*.alloc(c.vulkan.VkSemaphore, self.MAX_CONCURRENT_FRAMES);
-    defer self.allocator.*.free(self.image_completion_semaphores);
     self.in_flight_fences = try self.allocator.*.alloc(c.vulkan.VkFence, self.MAX_CONCURRENT_FRAMES);
-    defer self.allocator.*.free(self.in_flight_fences);
+
+    self.images = try std.ArrayList(ImageInfo).initCapacity(self.allocator.*, 2);
 
     const functions = c.vulkan.VmaVulkanFunctions{
         .vkGetInstanceProcAddr = &c.vulkan.vkGetInstanceProcAddr,
@@ -2167,6 +2167,7 @@ pub fn render_init(self: *VulkanState) !void {
 
     try self.create_descriptor_set_layouts();
 
+    self.images.deinit(self.allocator.*);
     const vma_allocator_create_info = c.vulkan.VmaAllocatorCreateInfo{
         .flags = c.vulkan.VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
         .vulkanApiVersion = c.vulkan.VK_API_VERSION_1_2,
@@ -2370,8 +2371,8 @@ pub fn render_init(self: *VulkanState) !void {
         .views = try self.allocator.*.alloc(c.vulkan.VkImageView, self.MAX_CONCURRENT_FRAMES),
         .samplers = try self.allocator.*.alloc(c.vulkan.VkSampler, self.MAX_CONCURRENT_FRAMES),
     };
-    defer self.allocator.*.free(image_info0.views);
-    defer self.allocator.*.free(image_info0.samplers);
+    //defer self.allocator.*.free(image_info0.views);
+    //defer self.allocator.*.free(image_info0.samplers);
    
     const image_data0 = c.stb.stbi_load(
         "fortnite.jpg",
@@ -2407,8 +2408,8 @@ pub fn render_init(self: *VulkanState) !void {
         .views = try self.allocator.*.alloc(c.vulkan.VkImageView, self.MAX_CONCURRENT_FRAMES),
         .samplers = try self.allocator.*.alloc(c.vulkan.VkSampler, self.MAX_CONCURRENT_FRAMES),
     };
-    defer self.allocator.*.free(image_info1.views);
-    defer self.allocator.*.free(image_info1.samplers);
+    //defer self.allocator.*.free(image_info1.views);
+    //defer self.allocator.*.free(image_info1.samplers);
    
     const image_data1 = c.stb.stbi_load(
         "blocks.png",
@@ -2530,7 +2531,6 @@ pub fn render_init(self: *VulkanState) !void {
     }
 
     self.push_constant_data = try self.allocator.*.alloc(u8, self.PUSH_CONSTANT_SIZE);
-    defer self.allocator.*.free(self.push_constant_data);
 }
 
 //                                                     ..::::------:::...                                                 

@@ -92,15 +92,14 @@ pub fn main() !void {
     // ZIG INIT
     std.debug.print("[Info] Runtime Safety: {}\n", .{std.debug.runtime_safety});
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var fba = std.heap.FixedBufferAllocator(.{}){};
     defer {
         const heap_status = gpa.deinit();
         if (std.debug.runtime_safety)
             std.debug.print("[Info] Memory leaked during runtime: {}\n", .{heap_status});
     }
 
-    _ = &arena;
     var allocator = gpa.allocator();//arena.allocator();
 
     if (std.debug.runtime_safety)
@@ -116,6 +115,7 @@ pub fn main() !void {
         .PUSH_CONSTANT_SIZE = @sizeOf(zm.Mat) + @sizeOf(f32),
         .chunk_render_style = .basic,
     };
+    _ = &vulkan_state;
 
     try vulkan.glfw_initialization();
     try vulkan_state.window_setup(vulkan_state.ENGINE_NAME, vulkan_state.ENGINE_NAME);
@@ -134,319 +134,320 @@ pub fn main() !void {
         .completion_signal = true,
         .camera_state = CameraState{},
         .allocator = &allocator,
+        .chunks = ,
+        .voxel_space_sizes = .{},
     };
     
-    var physics_state = physics.PhysicsState{
-        .bodies = try std.ArrayList(physics.Body).initCapacity(allocator, 64),
-        .sim_start_time = std.time.milliTimestamp(),
-    };
-    defer physics_state.bodies.deinit(allocator);
+    _ = &game_state;
+    //var physics_state = physics.PhysicsState{
+    //    .bodies = try std.ArrayList(physics.Body).initCapacity(allocator, 64),
+    //    .sim_start_time = std.time.milliTimestamp(),
+    //};
+    //defer physics_state.bodies.deinit(allocator);
+    //
+    //// "Sun"
+    //try physics_state.bodies.append(
+    //    allocator,
+    //    .{
+    //    .position = .{0.0, 0.0, 0.0},
+    //    .inverse_mass = 0.0,
+    //    .planet = false,
+    //    .gravity = false,
+    //    .torque_accumulation = .{std.math.pi, 0.0, 0.0, 0.0},
+    //    .half_size = .{0.5, 0.5, 0.5, 0.0},
+    //    .body_type = .voxel_space
+    //}
+    //);
+    //
+    //
+    //for (2..9) |index| {
+    //    const rand = std.crypto.random;
+    //    
+    //    try physics_state.bodies.append(
+    //        allocator,
+    //        .{
+    //            .position = .{0.0, 0.0, 0.0},
+    //            .inverse_mass = 0.0,
+    //            .planet = true,
+    //            .gravity = false,
+    //            .orbit_radius = @as(f128, @floatFromInt(index * index * index * 3)),
+    //            .eccentricity = 1.0,
+    //            .eccliptic_offset = .{rand.float(f32) / 10.0, rand.float(f32) / 10.0},
+    //            .half_size = .{0.5, 0.5, 0.5, 0.0},
+    //            .body_type = .voxel_space,
+    //        }
+    //    );
+    //}
+
+    //// player
+    //try physics_state.bodies.append(
+    //    allocator,
+    //    .{
+    //        .position = .{0.0, 0.0, 0.0},
+    //        .inverse_mass = (1.0/100.0),
+    //        .half_size = .{0.5, 1.0, 0.5, 0.0},
+    //        .body_type = .player,
+    //    }
+    //);
+    //physics_state.player_index = @intCast(physics_state.bodies.items.len - 1);
     
-    // "Sun"
-    try physics_state.bodies.append(
-        allocator,
-        .{
-        .position = .{0.0, 0.0, 0.0},
-        .inverse_mass = 0.0,
-        .planet = false,
-        .gravity = false,
-        .torque_accumulation = .{std.math.pi, 0.0, 0.0, 0.0},
-        .half_size = .{0.5, 0.5, 0.5, 0.0},
-        .body_type = .voxel_space
-    }
-    );
+    //try vulkan.render_init(&vulkan_state);
+
+    //// Game Loop and additional prerequisites
+    //var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
+    //const VOMIT_COOLDOWN: i64 = 20;
+
+    //var prev_tick_time: i64 = 0;
+    //var prev_time: i64 = 0;
+    //const MINIMUM_PHYSICS_TICK_TIME: i64 = 20;
+    //const MINIMUM_RENDER_TICK_TIME: i64 = 0;
+
+    //var contacts = try std.ArrayList(physics.Contact).initCapacity(allocator, 64);
+    //defer contacts.deinit(allocator);
+
+    //var frame_count: u64 = 0;
+    //var current_frame_index: u32 = 0;
+
+    //var window_height: i32 = 0;
+    //var window_width: i32 = 0;
+
+    //var frame_time_buffer_index: u32 = 0;
+    //const FTCB_SIZE: u32 = 128;
+    //var frame_time_cyclic_buffer: [FTCB_SIZE]f32 = undefined;
+    //@memset(&frame_time_cyclic_buffer, 0.0);
+
+    //// Time in milliseconds in between frames, 60 is 16.666, 0.0 is 
+    //var fps_limit: f32 = 0.0;//3.03030303;//8.333;
+    //_ = &fps_limit;
+
+    //std.debug.print("fps limit: {}\n", .{fps_limit});
+
+    //// The responsibility of the main thread is to handle input and manage
+    //// all the other threads
+    //// This will ensure the lowest input state for the various threads and have slightly
+    //// better seperation of responsiblities
+    //// Camera state (yaw, pitch, and freecam) are all handled here as well
+    //while (c.vulkan.glfwWindowShouldClose(vulkan_state.window) == 0) {
+    //    const current_time: i64 = std.time.milliTimestamp();
+    //    prev_time = current_time;
+    //    const delta_time: i64 = current_time - prev_tick_time;
+    //    const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
+    //    
+    //    c.vulkan.glfwPollEvents();
+    //    
+    //    if (input_state.control) {
+    //        game_state.camera_state.speed = 100.0;
+    //    } else {
+    //        game_state.camera_state.speed = 5.0;
+    //    }
+
+    //    if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
+    //        game_state.camera_state.yaw -= @as(f32, 
+    //            @floatCast(input_state.mouse_dx * std.math.pi
+    //                / 180.0 * input_state.MOUSE_SENSITIVITY)
+    //            );
+    //        input_state.mouse_dx = 0.0;
+    //    }
+    //    
+    //    if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
+    //        game_state.camera_state.pitch += @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+    //        if (game_state.camera_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
+    //            game_state.camera_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
+    //        }
+    //        if (game_state.camera_state.pitch < - std.math.pi / 2.0 + std.math.pi / 256.0) {
+    //            game_state.camera_state.pitch =  - std.math.pi / 2.0 + std.math.pi / 256.0;
+    //        }
+    //        input_state.mouse_dy = 0.0;
+    //    }
+    //    
+    //    const look = game_state.camera_state.lookV();
+    //    const up = game_state.camera_state.up();
+    //    const right = game_state.camera_state.right();
+
+    //    var input_vec: zm.Vec = .{0.0, 0.0, 0.0, 0.0};
+
+    //    if (input_state.space) {
+    //        input_vec -= cm.scale_f32(
+    //            up,
+    //            game_state.camera_state.speed
+    //            );
+    //    }
+    //    if (input_state.shift) {
+    //        input_vec += cm.scale_f32(
+    //            up,
+    //            game_state.camera_state.speed
+    //            );
+    //    }
+    //    if (input_state.w) {
+    //        input_vec += cm.scale_f32(
+    //            look,
+    //            game_state.camera_state.speed
+    //            );
+    //    }
+    //    if (input_state.s) {
+    //        input_vec -= cm.scale_f32(
+    //            look,
+    //            game_state.camera_state.speed
+    //            );
+    //    }
+    //    if (input_state.d) {
+    //        input_vec += cm.scale_f32(
+    //            right,
+    //            game_state.camera_state.speed
+    //            );
+    //    }
+    //    if (input_state.a) {
+    //        input_vec -= cm.scale_f32(
+    //            right,
+    //            game_state.camera_state.speed
+    //            );
+    //    }
+    //        
+    //    // TODO make this only work while glfw is initialized it is producing that error
+    //    if (input_state.mouse_capture)
+    //    {
+    //        c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_DISABLED);
+    //    }
+    //    else
+    //    {
+    //        c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_NORMAL);
+    //    }
+
+    //    if (@abs(current_time - prev_tick_time) > MINIMUM_PHYSICS_TICK_TIME) {
+    //        // PHYSICS AND LOGIC SECTION
+
+    //        prev_tick_time = current_time;
+
+    //        const player_physics_state: *physics.Body = &physics_state.bodies.items[physics_state.player_index];
+
+    //        player_physics_state.*.velocity = input_vec;
+
+    //        for (physics_state.bodies.items, 0..physics_state.bodies.items.len) |body, index| {
+    //            if (body.body_type == .particle) {
+    //                const MAX_PARTICLE_TIME: u32 = 1000;
+    //                if (body.particle_time < MAX_PARTICLE_TIME) {
+    //                    physics_state.bodies.items[index].particle_time += 1;
+    //                } else {
+    //                    _ = physics_state.bodies.orderedRemove(index);
+    //                    physics_state.particle_count -= 1;
+    //                }
+    //            }
+    //        }
+    //       
+    //        // TODO throw this into a different thread and join when the tick is done
+    //        try physics.physics_tick(
+    //            &allocator,
+    //            delta_time_float,
+    //            physics_state.sim_start_time,
+    //            physics_state.bodies.items,
+    //            &contacts
+    //            );
+    //        
+    //        if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
+    //            try physics_state.bodies.append(
+    //                allocator,
+    //                .{
+    //                    .position = player_physics_state.*.position,
+    //                    .inverse_mass = 1.0 / 32.0,
+    //                    .orientation = game_state.camera_state.look(),
+    //                    .velocity = cm.scale_f32(
+    //                        game_state.camera_state.lookV(), 1.0 * 32.0)
+    //                        + player_physics_state.*.velocity,
+    //                    //.angular_velocity = .{1.0,0.0,0.0,0.0},
+    //                    .half_size = .{0.5, 0.5, 0.5, 0.0},
+    //                    .body_type = .particle,
+    //                }
+    //            );
+
+    //            physics_state.particle_count += 1;
+    //            
+    //            vomit_cooldown_previous_time = current_time;
+    //        }
+    //        
+    //        std.debug.print("{}ms {} bodies {}ms\r", .{
+    //            delta_time,
+    //            physics_state.bodies.items.len,
+    //            std.time.milliTimestamp() - current_time
+    //        });
+    //    }
+
+    //    const render_frame: vulkan.RenderFrame = vulkan.RenderFrame{
+    //        .bodies = physics_state.bodies.items,
+    //        .particle_count = physics_state.particle_count,
+    //        .player_index = physics_state.player_index,
+    //        .camera_state = &game_state.camera_state,
+    //};
+    //    
+    //    if (@abs(current_time - prev_tick_time) > MINIMUM_RENDER_TICK_TIME) {
+    //        c.vulkan.glfwGetWindowSize(vulkan_state.window, &window_width, &window_height);
+    //        const aspect_ratio : f32 = @as(f32, 
+    //            @floatFromInt(window_width))
+    //            / @as(f32, @floatFromInt(window_height)
+    //                );
+
+    //        const player_pos: zm.Vec = .{
+    //            0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[0]),
+    //            0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[1] - 0.5),
+    //            0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[2]),
+    //            0.0,
+    //        };
+    //        const view: zm.Mat = zm.lookToLh(player_pos, look, up);
+    //        const projection: zm.Mat = zm.perspectiveFovLh(
+    //            1.0,
+    //            aspect_ratio,
+    //            0.1,
+    //            1000.0
+    //            );
+    //        const view_proj: zm.Mat = zm.mul(view, projection);
+    //        
+    //        
+    //        @memcpy(vulkan_state.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
+    //        @memcpy(vulkan_state.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+    //        
+    //        //try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
+    //        //try vulkan_state.update_particle_ubo(render_frame.bodies, render_frame.player_index, 0);
+
+    //        vulkan_state.render_targets.items[1].instance_count = render_frame.particle_count;
+    //        
+    //        // DRAW
+    //        try vulkan_state.draw_frame(current_frame_index, &vulkan_state.render_targets.items);
+    //        
+    //        var average_frame_time: f32 = 0;
+    //        for (frame_time_cyclic_buffer) |time|
+    //        {
+    //            average_frame_time += time;
+    //        }
+    //        average_frame_time /= FTCB_SIZE;
+
+    //        std.debug.print("\t\t\t| pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
+    //            //if (input_state.mouse_capture) "on " else "off",
+    //            @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])), 
+    //            @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
+    //            @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
+    //            render_frame.camera_state.yaw,
+    //            render_frame.camera_state.pitch,
+    //            average_frame_time * 1000.0,
+    //            1.0/average_frame_time,
+    //        });
+    //        
+    //        frame_time_cyclic_buffer[frame_time_buffer_index] = @floatCast(delta_time_float);
+    //        if (frame_time_buffer_index < FTCB_SIZE - 1) {
+    //            frame_time_buffer_index += 1;
+    //        } else {
+    //            frame_time_buffer_index = 0;
+    //        }
+
+    //        current_frame_index = (current_frame_index + 1) % vulkan_state.MAX_CONCURRENT_FRAMES;
+    //        frame_count += 1;
+    //    }
+    //}
+   
+    //_ = &game_state;
+    //_ = c.vulkan.vkDeviceWaitIdle(vulkan_state.device);
     
-    
-    for (2..9) |index| {
-        const rand = std.crypto.random;
-        
-        try physics_state.bodies.append(
-            allocator,
-            .{
-                .position = .{0.0, 0.0, 0.0},
-                .inverse_mass = 0.0,
-                .planet = true,
-                .gravity = false,
-                .orbit_radius = @as(f128, @floatFromInt(index * index * index * 3)),
-                .eccentricity = 1.0,
-                .eccliptic_offset = .{rand.float(f32) / 10.0, rand.float(f32) / 10.0},
-                .half_size = .{0.5, 0.5, 0.5, 0.0},
-                .body_type = .voxel_space,
-            }
-        );
-    }
-
-    // player
-    try physics_state.bodies.append(
-        allocator,
-        .{
-            .position = .{0.0, 0.0, 0.0},
-            .inverse_mass = (1.0/100.0),
-            .half_size = .{0.5, 1.0, 0.5, 0.0},
-            .body_type = .player,
-        }
-    );
-    physics_state.player_index = @intCast(physics_state.bodies.items.len - 1);
-    
-    vulkan_state.init();
-
-    // Game Loop and additional prerequisites
-    var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
-    const VOMIT_COOLDOWN: i64 = 20;
-
-    var prev_tick_time: i64 = 0;
-    var prev_time: i64 = 0;
-    const MINIMUM_PHYSICS_TICK_TIME: i64 = 20;
-    const MINIMUM_RENDER_TICK_TIME: i64 = 0;
-
-    var contacts = try std.ArrayList(physics.Contact).initCapacity(allocator, 64);
-    defer contacts.deinit(allocator);
-
-    var frame_count: u64 = 0;
-    var current_frame_index: u32 = 0;
-    var previous_frame_time: f32 = @floatCast(c.vulkan.glfwGetTime());
-
-    var window_height: i32 = 0;
-    var window_width: i32 = 0;
-
-    var frame_time_buffer_index: u32 = 0;
-    const FTCB_SIZE: u32 = 128;
-    var frame_time_cyclic_buffer: [FTCB_SIZE]f32 = undefined;
-    @memset(&frame_time_cyclic_buffer, 0.0);
-
-    // Time in milliseconds in between frames, 60 is 16.666, 0.0 is 
-    var fps_limit: f32 = 0.0;//3.03030303;//8.333;
-    _ = &fps_limit;
-
-    std.debug.print("fps limit: {}\n", .{fps_limit});
-
-    
-    // TODO memcpy the previous RenderFrame here for physics interpolation?
-    // Maybe we can do physics interpolation on the current frame and it won't matter?
-    var previous_render_frame: RenderFrame = undefined;
-    _ = &previous_render_frame;
-
-    // The responsibility of the main thread is to handle input and manage
-    // all the other threads
-    // This will ensure the lowest input state for the various threads and have slightly
-    // better seperation of responsiblities
-    // Camera state (yaw, pitch, and freecam) are all handled here as well
-    while (c.vulkan.glfwWindowShouldClose(self.window) == 0) {
-        const current_time: i64 = std.time.milliTimestamp();
-        prev_time = current_time;
-        const delta_time: i64 = current_time - prev_tick_time;
-        const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
-        
-        c.vulkan.glfwPollEvents();
-        
-        if (input_state.control) {
-            game_state.camera_state.speed = 100.0;
-        } else {
-            game_state.camera_state.speed = 5.0;
-        }
-
-        if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
-            game_state.camera_state.yaw -= @as(f32, 
-                @floatCast(input_state.mouse_dx * std.math.pi
-                    / 180.0 * input_state.MOUSE_SENSITIVITY)
-                );
-            input_state.mouse_dx = 0.0;
-        }
-        
-        if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
-            game_state.camera_state.pitch += @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
-            if (game_state.camera_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
-                game_state.camera_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
-            }
-            if (game_state.camera_state.pitch < - std.math.pi / 2.0 + std.math.pi / 256.0) {
-                game_state.camera_state.pitch =  - std.math.pi / 2.0 + std.math.pi / 256.0;
-            }
-            input_state.mouse_dy = 0.0;
-        }
-        
-        const look = game_state.camera_state.lookV();
-        const up = game_state.camera_state.up();
-        const right = game_state.camera_state.right();
-
-        var input_vec: zm.Vec = .{0.0, 0.0, 0.0, 0.0};
-
-        if (input_state.space) {
-            input_vec -= cm.scale_f32(
-                up,
-                game_state.camera_state.speed
-                );
-        }
-        if (input_state.shift) {
-            input_vec += cm.scale_f32(
-                up,
-                game_state.camera_state.speed
-                );
-        }
-        if (input_state.w) {
-            input_vec += cm.scale_f32(
-                look,
-                game_state.camera_state.speed
-                );
-        }
-        if (input_state.s) {
-            input_vec -= cm.scale_f32(
-                look,
-                game_state.camera_state.speed
-                );
-        }
-        if (input_state.d) {
-            input_vec += cm.scale_f32(
-                right,
-                game_state.camera_state.speed
-                );
-        }
-        if (input_state.a) {
-            input_vec -= cm.scale_f32(
-                right,
-                game_state.camera_state.speed
-                );
-        }
-            
-        // TODO make this only work while glfw is initialized it is producing that error
-        if (input_state.mouse_capture and !render_done)
-        {
-            c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_DISABLED);
-        }
-        else
-        {
-            c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_NORMAL);
-        }
-
-        if (@abs(current_time - prev_tick_time) > MINIMUM_PHYSICS_TICK_TIME) {
-            // PHYSICS AND LOGIC SECTION
-
-            prev_tick_time = current_time;
-
-            const player_physics_state: *physics.Body = &physics_state.bodies.items[physics_state.player_index];
-
-            player_physics_state.*.velocity = input_vec;
-
-            for (physics_state.bodies.items, 0..physics_state.bodies.items.len) |body, index| {
-                if (body.body_type == .particle) {
-                    const MAX_PARTICLE_TIME: u32 = 1000;
-                    if (body.particle_time < MAX_PARTICLE_TIME) {
-                        physics_state.bodies.items[index].particle_time += 1;
-                    } else {
-                        _ = physics_state.bodies.orderedRemove(index);
-                        physics_state.particle_count -= 1;
-                    }
-                }
-            }
-           
-            // TODO throw this into a different thread and join when the tick is done
-            try physics.physics_tick(
-                &allocator,
-                delta_time_float,
-                physics_state.sim_start_time,
-                physics_state.bodies.items,
-                &contacts
-                );
-            
-            if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
-                try physics_state.bodies.append(
-                    allocator,
-                    .{
-                        .position = player_physics_state.*.position,
-                        .inverse_mass = 1.0 / 32.0,
-                        .orientation = game_state.camera_state.look(),
-                        .velocity = cm.scale_f32(
-                            game_state.camera_state.lookV(), 1.0 * 32.0)
-                            + player_physics_state.*.velocity,
-                        //.angular_velocity = .{1.0,0.0,0.0,0.0},
-                        .half_size = .{0.5, 0.5, 0.5, 0.0},
-                        .body_type = .particle,
-                    }
-                );
-
-                physics_state.particle_count += 1;
-                
-                vomit_cooldown_previous_time = current_time;
-            }
-            
-            std.debug.print("{}ms {} bodies {}ms\r", .{
-                delta_time,
-                physics_state.bodies.items.len,
-                std.time.milliTimestamp() - current_time
-            });
-        }
-        
-        if (@abs(current_time - prev_tick_time) > MINIMUM_RENDER_TICK_TIME) {
-            c.vulkan.glfwGetWindowSize(self.window, &window_width, &window_height);
-            const aspect_ratio : f32 = @as(f32, 
-                @floatFromInt(window_width))
-                / @as(f32, @floatFromInt(window_height)
-                    );
-
-            //// Have this based on player gravity (an up in player state determined by logic/physics controllers)
-            const up : zm.Vec = .{0.0,1.0,0.0,0.0};
-
-            const player_pos: zm.Vec = .{
-                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[0]),
-                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[1] - 0.5),
-                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[2]),
-                0.0,
-            };
-            const view: zm.Mat = zm.lookToLh(player_pos, render_frame.*.camera_state.*.lookV(), up);
-            const projection: zm.Mat = zm.perspectiveFovLh(
-                1.0,
-                aspect_ratio,
-                0.1,
-                1000.0
-                );
-            const view_proj: zm.Mat = zm.mul(view, projection);
-            
-            
-            @memcpy(self.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
-            @memcpy(self.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
-            
-            //try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
-            try update_particle_ubo(self, render_frame.bodies, render_frame.player_index, 0);
-
-            self.render_targets.items[1].instance_count = render_frame.particle_count;
-            
-            // DRAW
-            try self.draw_frame(current_frame_index, &self.render_targets.items);
-
-            std.debug.print("\t\t\t| pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
-                //if (input_state.mouse_capture) "on " else "off",
-                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])), 
-                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
-                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
-                render_frame.camera_state.yaw,
-                render_frame.camera_state.pitch,
-                average_frame_time * 1000.0,
-                1.0/average_frame_time,
-            });
-            
-            var average_frame_time: f32 = 0;
-            for (frame_time_cyclic_buffer) |time|
-            {
-                average_frame_time += time;
-            }
-            average_frame_time /= FTCB_SIZE;
-            
-            frame_time_cyclic_buffer[frame_time_buffer_index] = frame_delta;
-            if (frame_time_buffer_index < FTCB_SIZE - 1) {
-                frame_time_buffer_index += 1;
-            } else {
-                frame_time_buffer_index = 0;
-            }
-
-            current_frame_index = (current_frame_index + 1) % self.MAX_CONCURRENT_FRAMES;
-            frame_count += 1;
-        }
-    }
-    
-    _ = c.vulkan.vkDeviceWaitIdle(self.device);
-    
-    image_cleanup(self, &image_info0);
-    image_cleanup(self, &image_info1);
-    self.cleanup();
+    //vulkan.image_cleanup(vulkan_state, &image_info0);
+    //vulkan.image_cleanup(vulkan_state, &image_info1);
+    //vulkan_state.cleanup();
 }
 
 
