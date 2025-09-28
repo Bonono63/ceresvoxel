@@ -1212,18 +1212,35 @@ pub const VulkanState = struct {
         }
         
         var image_index: u32 = 0;
-        const acquire_next_image_success = c.vulkan.vkAcquireNextImageKHR(self.device, self.swapchain, std.math.maxInt(u64), self.image_available_semaphores[frame_index], null, &image_index);
+        const acquire_next_image_success = c.vulkan.vkAcquireNextImageKHR(
+            self.device,
+            self.swapchain,
+            std.math.maxInt(u64),
+            self.image_available_semaphores[frame_index],
+            null,
+            &image_index
+            );
 
-        if (acquire_next_image_success == c.vulkan.VK_ERROR_OUT_OF_DATE_KHR or acquire_next_image_success == c.vulkan.VK_SUBOPTIMAL_KHR or self.framebuffer_resized) {
+        if (acquire_next_image_success == c.vulkan.VK_ERROR_OUT_OF_DATE_KHR
+            or acquire_next_image_success == c.vulkan.VK_SUBOPTIMAL_KHR
+            or self.framebuffer_resized
+            ) {
             try recreate_swapchain(self);
             self.framebuffer_resized = false;
             return;
         } else if (acquire_next_image_success != c.vulkan.VK_SUCCESS) {
-            std.debug.print("[Error] Unable to acquire next swapchain image: {} \n", .{acquire_next_image_success});
+            std.debug.print(
+                "[Error] Unable to acquire next swapchain image: {} \n",
+                .{acquire_next_image_success}
+                );
             return VkAbstractionError.AcquireNextSwapchainImageFailure;
         }
         
-        const reset_fence_success = c.vulkan.vkResetFences(self.device, 1, &self.in_flight_fences[frame_index]);
+        const reset_fence_success = c.vulkan.vkResetFences(
+            self.device,
+            1,
+            &self.in_flight_fences[frame_index]
+            );
         if (reset_fence_success != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
         }
@@ -1324,7 +1341,14 @@ pub const VulkanState = struct {
             .layerCount = 1,
         };
 
-        const depth_image_creation_success = c.vulkan.vmaCreateImage(self.vma_allocator, &image_create_info, &alloc_info, &self.depth_image, &self.depth_image_alloc, null);
+        const depth_image_creation_success = c.vulkan.vmaCreateImage(
+            self.vma_allocator,
+            &image_create_info,
+            &alloc_info,
+            &self.depth_image,
+            &self.depth_image_alloc,
+            null
+            );
         if (depth_image_creation_success != c.vulkan.VK_SUCCESS)
         {
             return VkAbstractionError.DepthResourceCreationFailure;
@@ -1338,7 +1362,12 @@ pub const VulkanState = struct {
             .subresourceRange = subresource_range,
         };
 
-        const success = c.vulkan.vkCreateImageView(self.device, &view_info, null, &self.depth_image_view);
+        const success = c.vulkan.vkCreateImageView(
+            self.device,
+            &view_info,
+            null,
+            &self.depth_image_view
+            );
         if (success != c.vulkan.VK_SUCCESS)
         {
             std.debug.print("Failure to create texture image view: {}\n", .{success}); return;
@@ -1677,28 +1706,23 @@ pub const VulkanState = struct {
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called
     pub fn cleanup(self: *VulkanState) void {
-        self.shader_modules.deinit(self.allocator.*);
-        self.allocator.*.free(self.pipelines);
-        self.vertex_buffers.deinit(self.allocator.*);
-        self.vertex_allocs.deinit(self.allocator.*);
-        self.ubo_buffers.deinit(self.allocator.*);
-        self.ubo_allocs.deinit(self.allocator.*);
-        self.render_targets.deinit(self.allocator.*);
-        self.allocator.*.free(self.command_buffers);
-        self.allocator.*.free(self.descriptor_sets);
-        self.allocator.*.free(self.image_available_semaphores);
-        self.allocator.*.free(self.image_completion_semaphores);
-        self.allocator.*.free(self.in_flight_fences);
-        self.images.deinit(self.allocator.*);
-        self.allocator.*.free(self.push_constant_data);
-
         for (0..self.ubo_buffers.items.len) |i|
         {
             c.vulkan.vmaDestroyBuffer(self.vma_allocator, self.ubo_buffers.items[i], self.ubo_allocs.items[i]);
         }
+        
+        self.ubo_buffers.deinit(self.allocator.*);
+        self.ubo_allocs.deinit(self.allocator.*);
 
         for (0..self.vertex_buffers.items.len) |i| {
             c.vulkan.vmaDestroyBuffer(self.vma_allocator, self.vertex_buffers.items[i], self.vertex_allocs.items[i]);
+        }
+        
+        self.vertex_buffers.deinit(self.allocator.*);
+        self.vertex_allocs.deinit(self.allocator.*);
+
+        for (0..self.images.items.len) |image_index| {
+            image_cleanup(self, &self.images.items[image_index]);
         }
         
         for (0..self.MAX_CONCURRENT_FRAMES) |i| {
@@ -1707,7 +1731,12 @@ pub const VulkanState = struct {
             c.vulkan.vkDestroyFence(self.device, self.in_flight_fences[i], null);
         }
 
-        c.vulkan.vkFreeCommandBuffers(self.device, self.command_pool, self.MAX_CONCURRENT_FRAMES, self.command_buffers.ptr);
+        c.vulkan.vkFreeCommandBuffers(
+            self.device,
+            self.command_pool,
+            self.MAX_CONCURRENT_FRAMES,
+            self.command_buffers.ptr
+            );
 
         c.vulkan.vkDestroyCommandPool(self.device, self.command_pool, null);
 
@@ -1736,6 +1765,17 @@ pub const VulkanState = struct {
         c.vulkan.vkDestroyInstance(self.vk_instance, null);
         c.vulkan.glfwDestroyWindow(self.window);
         c.vulkan.glfwTerminate();
+        
+        self.shader_modules.deinit(self.allocator.*);
+        self.allocator.*.free(self.pipelines);
+        self.render_targets.deinit(self.allocator.*);
+        self.allocator.*.free(self.command_buffers);
+        self.allocator.*.free(self.descriptor_sets);
+        self.allocator.*.free(self.image_available_semaphores);
+        self.allocator.*.free(self.image_completion_semaphores);
+        self.allocator.*.free(self.in_flight_fences);
+        self.images.deinit(self.allocator.*);
+        self.allocator.*.free(self.push_constant_data);
     }
 };
 
@@ -1972,8 +2012,7 @@ pub fn create_samplers(
     }
 }
 
-pub fn image_cleanup(self: *VulkanState, info: *ImageInfo) void
-{
+pub fn image_cleanup(self: *VulkanState, info: *ImageInfo) void {
     for (0..info.views.len) |i|
     {
         c.vulkan.vkDestroyImageView(self.device, info.views[i], null);
@@ -2130,6 +2169,7 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, player_in
 //THREAD
 /// Initializes all required boilerplate for the render state
 pub fn render_init(self: *VulkanState) !void {
+    // Allocations
     self.shader_modules = try std.ArrayList(c.vulkan.VkShaderModule).initCapacity(self.allocator.*, 8);
 
     self.pipelines = try self.allocator.*.alloc(c.vulkan.VkPipeline, 3);
@@ -2137,8 +2177,8 @@ pub fn render_init(self: *VulkanState) !void {
     self.vertex_buffers = try std.ArrayList(c.vulkan.VkBuffer).initCapacity(self.allocator.*, 8);
     self.vertex_allocs = try std.ArrayList(c.vulkan.VmaAllocation).initCapacity(self.allocator.*, 8);
    
-    self.ubo_buffers = try std.ArrayList(c.vulkan.VkBuffer).initCapacity(self.allocator.*, 8);
-    self.ubo_allocs = try std.ArrayList(c.vulkan.VmaAllocation).initCapacity(self.allocator.*, 8);
+    self.ubo_buffers = try std.ArrayList(c.vulkan.VkBuffer).initCapacity(self.allocator.*, 1);
+    self.ubo_allocs = try std.ArrayList(c.vulkan.VmaAllocation).initCapacity(self.allocator.*, 1);
 
     self.render_targets = try std.ArrayList(RenderInfo).initCapacity(self.allocator.*, 8);
 
@@ -2167,7 +2207,6 @@ pub fn render_init(self: *VulkanState) !void {
 
     try self.create_descriptor_set_layouts();
 
-    self.images.deinit(self.allocator.*);
     const vma_allocator_create_info = c.vulkan.VmaAllocatorCreateInfo{
         .flags = c.vulkan.VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
         .vulkanApiVersion = c.vulkan.VK_API_VERSION_1_2,
@@ -2185,6 +2224,8 @@ pub fn render_init(self: *VulkanState) !void {
     }
 
     try self.create_depth_resources();
+
+    // Descriptors
 
     self.push_constant_info = c.vulkan.VkPushConstantRange{
         .stageFlags = c.vulkan.VK_SHADER_STAGE_ALL,
@@ -2463,7 +2504,7 @@ pub fn render_init(self: *VulkanState) !void {
             c.vulkan.VkDescriptorBufferInfo{
                 .buffer = self.ubo_buffers.items[1],
                 .offset = 0,
-                .range = 256 * @sizeOf(ChunkRenderData),
+                .range = 100 * @sizeOf(ChunkRenderData),
             },
         };
         
