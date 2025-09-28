@@ -152,112 +152,6 @@ pub const RenderFrame = struct {
     camera_state: *main.CameraState,
 };
 
-/// A "cyclic" buffer of RenderFrames for multithreading between the logic and render threads
-pub const RenderFrameBuffer = struct {
-    allocator: *std.mem.Allocator,
-    size: u32,
-    frame: []RenderFrame = undefined,
-    mutex: []std.Thread.Mutex = undefined,
-
-    pub fn init(
-        self: *RenderFrameBuffer,
-        camera_state: *main.CameraState,
-        physics_state: *physics.PhysicsState,
-        voxel_spaces: *[]chunk.VoxelSpace,
-        player_index: u32
-        ) !void {
-
-        self.frame = try self.allocator.*.alloc(RenderFrame, self.size);
-        self.mutex = try self.allocator.*.alloc(std.Thread.Mutex, self.size);
-
-        for (0..self.size) |i| {
-            self.mutex[i] = std.Thread.Mutex{};
-
-            self.frame[i] = .{
-                .voxel_spaces = try self.allocator.*.alloc(
-                chunk.VoxelSpace,
-                voxel_spaces.*.len
-                ),
-                .bodies = try self.allocator.*.alloc(
-                physics.Body,
-                physics_state.*.bodies.items.len
-                ),
-                .player_index = player_index,
-                .camera_state = camera_state,
-            };
-            @memcpy(self.frame[i].voxel_spaces, voxel_spaces.*);
-            @memcpy(self.frame[i].bodies, physics_state.*.bodies.items);
-        }
-    }
-
-    /// This locks and unlocks the mutex associated with the buffer
-    pub fn update(self: *RenderFrameBuffer,
-        physics_state: *physics.PhysicsState,
-        voxel_spaces: *[]chunk.VoxelSpace) !void {
-
-        const frame_index: u32 = self.lock_render_frame();
-        
-        self.frame[frame_index].voxel_spaces = try self.allocator.realloc(
-            self.frame[frame_index].voxel_spaces,
-            voxel_spaces.*.len
-            );
-        self.frame[frame_index].bodies = try self.allocator.realloc(
-            self.frame[frame_index].bodies,
-            physics_state.*.bodies.items.len
-            );
-        @memcpy(self.frame[frame_index].voxel_spaces, voxel_spaces.*);
-        @memcpy(self.frame[frame_index].bodies, physics_state.bodies.items);
-
-        self.frame[frame_index].particle_count = physics_state.particle_count;
-
-        self.mutex[frame_index].unlock();
-    }
-
-    // TODO add some way to prioritize less frequently used frames so we don't lock 
-    // up when the logic thread hits its maximum delta time
-    /// locks a mutex in the render frame buffer and returns
-    pub fn lock_render_frame(self: *RenderFrameBuffer) u32 {
-        var i: u32 = 0;
-        var locked: bool = false;
-        while (!locked) {
-            //switch (calling_thread) {
-            //    .logic => {
-                    if (self.mutex[i].tryLock()) {
-                        locked = true;
-                    } else {
-                        i = (i + 1) % self.size;
-                    }
-            //    },
-            //    .render => {
-            //        if (self.last_thread[i] != calling_thread) {
-            //            if (self.mutex[i].tryLock()) {
-            //                locked = true;
-            //            } else {
-            //                i = (i + 1) % self.size;
-            //            }
-            //        }
-            //    },
-            //}
-        }
-
-        //self.last_thread[i] = calling_thread;
-
-        //std.debug.print("{}\n", .{i});
-        return i;
-    }
-
-    pub fn deinit(self: *RenderFrameBuffer) void {
-
-        for (0..self.size) |i| {
-            self.allocator.*.free(self.frame[i].voxel_spaces);
-            self.allocator.*.free(self.frame[i].bodies);
-        }
-        self.allocator.*.free(self.frame);
-        self.allocator.*.free(self.mutex);
-    } 
-};
-
-
 /// image_views size should be of size MAX_CONCURRENT_FRAMES
 /// Current implementation also assumes 2D texture
 /// Defaults to 2D image view type
@@ -2104,7 +1998,7 @@ pub export fn glfw_error_callback(code: c_int, description: [*c]const u8) void {
 }
 
 /// Generates the unique data sent to the GPU for chunks
-pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index: u32) VkAbstractionError!void {
+pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, vertex_buffer_indices: []u32, ubo_index: u32) VkAbstractionError!void {
     var data = try std.ArrayList(ChunkRenderData).initCapacity(self.allocator.*, 16);
     defer data.deinit(self.allocator.*);
 
@@ -2112,7 +2006,6 @@ pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, ubo_index: u
     // but tbh, not sure I can do much about that atm
     for (bodies) |body| {
         if (body.body_type == .voxel_space) {
-            const vs = body.voxel_space.*;
             for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
                 const physics_pos = .{
                     @as(f32, @floatCast(bodies[vs.physics_index].position[0])),

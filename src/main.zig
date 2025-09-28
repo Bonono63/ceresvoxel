@@ -69,7 +69,8 @@ const particle_max_time: u32 = 1000;
 ///Stores arbitrary state of the game
 pub const GameState = struct {
     chunks: []u8, // 100 * 32768
-    chunks_len: u32 = 0,
+    chunks_len: u32 = 0, // number of currently active chunks
+    chunk_vertex_indices: []u32,
     voxel_space_sizes: []@Vector(3, u32), // Is 100 voxel spaces enough? 1000?
     seed: u64 = 0,
     camera_state: CameraState,
@@ -113,10 +114,9 @@ pub fn main() !void {
         .ENGINE_NAME = ENGINE_NAME,
         .allocator = &allocator,
         .MAX_CONCURRENT_FRAMES = 2, // basically double buffering
-        .PUSH_CONSTANT_SIZE = @sizeOf(zm.Mat) + @sizeOf(f32),
+        .PUSH_CONSTANT_SIZE = @sizeOf(zm.Mat) + @sizeOf(f32) + @sizeOf(u32), // view-proj matrix | aspect ratio | chunk index
         .chunk_render_style = .basic,
     };
-    _ = &vulkan_state;
 
     try vulkan.glfw_initialization();
     try vulkan_state.window_setup(vulkan_state.ENGINE_NAME, vulkan_state.ENGINE_NAME);
@@ -135,8 +135,9 @@ pub fn main() !void {
         .completion_signal = true,
         .camera_state = CameraState{},
         .allocator = &allocator,
-        .chunks = try allocator.alloc(u8, 32768 * 100),
-        .voxel_space_sizes = try allocator.alloc(@Vector(3, u32), 100),
+        .chunks = try allocator.alloc(u8, 32768 * 100), // can load at most 100 chunks at a time
+        .chunk_vertex_indices = try allocator.alloc(u32, 100),
+        .voxel_space_sizes = try allocator.alloc(@Vector(3, u32), 100), // can load at most 100 voxel spaces
     };
     defer allocator.free(game_state.chunks);
     defer allocator.free(game_state.voxel_space_sizes);
@@ -348,11 +349,32 @@ pub fn main() !void {
             const view_proj: zm.Mat = zm.mul(view, projection);
             
             
-            @memcpy(vulkan_state.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
-            @memcpy(vulkan_state.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+            @memcpy(
+                vulkan_state.push_constant_data[0..64],
+                @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]
+                );
+            @memcpy(
+                vulkan_state.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)],
+                @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]
+                );
+            @memset(
+                vulkan_state.push_constant_data[(@sizeOf(zm.Mat) + 4)..(@sizeOf(zm.Mat) + 4 + 4)],
+                0
+                );
             
-            //try update_chunk_ubo(self, bodies, game_state.voxel_spaces.items, 1);
-            //try vulkan_state.update_particle_ubo(render_frame.bodies, render_frame.player_index, 0);
+            try vulkan.update_chunk_ubo(
+                &vulkan_state,
+                render_frame.bodies,
+                game_state.chunk_vertex_indices, // This should probably have a place in the RenderFrame if we redo that
+                1,
+                );
+            
+            try vulkan.update_particle_ubo(
+                &vulkan_state,
+                render_frame.bodies,
+                render_frame.player_index,
+                0
+                );
 
             vulkan_state.render_targets.items[1].instance_count = render_frame.particle_count;
             
@@ -366,8 +388,9 @@ pub fn main() !void {
             }
             average_frame_time /= FTCB_SIZE;
 
-            std.debug.print("\t\t\t| pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
-                //if (input_state.mouse_capture) "on " else "off",
+            std.debug.print("{s} {} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
+                if (input_state.mouse_capture) "on " else "off",
+                physics_state.bodies.items.len,
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])), 
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
@@ -408,15 +431,6 @@ pub fn main() !void {
                     }
                 }
             }
-           
-            // TODO throw this into a different thread and join when the tick is done
-            try physics.physics_tick(
-                &allocator,
-                delta_time_float,
-                physics_state.sim_start_time,
-                physics_state.bodies.items,
-                &contacts
-                );
             
             if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
                 try physics_state.bodies.append(
@@ -438,21 +452,20 @@ pub fn main() !void {
                 
                 vomit_cooldown_previous_time = current_time;
             }
-            
-            std.debug.print("{}ms {} bodies {}ms\r", .{
-                delta_time,
-                physics_state.bodies.items.len,
-                std.time.milliTimestamp() - current_time
-            });
+           
+            // TODO throw this into a different thread and join when the tick is done
+            try physics.physics_tick(
+                &allocator,
+                delta_time_float,
+                physics_state.sim_start_time,
+                physics_state.bodies.items,
+                &contacts
+                );
         }
 
     }
    
-    //_ = &game_state;
     _ = c.vulkan.vkDeviceWaitIdle(vulkan_state.device);
-    
-    //vulkan.image_cleanup(vulkan_state, &image_info0);
-    //vulkan.image_cleanup(vulkan_state, &image_info1);
     vulkan_state.cleanup();
 }
 
@@ -591,11 +604,6 @@ pub export fn window_resize_callback(window: ?*c.vulkan.GLFWwindow, width: c_int
     _ = &height;
     const instance: *vulkan.VulkanState = @ptrCast(@alignCast(c.vulkan.glfwGetWindowUserPointer(window)));
     instance.framebuffer_resized = true;
-}
-
-/// The thread that processes all game and logic
-fn game_thread() !void {
-    
 }
 
 // TODO redo this after we implement physics and stuffsies
