@@ -111,10 +111,11 @@ pub const Object = struct {
     // voxel space data
     size: @Vector(3, u32) = .{0,0,0},
     chunks: std.ArrayList(u8) = undefined, // 32768 * chunk count
+    vertex_buffers: std.ArrayList(u32) = undefined, // allocated seperate from VulkanState
 
     /// Returns the object's transform (for rendering or physics)
     /// for safety reasons should only be called on objects within f32's range.
-    pub fn transform(self: *const Body) zm.Mat {
+    pub fn transform(self: *const Object) zm.Mat {
         const center: zm.Vec = cm.scale_f32(self.half_size, -1.0);
         const world_pos: zm.Mat = zm.translationV(.{
                 @as(f32, @floatCast(self.position[0])),
@@ -129,7 +130,7 @@ pub const Object = struct {
 
     /// Returns the object's transform (for rendering or physics)
     /// for safety reasons should only be called on objects within f32's range.
-    pub fn render_transform(self: *const Body, player_pos: @Vector(3, f128)) zm.Mat {
+    pub fn render_transform(self: *const Object, player_pos: @Vector(3, f128)) zm.Mat {
         //const center: zm.Vec = cm.scale_f32(self.half_size, 1.0);
         const world_pos: zm.Mat = zm.translationV(.{
                 @as(f32, @floatCast(self.position[0] - player_pos[0])),
@@ -141,17 +142,17 @@ pub const Object = struct {
     }
 
     /// Returns the X axis given the body's current transform 
-    pub fn getXAxis(self: *const Body) zm.Vec {
+    pub fn getXAxis(self: *const Object) zm.Vec {
         return zm.mul(self.transform(), zm.Vec{1.0,0.0,0.0,0.0});
     }
 
     /// Returns the Y axis given the body's current transform 
-    pub fn getYAxis(self: *const Body) zm.Vec {
+    pub fn getYAxis(self: *const Object) zm.Vec {
         return zm.mul(self.transform(), zm.Vec{0.0,1.0,0.0,0.0});
     }
     
     /// Returns the Z axis given the body's current transform 
-    pub fn getZAxis(self: *const Body) zm.Vec {
+    pub fn getZAxis(self: *const Object) zm.Vec {
         return zm.mul(self.transform(), zm.Vec{0.0,0.0,1.0,0.0});
     }
 };
@@ -249,8 +250,10 @@ pub fn main() !void {
         .planet = false,
         .gravity = false,
         .torque_accumulation = .{std.math.pi, 0.0, 0.0, 0.0},
-        .half_size = .{0.5, 0.5, 0.5, 0.0},
-        .body_type = .voxel_space
+        .half_size = .{32768 * 5, 32768 * 5, 32768 * 5, 0.0},
+        .body_type = .voxel_space,
+        .size = .{10, 10, 10},
+        .chunks = try std.ArrayList(u8).initCapacity(allocator, 327680), // 10 chunks
     }
     );
     
@@ -568,6 +571,12 @@ pub fn main() !void {
    
     _ = c.vulkan.vkDeviceWaitIdle(vulkan_state.device);
     vulkan_state.cleanup();
+
+    for (game_state.objects.items) |object| {
+        if (object.body_type == .voxel_space) {
+            object.chunks.deinit(allocator);
+        }
+    }
 }
 
 
@@ -743,26 +752,26 @@ pub export fn window_resize_callback(window: ?*c.vulkan.GLFWwindow, width: c_int
 
 pub fn generate_chunk_render_targets(
     allocator: *std.mem.Allocator,
-    bodies: []physics.Body,
-    vertex_data: []
+    objects: []Object,
     ) ![]vulkan.RenderInfo {
     var list = try std.ArrayList(vulkan.RenderInfo).initCapacity(allocator.*, 10);
     defer list.deinit();
 
-    var i: u32 = 0;
-    for (bodies) |body| {
-        if (body.body_type = .voxel_space) {
-            list.append(
-                allocator.*,
-                vulkan.RenderInfo{
-                    .vertex_index = i,
-                    .pipeline_index = 2,
-                    .vertex_count = ,
-                }
-                );
-            i += 1;
-        }
-    }
+    _ = &objects;
+    //var i: u32 = 0;
+    //for (objects) |object| {
+    //    if (object.body_type == .voxel_space) {
+    //        list.append(
+    //            allocator.*,
+    //            vulkan.RenderInfo{
+    //                .vertex_buffer =,
+    //                .pipeline_index = 2,
+    //                .vertex_count = ,
+    //            }
+    //            );
+    //        i += 1;
+    //    }
+    //}
 
-    var slice = try list.toOwnedSlice; // This saves another allocation and free
+    return try list.toOwnedSlice; // This saves another allocation and free
 }
