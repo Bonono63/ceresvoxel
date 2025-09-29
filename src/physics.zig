@@ -9,94 +9,6 @@ pub const GRAVITATIONAL_CONSTANT: f128 = 6.67428e-11;
 pub const AU: f128 = 149.6e9;
 pub const SCALE: f32 = 50.0;
 
-const BodyType = enum {
-    voxel_space,
-    particle,
-    player,
-    other,
-};
-
-pub const Body = struct {
-    ///This should be sufficient for space exploration at a solar system level
-    position: @Vector(3, f128),
-    ///There is phyicsally no reason to be able to go above a speed
-    ///or acceleration of 2.4 billion meters a second
-    velocity: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, // meters per second
-    // TODO decide whether a f32 is sufficient precision for mass calculations
-    inverse_mass: f32,
-    ///Sum accelerations of the forces acting on the particle
-    force_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
-    ///Helps with simulation stability, but for space it doesn't make much sense
-    linear_damping: f32 = 0.99999,
-
-    gravity: bool = true,
-    planet: bool = false,
-    orbit_radius: f128 = 0.0,
-    /// center of the object's orbit
-    barocenter: @Vector(3, f128) = .{0.0,0.0,0.0},
-    eccentricity: f32 = 1.0,
-    eccliptic_offset: @Vector(2, f32) = .{0.0, 0.0},
-
-    orientation: zm.Quat = zm.qidentity(),
-    /// axis-angle representation
-    angular_velocity: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
-    /// factor for reducing the angular velocity every tick
-    angular_damping: f32 = 0.99999,
-    inverse_inertia_tensor: zm.Mat = zm.inverse(zm.identity()),
-    ///change in axis is based on direction,
-    ///strength the the coefficient from if it was a unit vector
-    torque_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, 
-    ///Collisions are only possible with boxes (other shapes can be added, but I can't be bothered)
-    ///Make sure to only ever put in half the length of each dimension of the collision box
-    half_size: zm.Vec,
-   
-    body_type: BodyType,
-    particle_time: u32 = 0,
-
-    /// Returns the object's transform (for rendering or physics)
-    /// for safety reasons should only be called on objects within f32's range.
-    pub fn transform(self: *const Body) zm.Mat {
-        const center: zm.Vec = cm.scale_f32(self.half_size, -1.0);
-        const world_pos: zm.Mat = zm.translationV(.{
-                @as(f32, @floatCast(self.position[0])),
-                @as(f32, @floatCast(self.position[1])),
-                @as(f32, @floatCast(self.position[2])),
-                0.0,
-            });
-        var result: zm.Mat = zm.identity();
-        result = zm.mul(zm.matFromQuat(self.orientation), zm.translationV(center));
-        return zm.mul(result, world_pos);
-    }
-
-    /// Returns the object's transform (for rendering or physics)
-    /// for safety reasons should only be called on objects within f32's range.
-    pub fn render_transform(self: *const Body, player_pos: @Vector(3, f128)) zm.Mat {
-        //const center: zm.Vec = cm.scale_f32(self.half_size, 1.0);
-        const world_pos: zm.Mat = zm.translationV(.{
-                @as(f32, @floatCast(self.position[0] - player_pos[0])),
-                @as(f32, @floatCast(self.position[1] - player_pos[1])),
-                @as(f32, @floatCast(self.position[2] - player_pos[2])),
-                0.0,
-            });
-        return zm.mul(zm.matFromQuat(self.orientation), world_pos);
-    }
-
-    /// Returns the X axis given the body's current transform 
-    pub fn getXAxis(self: *const Body) zm.Vec {
-        return zm.mul(self.transform(), zm.Vec{1.0,0.0,0.0,0.0});
-    }
-
-    /// Returns the Y axis given the body's current transform 
-    pub fn getYAxis(self: *const Body) zm.Vec {
-        return zm.mul(self.transform(), zm.Vec{0.0,1.0,0.0,0.0});
-    }
-    
-    /// Returns the Z axis given the body's current transform 
-    pub fn getZAxis(self: *const Body) zm.Vec {
-        return zm.mul(self.transform(), zm.Vec{0.0,0.0,1.0,0.0});
-    }
-};
-
 pub const Contact = struct {
     position: zm.Vec,
     normal: zm.Vec,
@@ -107,9 +19,8 @@ pub const Contact = struct {
 
 // TODO maybe planets belong in a different array or structure, but for now they are the same
 pub const PhysicsState = struct {
-    bodies: std.ArrayList(Body),
+    bodies: std.ArrayList(main.Object),
     particle_count: u32 = 0,
-    //broad_contact_list: std.ArrayList([2]*Body),
     sim_start_time: i64,
     player_index: u32 = 0,
 };
@@ -129,7 +40,7 @@ pub fn physics_tick(
     allocator: *std.mem.Allocator,
     delta_time: f64,
     sim_start_time: i64,
-    bodies: []Body,
+    bodies: []main.Object,
     contacts: *std.ArrayList(Contact)
     ) !void {
     // Planetary Motion
@@ -246,8 +157,8 @@ pub fn physics_tick(
 ///
 /// 
 fn generate_contacts(
-    a: *Body,
-    b: *Body,
+    a: *main.Object,
+    b: *main.Object,
     contacts: *std.ArrayList(Contact),
     allocator: *std.mem.Allocator
     ) !void {
@@ -318,7 +229,7 @@ fn generate_contacts(
     try contacts.append(allocator.*, contact);
 }
 
-fn SAT_axis(i: u32, a: *Body, b: *Body) zm.Vec {
+fn SAT_axis(i: u32, a: *main.Object, b: *main.Object) zm.Vec {
     var axis: zm.Vec = .{0.0,0.0,0.0,0.0};
     switch (i) {
         0 => {
