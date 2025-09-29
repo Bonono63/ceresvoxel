@@ -71,11 +71,23 @@ pub const GameState = struct {
     chunks: []u8, // 100 * 32768
     chunks_len: u32 = 0, // number of currently active chunks
     chunk_vertex_indices: []u32,
-    voxel_space_sizes: []@Vector(3, u32), // Is 100 voxel spaces enough? 1000?
     seed: u64 = 0,
     camera_state: CameraState,
     completion_signal: bool,
     allocator: *std.mem.Allocator,
+};
+
+pub const ChickenType = enum {
+    .sun,
+    .planet,
+    .other,
+};
+
+pub const chicken = struct {
+    space_id: u32,
+    type: ChickenType,
+    chunk_id: u32, // Derived from the x y z position of the chunk and the size of the space
+    size: @Vector(3, u32),
 };
 
 const ENGINE_NAME = "CeresVoxel";
@@ -227,6 +239,8 @@ pub fn main() !void {
 
     std.debug.print("fps limit: {}\n", .{fps_limit});
 
+    var current_render_targets = try std.ArrayList(vulkan.RenderInfo).initCapacity(allocator, 200);
+
     // The responsibility of the main thread is to handle input and manage
     // all the other threads
     // This will ensure the lowest input state for the various threads and have slightly
@@ -317,16 +331,20 @@ pub fn main() !void {
         {
             c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_NORMAL);
         }
-
-
-        const render_frame: vulkan.RenderFrame = vulkan.RenderFrame{
-            .bodies = physics_state.bodies.items,
-            .particle_count = physics_state.particle_count,
-            .player_index = physics_state.player_index,
-            .camera_state = &game_state.camera_state,
-    };
         
         if (@abs(current_time - prev_tick_time) > MINIMUM_RENDER_TICK_TIME) {
+            const chunk_render_targets = generate_chunk_render_targets();
+            current_render_targets.appendSliceAssumeCapacity(vulkan_state.render_targets);
+            current_render_targets.appendSliceAssumeCapacity(chunk_render_targets);
+
+            const render_frame: vulkan.RenderFrame = vulkan.RenderFrame{
+                .render_targets = current_render_targets,
+                .bodies = physics_state.bodies.items,
+                .particle_count = physics_state.particle_count,
+                .player_index = physics_state.player_index,
+                .camera_state = &game_state.camera_state,
+            };
+
             c.vulkan.glfwGetWindowSize(vulkan_state.window, &window_width, &window_height);
             const aspect_ratio : f32 = @as(f32, 
                 @floatFromInt(window_width))
@@ -362,10 +380,13 @@ pub fn main() !void {
                 0
                 );
             
+            //const chunk_offsets: []@Vector(3, u32);
+
             try vulkan.update_chunk_ubo(
                 &vulkan_state,
                 render_frame.bodies,
-                game_state.chunk_vertex_indices, // This should probably have a place in the RenderFrame if we redo that
+                //chunk_offsets,
+                render_frame.player_index, // This should probably have a place in the RenderFrame if we redo that
                 1,
                 );
             
@@ -377,7 +398,7 @@ pub fn main() !void {
                 );
 
             vulkan_state.render_targets.items[1].instance_count = render_frame.particle_count;
-            
+
             // DRAW
             try vulkan_state.draw_frame(current_frame_index, &vulkan_state.render_targets.items);
             
@@ -462,6 +483,8 @@ pub fn main() !void {
                 &contacts
                 );
         }
+
+        current_render_targets.clearRetainingCapacity();
 
     }
    
@@ -639,3 +662,29 @@ pub export fn window_resize_callback(window: ?*c.vulkan.GLFWwindow, width: c_int
 //}
 
 //TODO refactor this for f128 from physics/game state
+
+pub fn generate_chunk_render_targets(
+    allocator: *std.mem.Allocator,
+    bodies: []physics.Body,
+    vertex_data: []
+    ) ![]vulkan.RenderInfo {
+    var list = try std.ArrayList(vulkan.RenderInfo).initCapacity(allocator.*, 10);
+    defer list.deinit();
+
+    var i: u32 = 0;
+    for (bodies) |body| {
+        if (body.body_type = .voxel_space) {
+            list.append(
+                allocator.*,
+                vulkan.RenderInfo{
+                    .vertex_index = i,
+                    .pipeline_index = 2,
+                    .vertex_count = ,
+                }
+                );
+            i += 1;
+        }
+    }
+
+    var slice = try list.toOwnedSlice; // This saves another allocation and free
+}

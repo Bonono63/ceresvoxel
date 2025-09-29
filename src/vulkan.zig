@@ -142,16 +142,6 @@ const ChunkRenderData = struct {
     model: zm.Mat = zm.identity(),
 };
 
-/// All the state required to render a frame
-/// This is to make sure all rendering state is seperate from the logic and physics state etc.vulkan.
-pub const RenderFrame = struct {
-    bodies: []physics.Body,
-    particle_count: u32 = 0,
-    player_index: u32,
-    /// ONLY EVER READ FROM THE CAMERA STATE NEVER WRITE ANY DATA EVER
-    camera_state: *main.CameraState,
-};
-
 /// image_views size should be of size MAX_CONCURRENT_FRAMES
 /// Current implementation also assumes 2D texture
 /// Defaults to 2D image view type
@@ -180,6 +170,17 @@ pub const RenderInfo = struct {
     vertex_render_offset: u32 = 0,
     instance_count: u32 = 1,
     rendering_enabled: bool = true,
+};
+
+/// All the state required to render a frame
+/// This is to make sure all rendering state is seperate from the logic and physics state etc.vulkan.
+pub const RenderFrame = struct {
+    render_targets: []RenderInfo,
+    bodies: []physics.Body,
+    particle_count: u32 = 0,
+    player_index: u32,
+    /// ONLY EVER READ FROM THE CAMERA STATE NEVER WRITE ANY DATA EVER
+    camera_state: *main.CameraState,
 };
 
 /// The vulkan/render state
@@ -1998,7 +1999,12 @@ pub export fn glfw_error_callback(code: c_int, description: [*c]const u8) void {
 }
 
 /// Generates the unique data sent to the GPU for chunks
-pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, vertex_buffer_indices: []u32, ubo_index: u32) VkAbstractionError!void {
+pub fn update_chunk_ubo(
+    self: *VulkanState,
+    bodies: []physics.Body,
+    player_index: u32,
+    ubo_index: u32
+    ) VkAbstractionError!void {
     var data = try std.ArrayList(ChunkRenderData).initCapacity(self.allocator.*, 16);
     defer data.deinit(self.allocator.*);
 
@@ -2006,35 +2012,31 @@ pub fn update_chunk_ubo(self: *VulkanState, bodies: []physics.Body, vertex_buffe
     // but tbh, not sure I can do much about that atm
     for (bodies) |body| {
         if (body.body_type == .voxel_space) {
-            for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
-                const physics_pos = .{
-                    @as(f32, @floatCast(bodies[vs.physics_index].position[0])),
-                    @as(f32, @floatCast(bodies[vs.physics_index].position[1])),
-                    @as(f32, @floatCast(bodies[vs.physics_index].position[2])),
-                };
-                const pos: @Vector(4, f32) = .{
-                    physics_pos[0] +
-                        @as(f32, @floatFromInt(chunk_index % vs.size[0] * 32)),
-                    physics_pos[1] +
-                        @as(f32, @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32)),
-                    physics_pos[2] +
-                        @as(f32, @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32)),
-                    0.0,
-                };
+                //const pos: @Vector(4, f32) = .{
+                //    physics_pos[0] +
+                //        @as(f32, @floatFromInt(chunk_index % vs.size[0] * 32)),
+                //    physics_pos[1] +
+                //        @as(f32, @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32)),
+                //    physics_pos[2] +
+                //        @as(f32, @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32)),
+                //    0.0,
+                //};
 
-                const model = zm.mul(zm.quatToMat(bodies[vs.physics_index].orientation), zm.translationV(pos));
-
-                try data.append(
-                    self.allocator.*,
-                    .{
-                    .model = model,
-                    .size = vs.size,
-                });
-            }
+            const transform = body.render_transform(bodies[player_index].position);
+            try data.append(
+                self.allocator.*,
+                .{
+                .model = transform,
+                .size = .{0,0,0},
+            });
         }
     }
     
-    try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
+    try self.copy_data_via_staging_buffer(
+        &self.ubo_buffers.items[ubo_index],
+        @intCast(data.items.len * @sizeOf(ChunkRenderData)),
+        &data.items[0]
+        );
 }
 
 /// Generates the unique data sent to the GPU for particles
