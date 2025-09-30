@@ -6,7 +6,6 @@ const cm = @import("ceresmath.zig");
 const main = @import("main.zig");
 const chunk = @import("chunk.zig");
 const mesh_generation = @import("mesh_generation.zig");
-const physics = @import("physics.zig");
 
 // TODO There has got to be a better way than this, so much smell...
 const chunk_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/simple.vert.spv")))));
@@ -122,6 +121,14 @@ const swapchain_support = struct {
     present_modes: []c.vulkan.VkPresentModeKHR = undefined,
 };
 
+pub const VertexBuffer = struct {
+    buffer: c.vulkan.VkBuffer,
+    alloc: c.vulkan.VmaAllocation,
+    vertex_count: u32,
+    /// This will vary as not all vertex data is uniform across all pipelines rn
+    byte_count: u32,
+};
+
 /// Generic vertex format (Used by everything that isn't a chunk)
 pub const Vertex = struct {
     pos: @Vector(3, f32),
@@ -163,20 +170,20 @@ pub const ImageInfo = struct{
 
 /// All the info required to render a vertex buffer
 pub const RenderInfo = struct {
-    vertex_index: u32,
+    vertex_buffer: c.vulkan.VkBuffer,//vertex_index: u32,
     pipeline_index: u32,
     vertex_count: u32 = 0,
     vertex_buffer_offset: c.vulkan.VkDeviceSize = 0,
     vertex_render_offset: u32 = 0,
     instance_count: u32 = 1,
-    rendering_enabled: bool = true,
+    push_constant_index: u32 = 0,
 };
 
 /// All the state required to render a frame
 /// This is to make sure all rendering state is seperate from the logic and physics state etc.vulkan.
 pub const RenderFrame = struct {
     render_targets: []RenderInfo,
-    bodies: []physics.Body,
+    bodies: []main.Object,
     particle_count: u32 = 0,
     player_index: u32,
     /// ONLY EVER READ FROM THE CAMERA STATE NEVER WRITE ANY DATA EVER
@@ -1000,14 +1007,19 @@ pub const VulkanState = struct {
                 command_buffer,
                 0,
                 1,
-                target.vertex_buffer,
+                &target.vertex_buffer,
                 &target.vertex_buffer_offset
                 );
             
-            //if () {}
-            //c.vulkan.vkCmdPushConstants(
-            //        
-            //    );
+            // push constant index for draw call
+            c.vulkan.vkCmdPushConstants(
+                    command_buffer,
+                    self.pipeline_layout,
+                    c.vulkan.VK_SHADER_STAGE_ALL,
+                    @sizeOf(zm.Mat) + @sizeOf(f32),
+                    @sizeOf(u32),
+                    &target.push_constant_index
+                );
 
             c.vulkan.vkCmdDraw(
                 command_buffer,
@@ -1495,8 +1507,13 @@ pub const VulkanState = struct {
         c.vulkan.vmaDestroyBuffer(self.vma_allocator, staging_buffer, staging_alloc);
     }
     
-    pub fn create_vertex_buffer(self: *VulkanState, render_index: u32, stride_size: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void
-    {
+    pub fn create_vertex_buffer(
+        self: *VulkanState,
+        stride_size: u32,
+        size: u32,
+        ptr: *anyopaque
+        ) VkAbstractionError!VertexBuffer {
+
         var vertex_buffer : c.vulkan.VkBuffer = undefined;
         var alloc: c.vulkan.VmaAllocation = undefined;
     
@@ -1511,7 +1528,14 @@ pub const VulkanState = struct {
             .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
         };
     
-        const buffer_success = c.vulkan.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &vertex_buffer, &alloc, null);
+        const buffer_success = c.vulkan.vmaCreateBuffer(
+            self.vma_allocator,
+            &buffer_create_info,
+            &alloc_create_info, 
+            &vertex_buffer, 
+            &alloc, 
+            null
+            );
         
         if (buffer_success != c.vulkan.VK_SUCCESS)
         {
@@ -1524,7 +1548,12 @@ pub const VulkanState = struct {
         try self.vertex_buffers.append(self.allocator.*, vertex_buffer);
         try self.vertex_allocs.append(self.allocator.*, alloc);
         const vertex_count = size / stride_size;
-        self.render_targets.items[render_index].vertex_count = vertex_count;
+        return VertexBuffer{
+            .buffer = self.vertex_buffers.getLast(),
+            .alloc = alloc,
+            .vertex_count = vertex_count,
+            .byte_count = size,
+        };
     }
 
     /// DEPRECATED
@@ -1599,38 +1628,6 @@ pub const VulkanState = struct {
 
         try self.ssbo_buffers.append(self.allocator.*, ssbo);
         try self.ssbo_allocs.append(self.allocator.*, alloc);
-    }
-
-    pub fn create_voxel_space(self: *VulkanState, voxel_space: *chunk.VoxelSpace, space_index: u32) !void {
-        var mesh_data = try std.ArrayList(ChunkVertex).initCapacity(self.allocator.*, 16);
-        defer mesh_data.deinit();
-    
-        const vs = voxel_space.*;
-        var last_space_chunk_index: u32 = 0;
-        
-        for (0..vs.size[0] * vs.size[1] * vs.size[2]) |chunk_index| {
-            // The goal is for this get chunk to be faster than reading the disk for an unmodified chunk
-            const data = try chunk.get_chunk_data(0, @intCast(space_index), .{0,0,0});
-            const mesh_start: f64 = c.vulkan.glfwGetTime();
-            const new_vertices_count = try mesh_generation.CullMesh(&data, @intCast(last_space_chunk_index + chunk_index), &mesh_data);
-            std.debug.print("[Debug] time: {d:.4}ms \n", .{(c.vulkan.glfwGetTime() - mesh_start) * 1000.0});
-            _ = &new_vertices_count;
-        }
-        last_space_chunk_index += vs.size[0] * vs.size[1] * vs.size[2];
-       
-        const render_index = 2 + space_index + last_space_chunk_index;
-        try self.render_targets.append(
-            self.allocator.*,
-            .{
-                .vertex_index = render_index,
-                .pipeline_index = 2,
-                .vertex_render_offset = 0,
-            });
-        try self.create_vertex_buffer(
-            render_index,
-            @sizeOf(ChunkVertex),
-            @intCast(mesh_data.items.len * @sizeOf(ChunkVertex)),
-            mesh_data.items.ptr);
     }
 
     /// Frees all Vulkan state
@@ -1869,7 +1866,7 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
             &shader_read_barrier
             );
 
-_ = c.vulkan.vkEndCommandBuffer(command_buffer);
+        _ = c.vulkan.vkEndCommandBuffer(command_buffer);
 
         const submit_info = c.vulkan.VkSubmitInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -2036,7 +2033,7 @@ pub export fn glfw_error_callback(code: c_int, description: [*c]const u8) void {
 /// Generates the unique data sent to the GPU for chunks
 pub fn update_chunk_ubo(
     self: *VulkanState,
-    bodies: []physics.Body,
+    bodies: []main.Object,
     player_index: u32,
     ubo_index: u32
     ) VkAbstractionError!void {
@@ -2077,7 +2074,13 @@ pub fn update_chunk_ubo(
 /// Generates the unique data sent to the GPU for particles
 ///
 /// returns the number of particles sent to the GPU (used for instance rendering)
-pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, player_index: u32, ubo_index: u32) VkAbstractionError!void {
+pub fn update_particle_ubo(
+    self: *VulkanState,
+    bodies: []main.Object,
+    player_index: u32,
+    ubo_index: u32
+    ) VkAbstractionError!void {
+    
     var data = try std.ArrayList(zm.Mat).initCapacity(self.allocator.*, 64);
     defer data.deinit(self.allocator.*);
 
@@ -2091,7 +2094,11 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []physics.Body, player_in
     }
 
     if (data.items.len > 0) {
-        try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(zm.Mat)), &data.items[0]);
+        try self.copy_data_via_staging_buffer(
+            &self.ubo_buffers.items[ubo_index],
+            @intCast(data.items.len * @sizeOf(zm.Mat)),
+            &data.items[0]
+            );
     }
 }
 
@@ -2260,29 +2267,36 @@ pub fn render_init(self: *VulkanState) !void {
 
     // GLFW INIT
     c.vulkan.glfwSetWindowSizeLimits(self.window, 480, 270, c.vulkan.GLFW_DONT_CARE, c.vulkan.GLFW_DONT_CARE);
-
-    // cursor
-    try self.render_targets.append(
-        self.allocator.*,
-        .{ .vertex_index = 0, .pipeline_index = 0}
-        );
-    // outline
-    try self.render_targets.append(
-        self.allocator.*,
-        .{ .vertex_index = 1, .pipeline_index = 1, .instance_count = 0}
-        );
     
-    try self.create_vertex_buffer(
-        0,
+    const cursor_vb_info = try self.create_vertex_buffer(
         @sizeOf(Vertex),
         @intCast(cursor_vertices.len * @sizeOf(Vertex)),
         @ptrCast(@constCast(&cursor_vertices[0]))
         );
-    try self.create_vertex_buffer(
-        1,
+    const outline_vb_info = try self.create_vertex_buffer(
         @sizeOf(Vertex),
         @intCast(block_selection_cube.len * @sizeOf(Vertex)),
         @ptrCast(@constCast(&block_selection_cube[0]))
+        );
+
+    // cursor
+    try self.render_targets.append(
+        self.allocator.*,
+        .{
+            .vertex_buffer = self.vertex_buffers.items[0],
+            .pipeline_index = 0,
+            .vertex_count = cursor_vb_info.vertex_count
+        }
+        );
+    // outline
+    try self.render_targets.append(
+        self.allocator.*,
+        .{
+            .vertex_buffer = self.vertex_buffers.items[1],
+            .pipeline_index = 1,
+            .vertex_count = outline_vb_info.vertex_count,
+            .instance_count = 0,
+        }
         );
 
     // RENDER INIT
@@ -2305,7 +2319,7 @@ pub fn render_init(self: *VulkanState) !void {
         },
         .{  .create_info = .{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = 256 * @sizeOf(ChunkRenderData),
+                .size = 100 * @sizeOf(ChunkRenderData),
                 .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             },
             .alloc_info = .{

@@ -17,14 +17,6 @@ pub const Contact = struct {
     friction: f32,
 };
 
-// TODO maybe planets belong in a different array or structure, but for now they are the same
-pub const PhysicsState = struct {
-    bodies: std.ArrayList(main.Object),
-    particle_count: u32 = 0,
-    sim_start_time: i64,
-    player_index: u32 = 0,
-};
-
 /// Integrates all linear forces, torques, angular velocities, linear velocities, positions,
 /// and orientations for the physics objects in the simulation
 ///

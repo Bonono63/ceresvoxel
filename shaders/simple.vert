@@ -3,6 +3,7 @@
 layout(push_constant, std430) uniform push_constants {
     layout(offset=0) mat4 view_proj;
     layout(offset=64) float aspect_ratio;
+    layout(offset=64+4) uint draw_index;
 } pc;
 
 layout(binding = 0) uniform chunk_transform {
@@ -18,7 +19,7 @@ struct chunk {
 };
 
 layout(binding = 3) readonly uniform chunk_data {
-    chunk data[256];
+    chunk data[100];
 } cd;
 
 layout(location = 0) in uint chunk_index;
@@ -29,7 +30,7 @@ layout(location = 0) out vec2 uv_out;
 
 void main()
 {
-    gl_Position = pc.view_proj * cd.data[chunk_index].model * vec4(in_pos, 1.0);
+    gl_Position = pc.view_proj * cd.data[pc.draw_index].model * vec4(in_pos, 1.0);
     //gl_Position = pc.view_proj * vec4(in_pos, 1.0);
     uv_out = uv;
 }
