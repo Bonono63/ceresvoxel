@@ -111,7 +111,8 @@ pub const Object = struct {
     // voxel space data
     size: @Vector(3, u32) = .{0,0,0},
     chunks: std.ArrayList(u8) = undefined, // 32768 * chunk count
-    chunk_occupancy: std.ArrayList(u1024) = undefined,
+    chunk_occupancy: std.ArrayList(u32) = undefined,
+    block_occupancy: std.ArrayList(u1024) = undefined,
     vertex_buffers: std.ArrayList(vulkan.VertexBuffer) = undefined, // allocated seperate from VulkanState
 
     /// Returns the object's transform (for rendering or physics)
@@ -248,6 +249,7 @@ pub fn main() !void {
             .body_type = .voxel_space,
             .size = .{10, 10, 10},
             .chunks = try std.ArrayList(u8).initCapacity(allocator, 327680), // 10 chunks
+            .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
         }
     );
     
@@ -316,6 +318,10 @@ pub fn main() !void {
 
     var current_render_targets = try std.ArrayList(vulkan.RenderInfo).initCapacity(allocator, 200);
 
+    for (0..game_state.objects.items.len) |obj_index| {
+        try load_chunks(allocator, &game_state.objects.items[obj_index]);
+    }
+    
     // The responsibility of the main thread is to handle input and manage
     // all the other threads
     // This will ensure the lowest input state for the various threads and have slightly
@@ -576,7 +582,6 @@ pub fn main() !void {
     }
 }
 
-
 pub export fn key_callback(window: ?*c.vulkan.GLFWwindow, key: i32, scancode: i32, action: i32, mods: i32) void {
     _ = &scancode;
     _ = &mods;
@@ -745,8 +750,6 @@ pub export fn window_resize_callback(window: ?*c.vulkan.GLFWwindow, width: c_int
 //    return result;
 //}
 
-//TODO refactor this for f128 from physics/game state
-
 pub fn generate_chunk_render_targets(
     allocator: *std.mem.Allocator,
     objects: []Object,
@@ -754,6 +757,7 @@ pub fn generate_chunk_render_targets(
     var list = try std.ArrayList(vulkan.RenderInfo).initCapacity(allocator.*, 10);
     defer list.deinit(allocator.*);
 
+    // TODO add more culling algorithms
     for (objects) |object| {
         if (object.body_type == .voxel_space) {
             for (object.vertex_buffers.items) |chunk_vb| {
@@ -769,5 +773,18 @@ pub fn generate_chunk_render_targets(
         }
     }
 
-    return try list.toOwnedSlice(allocator.*); // This saves another allocation and free
+    return try list.toOwnedSlice(allocator.*);
+}
+
+/// Generate a bitmask according to which chunks we want to be loaded in our voxel space
+//pub fn generate_chunk_occupancy_mask(obj: Object) ![]u32 {
+//    var 
+//}
+//
+/// decides which chunks to load
+pub fn load_chunks(allocator: std.mem.Allocator, obj: *Object) !void {
+    for (0..(obj.size[0] * obj.size[1] * obj.size[2])) |chunk_index| {
+        _ = &chunk_index;
+        try obj.chunks.appendSlice(allocator, try chunk.get_chunk_data_sun());
+    }
 }

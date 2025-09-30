@@ -29,6 +29,13 @@ pub fn get_chunk_data_random(seed: u64, planet_index: u32, chunk_pos: @Vector(3,
     return result;
 }
 
+
+pub fn get_chunk_data_sun() ![32768]u8 {
+    var result: [32768]u8 = undefined;
+    @memset(@as([]u8, @ptrCast(&result[0])), 2);
+    return result;
+}
+
 /// Returns a chunk with one voxel in its corner
 ///
 /// seed: the world specific RNG seed (unused)
