@@ -8,17 +8,17 @@ const physics = @import("physics.zig");
 const cm = @import("ceresmath.zig");
 
 pub const InputState = packed struct {
-    MOUSE_SENSITIVITY : f64 = 0.1,
-    input_vec: zm.Vec = .{0.0,0.0,0.0,0.0},
-    w : bool = false,
-    a : bool = false,
-    s : bool = false,
-    d : bool = false,
-    e : bool = false,
-    space : bool = false,
-    shift : bool = false,
-    control : bool = false,
-    mouse_capture : bool = true,
+    MOUSE_SENSITIVITY: f64 = 0.1,
+    input_vec: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
+    w: bool = false,
+    a: bool = false,
+    s: bool = false,
+    d: bool = false,
+    e: bool = false,
+    space: bool = false,
+    shift: bool = false,
+    control: bool = false,
+    mouse_capture: bool = true,
     left_click: bool = false,
     right_click: bool = false,
     mouse_dx: f64 = 0.0,
@@ -42,7 +42,7 @@ pub const CameraState = struct {
 
         return result;
     }
-    
+
     pub fn lookV(self: *const CameraState) zm.Vec {
         const result = zm.normalize3(@Vector(4, f32){
             @cos(self.yaw) * @cos(self.pitch),
@@ -56,7 +56,7 @@ pub const CameraState = struct {
 
     pub fn up(self: *const CameraState) zm.Vec {
         _ = &self;
-        return .{0.0,1.0,0.0,0.0};
+        return .{ 0.0, 1.0, 0.0, 0.0 };
     }
 
     pub fn right(self: *const CameraState) zm.Vec {
@@ -76,11 +76,11 @@ pub const Object = struct {
     position: @Vector(3, f128),
     ///There is phyicsally no reason to be able to go above a speed
     ///or acceleration of 2.4 billion meters a second
-    velocity: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, // meters per second
+    velocity: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 }, // meters per second
     // TODO decide whether a f32 is sufficient precision for mass calculations
     inverse_mass: f32,
     ///Sum accelerations of the forces acting on the particle
-    force_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
+    force_accumulation: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
     ///Helps with simulation stability, but for space it doesn't make much sense
     linear_damping: f32 = 0.99999,
 
@@ -88,28 +88,28 @@ pub const Object = struct {
     planet: bool = false,
     orbit_radius: f128 = 0.0,
     /// center of the object's orbit
-    barocenter: @Vector(3, f128) = .{0.0,0.0,0.0},
+    barocenter: @Vector(3, f128) = .{ 0.0, 0.0, 0.0 },
     eccentricity: f32 = 1.0,
-    eccliptic_offset: @Vector(2, f32) = .{0.0, 0.0},
+    eccliptic_offset: @Vector(2, f32) = .{ 0.0, 0.0 },
 
     orientation: zm.Quat = zm.qidentity(),
     /// axis-angle representation
-    angular_velocity: zm.Vec = .{0.0, 0.0, 0.0, 0.0},
+    angular_velocity: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
     /// factor for reducing the angular velocity every tick
     angular_damping: f32 = 0.99999,
     inverse_inertia_tensor: zm.Mat = zm.inverse(zm.identity()),
     ///change in axis is based on direction,
     ///strength the the coefficient from if it was a unit vector
-    torque_accumulation: zm.Vec = .{0.0, 0.0, 0.0, 0.0}, 
+    torque_accumulation: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
     ///Collisions are only possible with boxes (other shapes can be added, but I can't be bothered)
     ///Make sure to only ever put in half the length of each dimension of the collision box
     half_size: zm.Vec,
-   
+
     body_type: Type,
     particle_time: u32 = 0,
-    
+
     // voxel space data
-    size: @Vector(3, u32) = .{0,0,0},
+    size: @Vector(3, u32) = .{ 0, 0, 0 },
     chunks: std.ArrayList(u8) = undefined, // 32768 * chunk count
     chunk_occupancy: std.ArrayList(u32) = undefined,
     block_occupancy: std.ArrayList(u1024) = undefined,
@@ -120,11 +120,11 @@ pub const Object = struct {
     pub fn transform(self: *const Object) zm.Mat {
         const center: zm.Vec = cm.scale_f32(self.half_size, -1.0);
         const world_pos: zm.Mat = zm.translationV(.{
-                @as(f32, @floatCast(self.position[0])),
-                @as(f32, @floatCast(self.position[1])),
-                @as(f32, @floatCast(self.position[2])),
-                0.0,
-            });
+            @as(f32, @floatCast(self.position[0])),
+            @as(f32, @floatCast(self.position[1])),
+            @as(f32, @floatCast(self.position[2])),
+            0.0,
+        });
         var result: zm.Mat = zm.identity();
         result = zm.mul(zm.matFromQuat(self.orientation), zm.translationV(center));
         return zm.mul(result, world_pos);
@@ -135,27 +135,27 @@ pub const Object = struct {
     pub fn render_transform(self: *const Object, player_pos: @Vector(3, f128)) zm.Mat {
         //const center: zm.Vec = cm.scale_f32(self.half_size, 1.0);
         const world_pos: zm.Mat = zm.translationV(.{
-                @as(f32, @floatCast(self.position[0] - player_pos[0])),
-                @as(f32, @floatCast(self.position[1] - player_pos[1])),
-                @as(f32, @floatCast(self.position[2] - player_pos[2])),
-                0.0,
-            });
+            @as(f32, @floatCast(self.position[0] - player_pos[0])),
+            @as(f32, @floatCast(self.position[1] - player_pos[1])),
+            @as(f32, @floatCast(self.position[2] - player_pos[2])),
+            0.0,
+        });
         return zm.mul(zm.matFromQuat(self.orientation), world_pos);
     }
 
-    /// Returns the X axis given the body's current transform 
+    /// Returns the X axis given the body's current transform
     pub fn getXAxis(self: *const Object) zm.Vec {
-        return zm.mul(self.transform(), zm.Vec{1.0,0.0,0.0,0.0});
+        return zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 });
     }
 
-    /// Returns the Y axis given the body's current transform 
+    /// Returns the Y axis given the body's current transform
     pub fn getYAxis(self: *const Object) zm.Vec {
-        return zm.mul(self.transform(), zm.Vec{0.0,1.0,0.0,0.0});
+        return zm.mul(self.transform(), zm.Vec{ 0.0, 1.0, 0.0, 0.0 });
     }
-    
-    /// Returns the Z axis given the body's current transform 
+
+    /// Returns the Z axis given the body's current transform
     pub fn getZAxis(self: *const Object) zm.Vec {
-        return zm.mul(self.transform(), zm.Vec{0.0,0.0,1.0,0.0});
+        return zm.mul(self.transform(), zm.Vec{ 0.0, 0.0, 1.0, 0.0 });
     }
 };
 
@@ -171,8 +171,7 @@ pub const GameState = struct {
     player_index: u32 = undefined,
 };
 
-pub const chicken = struct {
-};
+pub const chicken = struct {};
 
 const ENGINE_NAME = "CeresVoxel";
 
@@ -183,7 +182,6 @@ var xpos: f64 = 0.0;
 var ypos: f64 = 0.0;
 var dx: f64 = 0.0;
 var dy: f64 = 0.0;
-
 
 pub fn main() !void {
     // ZIG INIT
@@ -198,10 +196,9 @@ pub fn main() !void {
     }
 
     //var fixed_allocator = fba.allocator();
-    var allocator = gpa.allocator();//arena.allocator();
+    var allocator = gpa.allocator(); //arena.allocator();
 
-    if (std.debug.runtime_safety)
-    {
+    if (std.debug.runtime_safety) {
         allocator = gpa.allocator();
     }
 
@@ -216,7 +213,7 @@ pub fn main() !void {
 
     try vulkan.glfw_initialization();
     try vulkan_state.window_setup(vulkan_state.ENGINE_NAME, vulkan_state.ENGINE_NAME);
-   
+
     // GLFW Callbacks
     _ = c.vulkan.glfwSetKeyCallback(vulkan_state.window, key_callback);
 
@@ -235,28 +232,24 @@ pub fn main() !void {
         .objects = try std.ArrayList(Object).initCapacity(allocator, 100),
     };
     defer game_state.objects.deinit(allocator);
-    
+
     // "Sun"
-    try game_state.objects.append(
-        allocator,
-        .{
-            .position = .{0.0, 0.0, 0.0},
-            .inverse_mass = 0.0,
-            .planet = false,
-            .gravity = false,
-            .torque_accumulation = .{std.math.pi, 0.0, 0.0, 0.0},
-            .half_size = .{32768 * 5, 32768 * 5, 32768 * 5, 0.0},
-            .body_type = .voxel_space,
-            .size = .{10, 10, 10},
-            .chunks = try std.ArrayList(u8).initCapacity(allocator, 327680), // 10 chunks
-            .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
-        }
-    );
-    
-    
+    try game_state.objects.append(allocator, .{
+        .position = .{ 0.0, 0.0, 0.0 },
+        .inverse_mass = 0.0,
+        .planet = false,
+        .gravity = false,
+        .torque_accumulation = .{ std.math.pi, 0.0, 0.0, 0.0 },
+        .half_size = .{ 32768 * 5, 32768 * 5, 32768 * 5, 0.0 },
+        .body_type = .voxel_space,
+        .size = .{ 10, 10, 10 },
+        .chunks = try std.ArrayList(u8).initCapacity(allocator, 327680), // 10 chunks
+        .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
+    });
+
     //for (2..9) |index| {
     //    const rand = std.crypto.random;
-    //    
+    //
     //    try physics_state.bodies.append(
     //        allocator,
     //        .{
@@ -274,17 +267,14 @@ pub fn main() !void {
     //}
 
     // player
-    try game_state.objects.append(
-        allocator,
-        .{
-            .position = .{0.0, 0.0, 0.0},
-            .inverse_mass = (1.0/100.0),
-            .half_size = .{0.5, 1.0, 0.5, 0.0},
-            .body_type = .player,
-        }
-    );
+    try game_state.objects.append(allocator, .{
+        .position = .{ 0.0, 0.0, 0.0 },
+        .inverse_mass = (1.0 / 100.0),
+        .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
+        .body_type = .player,
+    });
     game_state.player_index = @intCast(game_state.objects.items.len - 1);
-    
+
     try vulkan.render_init(&vulkan_state);
 
     // Game Loop and additional prerequisites
@@ -310,8 +300,8 @@ pub fn main() !void {
     var frame_time_cyclic_buffer: [FTCB_SIZE]f32 = undefined;
     @memset(&frame_time_cyclic_buffer, 0.0);
 
-    // Time in milliseconds in between frames, 60 is 16.666, 0.0 is 
-    var fps_limit: f32 = 0.0;//3.03030303;//8.333;
+    // Time in milliseconds in between frames, 60 is 16.666, 0.0 is
+    var fps_limit: f32 = 0.0; //3.03030303;//8.333;
     _ = &fps_limit;
 
     std.debug.print("fps limit: {}\n", .{fps_limit});
@@ -321,7 +311,7 @@ pub fn main() !void {
     for (0..game_state.objects.items.len) |obj_index| {
         try load_chunks(allocator, &game_state.objects.items[obj_index]);
     }
-    
+
     // The responsibility of the main thread is to handle input and manage
     // all the other threads
     // This will ensure the lowest input state for the various threads and have slightly
@@ -332,9 +322,9 @@ pub fn main() !void {
         prev_time = current_time;
         const delta_time: i64 = current_time - prev_tick_time;
         const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
-        
+
         c.vulkan.glfwPollEvents();
-        
+
         if (input_state.control) {
             game_state.camera_state.speed = 100.0;
         } else {
@@ -342,82 +332,55 @@ pub fn main() !void {
         }
 
         if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
-            game_state.camera_state.yaw -= @as(f32, 
-                @floatCast(input_state.mouse_dx * std.math.pi
-                    / 180.0 * input_state.MOUSE_SENSITIVITY)
-                );
+            game_state.camera_state.yaw -= @as(f32, @floatCast(input_state.mouse_dx * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
             input_state.mouse_dx = 0.0;
         }
-        
+
         if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
             game_state.camera_state.pitch += @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
             if (game_state.camera_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
                 game_state.camera_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
             }
-            if (game_state.camera_state.pitch < - std.math.pi / 2.0 + std.math.pi / 256.0) {
-                game_state.camera_state.pitch =  - std.math.pi / 2.0 + std.math.pi / 256.0;
+            if (game_state.camera_state.pitch < -std.math.pi / 2.0 + std.math.pi / 256.0) {
+                game_state.camera_state.pitch = -std.math.pi / 2.0 + std.math.pi / 256.0;
             }
             input_state.mouse_dy = 0.0;
         }
-        
+
         const look = game_state.camera_state.lookV();
         const up = game_state.camera_state.up();
         const right = game_state.camera_state.right();
 
-        var input_vec: zm.Vec = .{0.0, 0.0, 0.0, 0.0};
+        var input_vec: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
 
         if (input_state.space) {
-            input_vec -= cm.scale_f32(
-                up,
-                game_state.camera_state.speed
-                );
+            input_vec -= cm.scale_f32(up, game_state.camera_state.speed);
         }
         if (input_state.shift) {
-            input_vec += cm.scale_f32(
-                up,
-                game_state.camera_state.speed
-                );
+            input_vec += cm.scale_f32(up, game_state.camera_state.speed);
         }
         if (input_state.w) {
-            input_vec += cm.scale_f32(
-                look,
-                game_state.camera_state.speed
-                );
+            input_vec += cm.scale_f32(look, game_state.camera_state.speed);
         }
         if (input_state.s) {
-            input_vec -= cm.scale_f32(
-                look,
-                game_state.camera_state.speed
-                );
+            input_vec -= cm.scale_f32(look, game_state.camera_state.speed);
         }
         if (input_state.d) {
-            input_vec += cm.scale_f32(
-                right,
-                game_state.camera_state.speed
-                );
+            input_vec += cm.scale_f32(right, game_state.camera_state.speed);
         }
         if (input_state.a) {
-            input_vec -= cm.scale_f32(
-                right,
-                game_state.camera_state.speed
-                );
+            input_vec -= cm.scale_f32(right, game_state.camera_state.speed);
         }
-            
+
         // TODO make this only work while glfw is initialized it is producing that error
-        if (input_state.mouse_capture)
-        {
+        if (input_state.mouse_capture) {
             c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_DISABLED);
-        }
-        else
-        {
+        } else {
             c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_NORMAL);
         }
-        
+
         if (@abs(current_time - prev_tick_time) > MINIMUM_RENDER_TICK_TIME) {
-            const chunk_render_targets = try generate_chunk_render_targets(
-                &allocator,
-                game_state.objects.items
-                );
+            const chunk_render_targets = try generate_chunk_render_targets(&allocator, game_state.objects.items);
             current_render_targets.appendSliceAssumeCapacity(vulkan_state.render_targets.items);
             current_render_targets.appendSliceAssumeCapacity(chunk_render_targets);
 
@@ -432,63 +395,39 @@ pub fn main() !void {
             };
 
             c.vulkan.glfwGetWindowSize(vulkan_state.window, &window_width, &window_height);
-            const aspect_ratio : f32 = @as(f32, 
-                @floatFromInt(window_width))
-                / @as(f32, @floatFromInt(window_height)
-                    );
+            const aspect_ratio: f32 = @as(f32, @floatFromInt(window_width)) / @as(f32, @floatFromInt(window_height));
 
             const player_pos: zm.Vec = .{
-                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[0]),
-                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[1] - 0.5),
-                0.0,//@floatCast(bodies[game_state.player_state.physics_index].position[2]),
+                0.0, //@floatCast(bodies[game_state.player_state.physics_index].position[0]),
+                0.0, //@floatCast(bodies[game_state.player_state.physics_index].position[1] - 0.5),
+                0.0, //@floatCast(bodies[game_state.player_state.physics_index].position[2]),
                 0.0,
             };
             const view: zm.Mat = zm.lookToLh(player_pos, look, up);
-            const projection: zm.Mat = zm.perspectiveFovLh(
-                1.0,
-                aspect_ratio,
-                0.1,
-                1000.0
-                );
+            const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
             const view_proj: zm.Mat = zm.mul(view, projection);
-            
-            
-            @memcpy(
-                vulkan_state.push_constant_data[0..64],
-                @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]
-                );
-            @memcpy(
-                vulkan_state.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)],
-                @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]
-                );
-            @memset(
-                vulkan_state.push_constant_data[(@sizeOf(zm.Mat) + 4)..(@sizeOf(zm.Mat) + 4 + 4)],
-                0
-                );
-            
+
+            @memcpy(vulkan_state.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
+            @memcpy(vulkan_state.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+            @memset(vulkan_state.push_constant_data[(@sizeOf(zm.Mat) + 4)..(@sizeOf(zm.Mat) + 4 + 4)], 0);
+
             try vulkan.update_chunk_ubo(
                 &vulkan_state,
                 render_frame.bodies,
                 //chunk_offsets,
                 render_frame.player_index,
                 1,
-                );
-            
-            try vulkan.update_particle_ubo(
-                &vulkan_state,
-                render_frame.bodies,
-                render_frame.player_index,
-                0
-                );
+            );
+
+            try vulkan.update_particle_ubo(&vulkan_state, render_frame.bodies, render_frame.player_index, 0);
 
             vulkan_state.render_targets.items[1].instance_count = render_frame.particle_count;
 
             // DRAW
             try vulkan_state.draw_frame(current_frame_index, &vulkan_state.render_targets.items);
-            
+
             var average_frame_time: f32 = 0;
-            for (frame_time_cyclic_buffer) |time|
-            {
+            for (frame_time_cyclic_buffer) |time| {
                 average_frame_time += time;
             }
             average_frame_time /= FTCB_SIZE;
@@ -496,15 +435,15 @@ pub fn main() !void {
             std.debug.print("{s} {} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
                 if (input_state.mouse_capture) "on " else "off",
                 render_frame.bodies.len,
-                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])), 
+                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])),
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
                 render_frame.camera_state.yaw,
                 render_frame.camera_state.pitch,
                 average_frame_time * 1000.0,
-                1.0/average_frame_time,
+                1.0 / average_frame_time,
             });
-            
+
             frame_time_cyclic_buffer[frame_time_buffer_index] = @floatCast(delta_time_float);
             if (frame_time_buffer_index < FTCB_SIZE - 1) {
                 frame_time_buffer_index += 1;
@@ -536,42 +475,30 @@ pub fn main() !void {
                     }
                 }
             }
-            
+
             if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
-                try game_state.objects.append(
-                    allocator,
-                    .{
-                        .position = player_physics_state.*.position,
-                        .inverse_mass = 1.0 / 32.0,
-                        .orientation = game_state.camera_state.look(),
-                        .velocity = cm.scale_f32(
-                            game_state.camera_state.lookV(), 1.0 * 32.0)
-                            + player_physics_state.*.velocity,
-                        //.angular_velocity = .{1.0,0.0,0.0,0.0},
-                        .half_size = .{0.5, 0.5, 0.5, 0.0},
-                        .body_type = .particle,
-                    }
-                );
+                try game_state.objects.append(allocator, .{
+                    .position = player_physics_state.*.position,
+                    .inverse_mass = 1.0 / 32.0,
+                    .orientation = game_state.camera_state.look(),
+                    .velocity = cm.scale_f32(game_state.camera_state.lookV(), 1.0 * 32.0) + player_physics_state.*.velocity,
+                    //.angular_velocity = .{1.0,0.0,0.0,0.0},
+                    .half_size = .{ 0.5, 0.5, 0.5, 0.0 },
+                    .body_type = .particle,
+                });
 
                 game_state.particle_count += 1;
-                
+
                 vomit_cooldown_previous_time = current_time;
             }
-           
+
             // TODO throw this into a different thread and join when the tick is done
-            try physics.physics_tick(
-                &allocator,
-                delta_time_float,
-                game_state.sim_start_time,
-                game_state.objects.items,
-                &contacts
-                );
+            try physics.physics_tick(&allocator, delta_time_float, game_state.sim_start_time, game_state.objects.items, &contacts);
         }
 
         current_render_targets.clearRetainingCapacity();
-
     }
-   
+
     _ = c.vulkan.vkDeviceWaitIdle(vulkan_state.device);
     vulkan_state.cleanup();
 
@@ -656,12 +583,9 @@ pub export fn key_callback(window: ?*c.vulkan.GLFWwindow, key: i32, scancode: i3
         },
         c.vulkan.GLFW_KEY_T => {
             if (action == c.vulkan.GLFW_RELEASE) {
-                if (input_state.mouse_capture == true)
-                {
+                if (input_state.mouse_capture == true) {
                     input_state.mouse_capture = false;
-                }
-                else
-                {
+                } else {
                     input_state.mouse_capture = true;
                 }
             }
@@ -670,7 +594,7 @@ pub export fn key_callback(window: ?*c.vulkan.GLFWwindow, key: i32, scancode: i3
     }
 }
 
-pub export fn cursor_pos_callback(window: ?*c.vulkan.GLFWwindow, _xpos: f64, _ypos: f64)  void {
+pub export fn cursor_pos_callback(window: ?*c.vulkan.GLFWwindow, _xpos: f64, _ypos: f64) void {
     _ = &window;
     dx = _xpos - xpos;
     dy = _ypos - ypos;
@@ -734,7 +658,7 @@ pub export fn window_resize_callback(window: ?*c.vulkan.GLFWwindow, width: c_int
 //        const step_vec: @Vector(3, f32) = .{look[0] * 0.15, look[1] * 0.15, look[2] * 0.15};
 //        current_ray += step_vec;
 //        current_distance += 0.15;
-//        
+//
 //        current_pos[0] = @as(i32, @intFromFloat(@floor(current_ray[0])));
 //        current_pos[1] = @as(i32, @intFromFloat(@floor(current_ray[1])));
 //        current_pos[2] = @as(i32, @intFromFloat(@floor(current_ray[2])));
@@ -746,14 +670,14 @@ pub export fn window_resize_callback(window: ?*c.vulkan.GLFWwindow, width: c_int
 //            }
 //        }
 //    }
-//    
+//
 //    return result;
 //}
 
 pub fn generate_chunk_render_targets(
     allocator: *std.mem.Allocator,
     objects: []Object,
-    ) ![]vulkan.RenderInfo {
+) ![]vulkan.RenderInfo {
     var list = try std.ArrayList(vulkan.RenderInfo).initCapacity(allocator.*, 10);
     defer list.deinit(allocator.*);
 
@@ -761,14 +685,11 @@ pub fn generate_chunk_render_targets(
     for (objects) |object| {
         if (object.body_type == .voxel_space) {
             for (object.vertex_buffers.items) |chunk_vb| {
-                try list.append(
-                    allocator.*,
-                    vulkan.RenderInfo{
-                        .vertex_buffer = chunk_vb.buffer,
-                        .pipeline_index = 2,
-                        .vertex_count = chunk_vb.vertex_count,
-                    }
-                    );
+                try list.append(allocator.*, vulkan.RenderInfo{
+                    .vertex_buffer = chunk_vb.buffer,
+                    .pipeline_index = 2,
+                    .vertex_count = chunk_vb.vertex_count,
+                });
             }
         }
     }
@@ -778,7 +699,7 @@ pub fn generate_chunk_render_targets(
 
 /// Generate a bitmask according to which chunks we want to be loaded in our voxel space
 //pub fn generate_chunk_occupancy_mask(obj: Object) ![]u32 {
-//    var 
+//    var
 //}
 //
 /// decides which chunks to load

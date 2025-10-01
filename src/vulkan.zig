@@ -8,48 +8,48 @@ const chunk = @import("chunk.zig");
 const mesh_generation = @import("mesh_generation.zig");
 
 // TODO There has got to be a better way than this, so much smell...
-const chunk_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/simple.vert.spv")))));
-const chunk_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/simple.frag.spv")))));
+const chunk_vert_source = @as([]align(4) u8, @ptrCast(@alignCast(@constCast(@embedFile("shaders/simple.vert.spv")))));
+const chunk_frag_source = @as([]align(4) u8, @ptrCast(@alignCast(@constCast(@embedFile("shaders/simple.frag.spv")))));
 
-const outline_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/outline.vert.spv")))));
-const outline_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/outline.frag.spv")))));
+const outline_vert_source = @as([]align(4) u8, @ptrCast(@alignCast(@constCast(@embedFile("shaders/outline.vert.spv")))));
+const outline_frag_source = @as([]align(4) u8, @ptrCast(@alignCast(@constCast(@embedFile("shaders/outline.frag.spv")))));
 
-const cursor_vert_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/cursor.vert.spv")))));
-const cursor_frag_source = @as([]align(4) u8, @constCast(@alignCast(@ptrCast(@embedFile("shaders/cursor.frag.spv")))));
+const cursor_vert_source = @as([]align(4) u8, @ptrCast(@alignCast(@constCast(@embedFile("shaders/cursor.vert.spv")))));
+const cursor_frag_source = @as([]align(4) u8, @ptrCast(@alignCast(@constCast(@embedFile("shaders/cursor.frag.spv")))));
 
-const COLOR: @Vector(3, f32) = .{32.0 / 256.0, 252.0 / 256.0, 164.0 / 256.0 };
+const COLOR: @Vector(3, f32) = .{ 32.0 / 256.0, 252.0 / 256.0, 164.0 / 256.0 };
 const block_selection_cube: [17]Vertex = .{
     //front
-    .{.pos = .{-0.001,-0.001,-0.001}, .color = COLOR },
-    .{.pos = .{1.001,-0.001,-0.001}, .color = COLOR },
-    .{.pos = .{1.001,1.001,-0.001}, .color = COLOR },
-    .{.pos = .{-0.001,1.001,-0.001}, .color = COLOR },
+    .{ .pos = .{ -0.001, -0.001, -0.001 }, .color = COLOR },
+    .{ .pos = .{ 1.001, -0.001, -0.001 }, .color = COLOR },
+    .{ .pos = .{ 1.001, 1.001, -0.001 }, .color = COLOR },
+    .{ .pos = .{ -0.001, 1.001, -0.001 }, .color = COLOR },
     //left
-    .{.pos = .{-0.001,-0.001,-0.001}, .color = COLOR },
-    .{.pos = .{-0.001,-0.001,1.001}, .color = COLOR },
-    .{.pos = .{-0.001,1.001,1.001}, .color = COLOR },
-    .{.pos = .{-0.001,1.001,-0.001}, .color = COLOR },
-    .{.pos = .{-0.001,-0.001,-0.001}, .color = COLOR },
+    .{ .pos = .{ -0.001, -0.001, -0.001 }, .color = COLOR },
+    .{ .pos = .{ -0.001, -0.001, 1.001 }, .color = COLOR },
+    .{ .pos = .{ -0.001, 1.001, 1.001 }, .color = COLOR },
+    .{ .pos = .{ -0.001, 1.001, -0.001 }, .color = COLOR },
+    .{ .pos = .{ -0.001, -0.001, -0.001 }, .color = COLOR },
     //right
-    .{.pos = .{1.001,-0.001,-0.001}, .color = COLOR },
-    .{.pos = .{1.001,-0.001,1.001}, .color = COLOR },
-    .{.pos = .{1.001,1.001,1.001}, .color = COLOR },
-    .{.pos = .{1.001,1.001,-0.001}, .color = COLOR },
+    .{ .pos = .{ 1.001, -0.001, -0.001 }, .color = COLOR },
+    .{ .pos = .{ 1.001, -0.001, 1.001 }, .color = COLOR },
+    .{ .pos = .{ 1.001, 1.001, 1.001 }, .color = COLOR },
+    .{ .pos = .{ 1.001, 1.001, -0.001 }, .color = COLOR },
     //back
-    .{.pos = .{1.001,1.001,1.001}, .color = COLOR },
-    .{.pos = .{-0.001,1.001,1.001}, .color = COLOR },
-    .{.pos = .{-0.001,-0.001,1.001}, .color = COLOR },
-    .{.pos = .{1.001,-0.001,1.001}, .color = COLOR },
+    .{ .pos = .{ 1.001, 1.001, 1.001 }, .color = COLOR },
+    .{ .pos = .{ -0.001, 1.001, 1.001 }, .color = COLOR },
+    .{ .pos = .{ -0.001, -0.001, 1.001 }, .color = COLOR },
+    .{ .pos = .{ 1.001, -0.001, 1.001 }, .color = COLOR },
 };
 
 const CURSOR_SCALE: f32 = 1.0 / 64.0;
 const cursor_vertices: [6]Vertex = .{
-    .{.pos = .{-CURSOR_SCALE,-CURSOR_SCALE,0.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{CURSOR_SCALE,CURSOR_SCALE,0.0}, .color = .{1.0,1.0,0.0}},
-    .{.pos = .{-CURSOR_SCALE,CURSOR_SCALE,0.0}, .color = .{0.0,1.0,0.0}},
-    .{.pos = .{-CURSOR_SCALE,-CURSOR_SCALE,0.0}, .color = .{0.0,0.0,0.0}},
-    .{.pos = .{CURSOR_SCALE,-CURSOR_SCALE,0.0}, .color = .{1.0,0.0,0.0}},
-    .{.pos = .{CURSOR_SCALE,CURSOR_SCALE,0.0}, .color = .{1.0,1.0,0.0}},
+    .{ .pos = .{ -CURSOR_SCALE, -CURSOR_SCALE, 0.0 }, .color = .{ 0.0, 0.0, 0.0 } },
+    .{ .pos = .{ CURSOR_SCALE, CURSOR_SCALE, 0.0 }, .color = .{ 1.0, 1.0, 0.0 } },
+    .{ .pos = .{ -CURSOR_SCALE, CURSOR_SCALE, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
+    .{ .pos = .{ -CURSOR_SCALE, -CURSOR_SCALE, 0.0 }, .color = .{ 0.0, 0.0, 0.0 } },
+    .{ .pos = .{ CURSOR_SCALE, -CURSOR_SCALE, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
+    .{ .pos = .{ CURSOR_SCALE, CURSOR_SCALE, 0.0 }, .color = .{ 1.0, 1.0, 0.0 } },
 };
 
 // Attempt at descriptive Errors
@@ -153,7 +153,7 @@ const ChunkRenderData = struct {
 /// Current implementation also assumes 2D texture
 /// Defaults to 2D image view type
 /// Defaults to RGBA SRGB format
-pub const ImageInfo = struct{
+pub const ImageInfo = struct {
     data: *c.stb.stbi_uc = undefined,
     width: i32 = undefined,
     height: i32 = undefined,
@@ -170,7 +170,7 @@ pub const ImageInfo = struct{
 
 /// All the info required to render a vertex buffer
 pub const RenderInfo = struct {
-    vertex_buffer: c.vulkan.VkBuffer,//vertex_index: u32,
+    vertex_buffer: c.vulkan.VkBuffer, //vertex_index: u32,
     pipeline_index: u32,
     vertex_count: u32 = 0,
     vertex_buffer_offset: c.vulkan.VkDeviceSize = 0,
@@ -228,15 +228,15 @@ pub const VulkanState = struct {
     /// keeps track of shader modules
     shader_modules: std.ArrayList(c.vulkan.VkShaderModule) = undefined,
 
-    descriptor_pool : c.vulkan.VkDescriptorPool = undefined,
-    descriptor_sets : []c.vulkan.VkDescriptorSet = undefined,
-    descriptor_set_layout : c.vulkan.VkDescriptorSetLayout = undefined,
+    descriptor_pool: c.vulkan.VkDescriptorPool = undefined,
+    descriptor_sets: []c.vulkan.VkDescriptorSet = undefined,
+    descriptor_set_layout: c.vulkan.VkDescriptorSetLayout = undefined,
 
     pipeline_layout: c.vulkan.VkPipelineLayout = undefined,
     renderpass: c.vulkan.VkRenderPass = undefined,
     pipelines: []c.vulkan.VkPipeline = undefined,
     frame_buffers: []c.vulkan.VkFramebuffer = undefined,
-   
+
     /// Tells the renderer what to render according to a pipeline (shader + misc settings) and vertex data
     render_targets: std.ArrayList(RenderInfo) = undefined,
     // TODO refactor how render targets are determined (should be produced during runtime instead of being static)
@@ -462,8 +462,7 @@ pub const VulkanState = struct {
         var format_index: u32 = 0;
 
         for (support.formats, 0..support.formats.len) |format, i| {
-            if (format.format == c.vulkan.VK_FORMAT_B8G8R8A8_SRGB
-                and format.colorSpace == c.vulkan.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            if (format.format == c.vulkan.VK_FORMAT_B8G8R8A8_SRGB and format.colorSpace == c.vulkan.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
                 format_index = @intCast(i);
                 surface_format = format;
                 break;
@@ -481,7 +480,7 @@ pub const VulkanState = struct {
         var width: i32 = 0;
         var height: i32 = 0;
         std.debug.print("[Info] current extent: {} {}\n", .{ support.capabilities.currentExtent.width, support.capabilities.currentExtent.height });
-        
+
         if (support.capabilities.currentExtent.width != std.math.maxInt(u32)) {
             extent = support.capabilities.currentExtent;
         } else {
@@ -499,7 +498,7 @@ pub const VulkanState = struct {
             extent.width = std.math.clamp(extent.width, support.capabilities.minImageExtent.width, support.capabilities.maxImageExtent.width);
             extent.height = std.math.clamp(extent.height, support.capabilities.minImageExtent.height, support.capabilities.maxImageExtent.height);
         }
-        
+
         std.debug.print("[Info] Final extent: {} {}\n", .{ extent.width, extent.height });
 
         const swapchain_create_info = c.vulkan.VkSwapchainCreateInfoKHR{
@@ -579,23 +578,23 @@ pub const VulkanState = struct {
         }
     }
 
-    pub fn create_descriptor_pool(self : *VulkanState) VkAbstractionError!void {
+    pub fn create_descriptor_pool(self: *VulkanState) VkAbstractionError!void {
         const ubo_pool_size = c.vulkan.VkDescriptorPoolSize{
             .type = c.vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .descriptorCount = 10,
         };
-        
+
         const storage_pool_size = c.vulkan.VkDescriptorPoolSize{
             .type = c.vulkan.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 10,
         };
-        
+
         const image_pool_size = c.vulkan.VkDescriptorPoolSize{
             .type = c.vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .descriptorCount = 10,
         };
 
-        const pool_sizes : [3]c.vulkan.VkDescriptorPoolSize = 
+        const pool_sizes: [3]c.vulkan.VkDescriptorPoolSize =
             .{
                 ubo_pool_size,
                 storage_pool_size,
@@ -609,22 +608,15 @@ pub const VulkanState = struct {
             .maxSets = self.MAX_CONCURRENT_FRAMES,
             .flags = c.vulkan.VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
         };
-        
-        const success = c.vulkan.vkCreateDescriptorPool(
-            self.device,
-            &pool_info,
-            null,
-            &self.descriptor_pool
-            );
-        if (success != c.vulkan.VK_SUCCESS)
-        {
+
+        const success = c.vulkan.vkCreateDescriptorPool(self.device, &pool_info, null, &self.descriptor_pool);
+        if (success != c.vulkan.VK_SUCCESS) {
             std.debug.print("[Error] Unable to create Descriptor Pool: {}\n", .{success});
             return VkAbstractionError.DescriptorPoolCreationFailure;
         }
     }
 
-    pub fn create_descriptor_set_layouts(self : *VulkanState) VkAbstractionError!void
-    {
+    pub fn create_descriptor_set_layouts(self: *VulkanState) VkAbstractionError!void {
         // A description of the bindings and their contents
         // Essentially we need one of these per uniform buffer
         const layout_bindings: [4]c.vulkan.VkDescriptorSetLayoutBinding = .{
@@ -632,21 +624,21 @@ pub const VulkanState = struct {
                 .binding = 0,
                 .descriptorCount = 1,
                 .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .stageFlags = c.vulkan.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_VERTEX_BIT,
+                .stageFlags = c.vulkan.VK_SHADER_STAGE_ALL, //c.VK_SHADER_STAGE_VERTEX_BIT,
                 .pImmutableSamplers = null,
             },
             c.vulkan.VkDescriptorSetLayoutBinding{
                 .binding = 1,
                 .descriptorCount = 1,
                 .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .stageFlags = c.vulkan.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_FRAGMENT_BIT,
+                .stageFlags = c.vulkan.VK_SHADER_STAGE_ALL, //c.VK_SHADER_STAGE_FRAGMENT_BIT,
                 .pImmutableSamplers = null,
             },
             c.vulkan.VkDescriptorSetLayoutBinding{
                 .binding = 2,
                 .descriptorCount = 1,
                 .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .stageFlags = c.vulkan.VK_SHADER_STAGE_ALL,//c.VK_SHADER_STAGE_FRAGMENT_BIT,
+                .stageFlags = c.vulkan.VK_SHADER_STAGE_ALL, //c.VK_SHADER_STAGE_FRAGMENT_BIT,
                 .pImmutableSamplers = null,
             },
             c.vulkan.VkDescriptorSetLayoutBinding{
@@ -664,37 +656,17 @@ pub const VulkanState = struct {
             .pBindings = &layout_bindings,
         };
 
-        const descriptor_set_success = c.vulkan.vkCreateDescriptorSetLayout(
-            self.device,
-            &layout_info,
-            null,
-            &self.descriptor_set_layout
-            );
+        const descriptor_set_success = c.vulkan.vkCreateDescriptorSetLayout(self.device, &layout_info, null, &self.descriptor_set_layout);
 
         if (descriptor_set_success != c.vulkan.VK_SUCCESS) {
-            
-            std.debug.print(
-                "[Error] Unable to create descriptor set: {}\n",
-                .{descriptor_set_success}
-                );
-            
+            std.debug.print("[Error] Unable to create descriptor set: {}\n", .{descriptor_set_success});
+
             return VkAbstractionError.DescriptorSetCreationFailure;
         }
     }
 
     /// Pipeline for arbitrary 3D geometry (vertices)
-    pub fn create_pipeline(
-        self: *VulkanState,
-        vert_source: []align(4) u8,
-        frag_source: []align(4) u8,
-        wireframe: bool,
-        binding_description: [*c]c.vulkan.VkVertexInputBindingDescription,
-        binding_description_size: u32,
-        attribute_description: [*c]c.vulkan.VkVertexInputAttributeDescription,
-        attribute_description_size: u32,
-        primitive: c.vulkan.VkPrimitiveTopology
-        ) VkAbstractionError!c.vulkan.VkPipeline {
-
+    pub fn create_pipeline(self: *VulkanState, vert_source: []align(4) u8, frag_source: []align(4) u8, wireframe: bool, binding_description: [*c]c.vulkan.VkVertexInputBindingDescription, binding_description_size: u32, attribute_description: [*c]c.vulkan.VkVertexInputAttributeDescription, attribute_description_size: u32, primitive: c.vulkan.VkPrimitiveTopology) VkAbstractionError!c.vulkan.VkPipeline {
         const vert_index = self.shader_modules.items.len;
         try create_shader_module(self, vert_source);
         const frag_index = self.shader_modules.items.len;
@@ -729,7 +701,6 @@ pub const VulkanState = struct {
             .dynamicStateCount = dynamic_state.len,
             .pDynamicStates = &dynamic_state,
         };
-
 
         const vertex_input_info = c.vulkan.VkPipelineVertexInputStateCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -792,11 +763,7 @@ pub const VulkanState = struct {
         };
 
         const color_blending_attachment_create_info = c.vulkan.VkPipelineColorBlendAttachmentState{
-            .colorWriteMask = 
-                c.vulkan.VK_COLOR_COMPONENT_R_BIT
-                | c.vulkan.VK_COLOR_COMPONENT_G_BIT
-                | c.vulkan.VK_COLOR_COMPONENT_B_BIT
-                | c.vulkan.VK_COLOR_COMPONENT_A_BIT,
+            .colorWriteMask = c.vulkan.VK_COLOR_COMPONENT_R_BIT | c.vulkan.VK_COLOR_COMPONENT_G_BIT | c.vulkan.VK_COLOR_COMPONENT_B_BIT | c.vulkan.VK_COLOR_COMPONENT_A_BIT,
             .blendEnable = c.vulkan.VK_FALSE,
         };
 
@@ -846,7 +813,7 @@ pub const VulkanState = struct {
     }
 
     /// Creates a shader module and appends the handler to the state's shader array list
-    pub fn create_shader_module(self: *VulkanState, file_source : [] const align(4) u8) VkAbstractionError!void {
+    pub fn create_shader_module(self: *VulkanState, file_source: []align(4) const u8) VkAbstractionError!void {
         var shader_module: c.vulkan.VkShaderModule = undefined;
 
         const create_info = c.vulkan.VkShaderModuleCreateInfo{
@@ -854,7 +821,7 @@ pub const VulkanState = struct {
             // Size of the source in bytes not u32
             .codeSize = file_source.len,
             // This must be aligned to 4 bytes
-            .pCode = @alignCast(@ptrCast(file_source.ptr)),
+            .pCode = @ptrCast(@alignCast(file_source.ptr)),
         };
 
         const create_shader_module_success = c.vulkan.vkCreateShaderModule(self.device, &create_info, null, &shader_module);
@@ -869,7 +836,6 @@ pub const VulkanState = struct {
         self.frame_buffers = try self.allocator.*.alloc(c.vulkan.VkFramebuffer, self.swapchain_image_views.len);
 
         for (self.swapchain_image_views, 0..self.swapchain_image_views.len) |image_view, i| {
-
             const attachments: [2]c.vulkan.VkImageView = .{ image_view, self.depth_image_view };
 
             const framebuffer_create_info = c.vulkan.VkFramebufferCreateInfo{
@@ -927,7 +893,7 @@ pub const VulkanState = struct {
         }
 
         var clear_colors: [2]c.vulkan.VkClearValue = undefined;
-        clear_colors[0].color.float32 = .{0.0, 0.003, 0.0005, 0.0};
+        clear_colors[0].color.float32 = .{ 0.0, 0.003, 0.0005, 0.0 };
         clear_colors[1].depthStencil = .{ .depth = 1.0, .stencil = 0 };
 
         const render_pass_info = c.vulkan.VkRenderPassBeginInfo{
@@ -942,11 +908,7 @@ pub const VulkanState = struct {
             .pClearValues = &clear_colors,
         };
 
-        c.vulkan.vkCmdBeginRenderPass(
-            command_buffer,
-            &render_pass_info,
-            c.vulkan.VK_SUBPASS_CONTENTS_INLINE
-            );
+        c.vulkan.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.vulkan.VK_SUBPASS_CONTENTS_INLINE);
 
         const viewport = c.vulkan.VkViewport{
             .x = 0.0,
@@ -957,12 +919,7 @@ pub const VulkanState = struct {
             .maxDepth = 1.0,
         };
 
-        c.vulkan.vkCmdSetViewport(
-            command_buffer,
-            0,
-            1,
-            &viewport
-            );
+        c.vulkan.vkCmdSetViewport(command_buffer, 0, 1, &viewport);
 
         const scissor = c.vulkan.VkRect2D{
             .offset = .{ .x = 0, .y = 0 },
@@ -970,64 +927,25 @@ pub const VulkanState = struct {
         };
 
         c.vulkan.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-        
-        c.vulkan.vkCmdPushConstants(
-            command_buffer,
-            self.pipeline_layout,
-            c.vulkan.VK_SHADER_STAGE_ALL,
-            0,
-            self.push_constant_info.size,
-            &self.push_constant_data[0]
-            );
 
-        c.vulkan.vkCmdBindDescriptorSets(
-            command_buffer,
-            c.vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS,
-            self.pipeline_layout,
-            0,
-            1,
-            &self.descriptor_sets[frame_index],
-            0,
-            null
-            );
+        c.vulkan.vkCmdPushConstants(command_buffer, self.pipeline_layout, c.vulkan.VK_SHADER_STAGE_ALL, 0, self.push_constant_info.size, &self.push_constant_data[0]);
+
+        c.vulkan.vkCmdBindDescriptorSets(command_buffer, c.vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
 
         var previous_pipeline_index: u32 = std.math.maxInt(u32);
         for (render_state.*) |target| {
             const pipeline_index = target.pipeline_index;
             if (pipeline_index != previous_pipeline_index) {
-                c.vulkan.vkCmdBindPipeline(
-                    command_buffer,
-                    c.vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    self.pipelines[pipeline_index]
-                    );
+                c.vulkan.vkCmdBindPipeline(command_buffer, c.vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipelines[pipeline_index]);
                 previous_pipeline_index = pipeline_index;
             }
-            
-            c.vulkan.vkCmdBindVertexBuffers(
-                command_buffer,
-                0,
-                1,
-                &target.vertex_buffer,
-                &target.vertex_buffer_offset
-                );
-            
-            // push constant index for draw call
-            c.vulkan.vkCmdPushConstants(
-                    command_buffer,
-                    self.pipeline_layout,
-                    c.vulkan.VK_SHADER_STAGE_ALL,
-                    @sizeOf(zm.Mat) + @sizeOf(f32),
-                    @sizeOf(u32),
-                    &target.push_constant_index
-                );
 
-            c.vulkan.vkCmdDraw(
-                command_buffer,
-                target.vertex_count,
-                target.instance_count,
-                0,
-                0
-                );
+            c.vulkan.vkCmdBindVertexBuffers(command_buffer, 0, 1, &target.vertex_buffer, &target.vertex_buffer_offset);
+
+            // push constant index for draw call
+            c.vulkan.vkCmdPushConstants(command_buffer, self.pipeline_layout, c.vulkan.VK_SHADER_STAGE_ALL, @sizeOf(zm.Mat) + @sizeOf(f32), @sizeOf(u32), &target.push_constant_index);
+
+            c.vulkan.vkCmdDraw(command_buffer, target.vertex_count, target.instance_count, 0, 0);
         }
 
         c.vulkan.vkCmdEndRenderPass(command_buffer);
@@ -1065,7 +983,7 @@ pub const VulkanState = struct {
             .attachment = 0,
             .layout = c.vulkan.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         };
-        
+
         const depth_attachment = c.vulkan.VkAttachmentDescription{
             .format = self.depth_format,
             .samples = c.vulkan.VK_SAMPLE_COUNT_1_BIT,
@@ -1081,7 +999,7 @@ pub const VulkanState = struct {
             .attachment = 1,
             .layout = c.vulkan.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         };
-        
+
         const subpass = c.vulkan.VkSubpassDescription{
             .pipelineBindPoint = c.vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS,
             .colorAttachmentCount = 1,
@@ -1095,13 +1013,10 @@ pub const VulkanState = struct {
         const subpass_dependency = c.vulkan.VkSubpassDependency{
             .srcSubpass = c.vulkan.VK_SUBPASS_EXTERNAL,
             .dstSubpass = 0,
-            .srcStageMask = c.vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-                | c.vulkan.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+            .srcStageMask = c.vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.vulkan.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
             .srcAccessMask = 0,
-            .dstStageMask = c.vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-                | c.vulkan.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-            .dstAccessMask = c.vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-                | c.vulkan.VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .dstStageMask = c.vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | c.vulkan.VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+            .dstAccessMask = c.vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | c.vulkan.VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
         };
 
         const renderpass_create_info = c.vulkan.VkRenderPassCreateInfo{
@@ -1152,37 +1067,20 @@ pub const VulkanState = struct {
         if (fence_wait != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
         }
-        
-        var image_index: u32 = 0;
-        const acquire_next_image_success = c.vulkan.vkAcquireNextImageKHR(
-            self.device,
-            self.swapchain,
-            std.math.maxInt(u64),
-            self.image_available_semaphores[frame_index],
-            null,
-            &image_index
-            );
 
-        if (acquire_next_image_success == c.vulkan.VK_ERROR_OUT_OF_DATE_KHR
-            or acquire_next_image_success == c.vulkan.VK_SUBOPTIMAL_KHR
-            or self.framebuffer_resized
-            ) {
+        var image_index: u32 = 0;
+        const acquire_next_image_success = c.vulkan.vkAcquireNextImageKHR(self.device, self.swapchain, std.math.maxInt(u64), self.image_available_semaphores[frame_index], null, &image_index);
+
+        if (acquire_next_image_success == c.vulkan.VK_ERROR_OUT_OF_DATE_KHR or acquire_next_image_success == c.vulkan.VK_SUBOPTIMAL_KHR or self.framebuffer_resized) {
             try recreate_swapchain(self);
             self.framebuffer_resized = false;
             return;
         } else if (acquire_next_image_success != c.vulkan.VK_SUCCESS) {
-            std.debug.print(
-                "[Error] Unable to acquire next swapchain image: {} \n",
-                .{acquire_next_image_success}
-                );
+            std.debug.print("[Error] Unable to acquire next swapchain image: {} \n", .{acquire_next_image_success});
             return VkAbstractionError.AcquireNextSwapchainImageFailure;
         }
-        
-        const reset_fence_success = c.vulkan.vkResetFences(
-            self.device,
-            1,
-            &self.in_flight_fences[frame_index]
-            );
+
+        const reset_fence_success = c.vulkan.vkResetFences(self.device, 1, &self.in_flight_fences[frame_index]);
         if (reset_fence_success != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.OutOfMemory;
         }
@@ -1200,7 +1098,7 @@ pub const VulkanState = struct {
 
         const wait_stages = [_]c.vulkan.VkPipelineStageFlags{
             c.vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            //c.vulkan.VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+                //c.vulkan.VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
         };
 
         const submit_info = c.vulkan.VkSubmitInfo{
@@ -1229,8 +1127,7 @@ pub const VulkanState = struct {
         };
 
         const present_success = c.vulkan.vkQueuePresentKHR(self.present_queue, &present_info);
-        if (present_success == c.vulkan.VK_SUBOPTIMAL_KHR or present_success == c.vulkan.VK_ERROR_OUT_OF_DATE_KHR or self.framebuffer_resized)
-        {
+        if (present_success == c.vulkan.VK_SUBOPTIMAL_KHR or present_success == c.vulkan.VK_ERROR_OUT_OF_DATE_KHR or self.framebuffer_resized) {
             try recreate_swapchain(self);
             self.framebuffer_resized = false;
             return;
@@ -1241,18 +1138,9 @@ pub const VulkanState = struct {
     }
 
     /// Image format does not matter
-    pub fn create_depth_resources(self: *VulkanState) VkAbstractionError!void
-    {
-        const candidates: [3]c.vulkan.VkFormat = .{
-            c.vulkan.VK_FORMAT_D32_SFLOAT,
-            c.vulkan.VK_FORMAT_D32_SFLOAT_S8_UINT,
-            c.vulkan.VK_FORMAT_D24_UNORM_S8_UINT
-        };
-        const format = try self.depth_texture_format(
-            &candidates,
-            c.vulkan.VK_IMAGE_TILING_OPTIMAL,
-            c.vulkan.VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-            );
+    pub fn create_depth_resources(self: *VulkanState) VkAbstractionError!void {
+        const candidates: [3]c.vulkan.VkFormat = .{ c.vulkan.VK_FORMAT_D32_SFLOAT, c.vulkan.VK_FORMAT_D32_SFLOAT_S8_UINT, c.vulkan.VK_FORMAT_D24_UNORM_S8_UINT };
+        const format = try self.depth_texture_format(&candidates, c.vulkan.VK_IMAGE_TILING_OPTIMAL, c.vulkan.VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
         self.depth_format = format;
 
         const image_create_info = c.vulkan.VkImageCreateInfo{
@@ -1283,16 +1171,8 @@ pub const VulkanState = struct {
             .layerCount = 1,
         };
 
-        const depth_image_creation_success = c.vulkan.vmaCreateImage(
-            self.vma_allocator,
-            &image_create_info,
-            &alloc_info,
-            &self.depth_image,
-            &self.depth_image_alloc,
-            null
-            );
-        if (depth_image_creation_success != c.vulkan.VK_SUCCESS)
-        {
+        const depth_image_creation_success = c.vulkan.vmaCreateImage(self.vma_allocator, &image_create_info, &alloc_info, &self.depth_image, &self.depth_image_alloc, null);
+        if (depth_image_creation_success != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.DepthResourceCreationFailure;
         }
 
@@ -1304,41 +1184,26 @@ pub const VulkanState = struct {
             .subresourceRange = subresource_range,
         };
 
-        const success = c.vulkan.vkCreateImageView(
-            self.device,
-            &view_info,
-            null,
-            &self.depth_image_view
-            );
-        if (success != c.vulkan.VK_SUCCESS)
-        {
-            std.debug.print("Failure to create texture image view: {}\n", .{success}); return;
+        const success = c.vulkan.vkCreateImageView(self.device, &view_info, null, &self.depth_image_view);
+        if (success != c.vulkan.VK_SUCCESS) {
+            std.debug.print("Failure to create texture image view: {}\n", .{success});
+            return;
         }
     }
 
     /// Determines and returns the (best) supported depth resource format
-    fn depth_texture_format(
-        self: *VulkanState,
-        candidates: []const c.vulkan.VkFormat,
-        tiling: c.vulkan.VkImageTiling,
-        features: c.vulkan.VkFormatFeatureFlags
-        ) VkAbstractionError!c.vulkan.VkFormat {
-        
-        for (candidates) |format|
-        {
-            var properties : c.vulkan.VkFormatProperties = undefined;
+    fn depth_texture_format(self: *VulkanState, candidates: []const c.vulkan.VkFormat, tiling: c.vulkan.VkImageTiling, features: c.vulkan.VkFormatFeatureFlags) VkAbstractionError!c.vulkan.VkFormat {
+        for (candidates) |format| {
+            var properties: c.vulkan.VkFormatProperties = undefined;
             c.vulkan.vkGetPhysicalDeviceFormatProperties(self.physical_device, format, &properties);
-    
-            if (tiling == c.vulkan.VK_IMAGE_TILING_LINEAR and (properties.linearTilingFeatures & features) == features)
-            {
+
+            if (tiling == c.vulkan.VK_IMAGE_TILING_LINEAR and (properties.linearTilingFeatures & features) == features) {
                 return format;
-            }
-            else if (tiling == c.vulkan.VK_IMAGE_TILING_OPTIMAL and (properties.optimalTilingFeatures & features) == features)
-            {
+            } else if (tiling == c.vulkan.VK_IMAGE_TILING_OPTIMAL and (properties.optimalTilingFeatures & features) == features) {
                 return format;
             }
         }
-    
+
         return VkAbstractionError.DepthFormatAvailablityFailure;
     }
 
@@ -1377,20 +1242,18 @@ pub const VulkanState = struct {
         try create_framebuffers(self);
     }
 
-    pub fn cleanup_depth_resources(self: *VulkanState) void
-    {
+    pub fn cleanup_depth_resources(self: *VulkanState) void {
         c.vulkan.vkDestroyImageView(self.device, self.depth_image_view, null);
         c.vulkan.vmaDestroyImage(self.vma_allocator, self.depth_image, self.depth_image_alloc);
     }
 
     /// Copies any arbitrary CPU memory to the designated GPU buffer
-    /// 
+    ///
     /// ** WARNING **
     /// This function will overwrite data in adjacent memory
     /// if you specify a size larger than the allocated GPU buffer
-    fn copy_data_via_staging_buffer(self: *VulkanState, final_buffer: *c.vulkan.VkBuffer, size: u32, data: *anyopaque) VkAbstractionError!void
-    {
-        var staging_buffer : c.vulkan.VkBuffer = undefined;
+    fn copy_data_via_staging_buffer(self: *VulkanState, final_buffer: *c.vulkan.VkBuffer, size: u32, data: *anyopaque) VkAbstractionError!void {
+        var staging_buffer: c.vulkan.VkBuffer = undefined;
 
         const staging_buffer_info = c.vulkan.VkBufferCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -1403,23 +1266,22 @@ pub const VulkanState = struct {
             .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | c.vulkan.VMA_ALLOCATION_CREATE_MAPPED_BIT,
         };
 
-        var staging_alloc : c.vulkan.VmaAllocation = undefined;
-        var staging_alloc_info : c.vulkan.VmaAllocationInfo = undefined;
+        var staging_alloc: c.vulkan.VmaAllocation = undefined;
+        var staging_alloc_info: c.vulkan.VmaAllocationInfo = undefined;
 
         _ = c.vulkan.vmaCreateBuffer(self.vma_allocator, &staging_buffer_info, &staging_alloc_create_info, &staging_buffer, &staging_alloc, &staging_alloc_info);
 
         _ = c.vulkan.vmaCopyMemoryToAllocation(self.vma_allocator, data, staging_alloc, 0, size);
-        
+
         const command_buffer_alloc_info = c.vulkan.VkCommandBufferAllocateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             .level = c.vulkan.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
             .commandPool = self.command_pool,
             .commandBufferCount = 1,
         };
-        var command_buffer : c.vulkan.VkCommandBuffer = undefined;
+        var command_buffer: c.vulkan.VkCommandBuffer = undefined;
         const command_buffer_alloc_success = c.vulkan.vkAllocateCommandBuffers(self.device, &command_buffer_alloc_info, &command_buffer);
-        if (command_buffer_alloc_success != c.vulkan.VK_SUCCESS)
-        {
+        if (command_buffer_alloc_success != c.vulkan.VK_SUCCESS) {
             std.debug.print("Unable to Allocate command buffer for image staging: {}\n", .{command_buffer_alloc_success});
             return;
         }
@@ -1431,8 +1293,7 @@ pub const VulkanState = struct {
         };
 
         const begin_cmd_buffer = c.vulkan.vkBeginCommandBuffer(command_buffer, &begin_info);
-        if (begin_cmd_buffer != c.vulkan.VK_SUCCESS)
-        {
+        if (begin_cmd_buffer != c.vulkan.VK_SUCCESS) {
             return;
         }
 
@@ -1446,19 +1307,8 @@ pub const VulkanState = struct {
             .dstAccessMask = c.vulkan.VK_ACCESS_TRANSFER_WRITE_BIT,
         };
 
-        c.vulkan.vkCmdPipelineBarrier(
-            command_buffer,
-            c.vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
-            0,
-            0,
-            null,
-            1,
-            &transfer_barrier,
-            0,
-            null
-            );
-        
+        c.vulkan.vkCmdPipelineBarrier(command_buffer, c.vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 1, &transfer_barrier, 0, null);
+
         const region = c.vulkan.VkBufferCopy{
             .srcOffset = 0,
             .dstOffset = 0,
@@ -1478,18 +1328,7 @@ pub const VulkanState = struct {
             .size = size,
         };
 
-        c.vulkan.vkCmdPipelineBarrier(
-            command_buffer,
-            c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
-            c.vulkan.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0,
-            0,
-            null,
-            1,
-            &buffer_read_barrier,
-            0,
-            null
-            );
+        c.vulkan.vkCmdPipelineBarrier(command_buffer, c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT, c.vulkan.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, null, 1, &buffer_read_barrier, 0, null);
 
         _ = c.vulkan.vkEndCommandBuffer(command_buffer);
 
@@ -1506,39 +1345,25 @@ pub const VulkanState = struct {
 
         c.vulkan.vmaDestroyBuffer(self.vma_allocator, staging_buffer, staging_alloc);
     }
-    
-    pub fn create_vertex_buffer(
-        self: *VulkanState,
-        stride_size: u32,
-        size: u32,
-        ptr: *anyopaque
-        ) VkAbstractionError!VertexBuffer {
 
-        var vertex_buffer : c.vulkan.VkBuffer = undefined;
+    pub fn create_vertex_buffer(self: *VulkanState, stride_size: u32, size: u32, ptr: *anyopaque) VkAbstractionError!VertexBuffer {
+        var vertex_buffer: c.vulkan.VkBuffer = undefined;
         var alloc: c.vulkan.VmaAllocation = undefined;
-    
+
         var buffer_create_info = c.vulkan.VkBufferCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size = size,
             .usage = c.vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        }; 
-    
+        };
+
         const alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
             .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
             .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
         };
-    
-        const buffer_success = c.vulkan.vmaCreateBuffer(
-            self.vma_allocator,
-            &buffer_create_info,
-            &alloc_create_info, 
-            &vertex_buffer, 
-            &alloc, 
-            null
-            );
-        
-        if (buffer_success != c.vulkan.VK_SUCCESS)
-        {
+
+        const buffer_success = c.vulkan.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &vertex_buffer, &alloc, null);
+
+        if (buffer_success != c.vulkan.VK_SUCCESS) {
             std.debug.print("success: {}\n", .{buffer_success});
             return VkAbstractionError.VertexBufferCreationFailure;
         }
@@ -1557,27 +1382,25 @@ pub const VulkanState = struct {
     }
 
     /// DEPRECATED
-    pub fn replace_vertex_data(self: *VulkanState, render_index: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void
-    {
+    pub fn replace_vertex_data(self: *VulkanState, render_index: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void {
         // needs to occur asynchronously
-        var vertex_buffer : c.vulkan.VkBuffer = undefined;
+        var vertex_buffer: c.vulkan.VkBuffer = undefined;
         var alloc: c.vulkan.VmaAllocation = undefined;
-    
+
         var buffer_create_info = c.vulkan.VkBufferCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size = size,
             .usage = c.vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        }; 
-    
+        };
+
         const alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
             .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
             .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
         };
-    
+
         const buffer_success = c.vulkan.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &vertex_buffer, &alloc, null);
-        
-        if (buffer_success != c.vulkan.VK_SUCCESS)
-        {
+
+        if (buffer_success != c.vulkan.VK_SUCCESS) {
             std.debug.print("success: {}\n", .{buffer_success});
             return VkAbstractionError.VertexBufferCreationFailure;
         }
@@ -1588,38 +1411,36 @@ pub const VulkanState = struct {
         const old_alloc = self.vertex_allocs.items[self.render_targets.items[render_index].vertex_index];
         self.vertex_buffers.items[self.render_targets.items[render_index].vertex_index] = vertex_buffer;
         self.vertex_allocs.items[self.render_targets.items[render_index].vertex_index] = alloc;
-        
+
         const vertex_count = size / @sizeOf(Vertex);
         self.render_targets.items[render_index].vertex_count = vertex_count;
-        
+
         c.vulkan.vmaDestroyBuffer(self.vma_allocator, old_buffer, old_alloc);
     }
-    
+
     // TODO decide whether we want to make this host coherent based on the frequency
     // of chunk data updates
     // TODO make a way to modify the buffer at all, could replace it or change
     // data based on frequency and size...
     /// DEPRECATED
-    pub fn create_ssbo(self: *VulkanState, size: u32, ptr: *anyopaque) VkAbstractionError!void
-    {
+    pub fn create_ssbo(self: *VulkanState, size: u32, ptr: *anyopaque) VkAbstractionError!void {
         var ssbo: c.vulkan.VkBuffer = undefined;
         var alloc: c.vulkan.VmaAllocation = undefined;
-    
+
         var buffer_create_info = c.vulkan.VkBufferCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size = size,
             .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        }; 
-    
+        };
+
         const alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
             .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
             .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
         };
-    
+
         const buffer_success = c.vulkan.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &ssbo, &alloc, null);
-        
-        if (buffer_success != c.vulkan.VK_SUCCESS)
-        {
+
+        if (buffer_success != c.vulkan.VK_SUCCESS) {
             std.debug.print("success: {}\n", .{buffer_success});
             return VkAbstractionError.VertexBufferCreationFailure;
         }
@@ -1633,57 +1454,50 @@ pub const VulkanState = struct {
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called
     pub fn cleanup(self: *VulkanState) void {
-        for (0..self.ubo_buffers.items.len) |i|
-        {
+        for (0..self.ubo_buffers.items.len) |i| {
             c.vulkan.vmaDestroyBuffer(self.vma_allocator, self.ubo_buffers.items[i], self.ubo_allocs.items[i]);
         }
-        
+
         self.ubo_buffers.deinit(self.allocator.*);
         self.ubo_allocs.deinit(self.allocator.*);
 
         for (0..self.vertex_buffers.items.len) |i| {
             c.vulkan.vmaDestroyBuffer(self.vma_allocator, self.vertex_buffers.items[i], self.vertex_allocs.items[i]);
         }
-        
+
         self.vertex_buffers.deinit(self.allocator.*);
         self.vertex_allocs.deinit(self.allocator.*);
 
         for (0..self.images.items.len) |image_index| {
             image_cleanup(self, &self.images.items[image_index]);
         }
-        
+
         for (0..self.MAX_CONCURRENT_FRAMES) |i| {
             c.vulkan.vkDestroySemaphore(self.device, self.image_available_semaphores[i], null);
             c.vulkan.vkDestroySemaphore(self.device, self.image_completion_semaphores[i], null);
             c.vulkan.vkDestroyFence(self.device, self.in_flight_fences[i], null);
         }
 
-        c.vulkan.vkFreeCommandBuffers(
-            self.device,
-            self.command_pool,
-            self.MAX_CONCURRENT_FRAMES,
-            self.command_buffers.ptr
-            );
+        c.vulkan.vkFreeCommandBuffers(self.device, self.command_pool, self.MAX_CONCURRENT_FRAMES, self.command_buffers.ptr);
 
         c.vulkan.vkDestroyCommandPool(self.device, self.command_pool, null);
 
         cleanup_depth_resources(self);
         cleanup_swapchain(self);
-        
+
         for (0..self.shader_modules.items.len) |i| {
             c.vulkan.vkDestroyShaderModule(self.device, self.shader_modules.items[i], null);
         }
 
-        for (0..self.pipelines.len) |i|
-        {
+        for (0..self.pipelines.len) |i| {
             c.vulkan.vkDestroyPipeline(self.device, self.pipelines[i], null);
         }
         c.vulkan.vkDestroyRenderPass(self.device, self.renderpass, null);
-      
+
         c.vulkan.vkDestroyDescriptorPool(self.device, self.descriptor_pool, null);
-        
+
         c.vulkan.vkDestroyDescriptorSetLayout(self.device, self.descriptor_set_layout, null);
-        
+
         c.vulkan.vkDestroyPipelineLayout(self.device, self.pipeline_layout, null);
 
         c.vulkan.vkDestroySurfaceKHR(self.vk_instance, self.surface, null);
@@ -1692,7 +1506,7 @@ pub const VulkanState = struct {
         c.vulkan.vkDestroyInstance(self.vk_instance, null);
         c.vulkan.glfwDestroyWindow(self.window);
         c.vulkan.glfwTerminate();
-        
+
         self.shader_modules.deinit(self.allocator.*);
         self.allocator.*.free(self.pipelines);
         self.render_targets.deinit(self.allocator.*);
@@ -1707,184 +1521,150 @@ pub const VulkanState = struct {
 };
 
 /// Image format must be assigned before this function
-pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstractionError!void
-{
-        const image_size : u64 = @intCast(image_info.width * image_info.height * 4);
-        //Create staging buffer
-        
-        var staging_buffer : c.vulkan.VkBuffer = undefined;
+pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstractionError!void {
+    const image_size: u64 = @intCast(image_info.width * image_info.height * 4);
+    //Create staging buffer
 
-        const staging_buffer_info = c.vulkan.VkBufferCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size = image_size,
-            .usage = c.vulkan.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        };
+    var staging_buffer: c.vulkan.VkBuffer = undefined;
 
-        const staging_alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
-            .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
-            .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | c.vulkan.VMA_ALLOCATION_CREATE_MAPPED_BIT,
-        };
+    const staging_buffer_info = c.vulkan.VkBufferCreateInfo{
+        .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = image_size,
+        .usage = c.vulkan.VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+    };
 
-        var staging_alloc : c.vulkan.VmaAllocation = undefined;
-        var staging_alloc_info : c.vulkan.VmaAllocationInfo = undefined;
+    const staging_alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
+        .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
+        .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | c.vulkan.VMA_ALLOCATION_CREATE_MAPPED_BIT,
+    };
 
-        _ = c.vulkan.vmaCreateBuffer(self.vma_allocator, &staging_buffer_info, &staging_alloc_create_info, &staging_buffer, &staging_alloc, &staging_alloc_info);
+    var staging_alloc: c.vulkan.VmaAllocation = undefined;
+    var staging_alloc_info: c.vulkan.VmaAllocationInfo = undefined;
 
-        _ = c.vulkan.vmaCopyMemoryToAllocation(self.vma_allocator, image_info.data, staging_alloc, 0, image_size);
+    _ = c.vulkan.vmaCreateBuffer(self.vma_allocator, &staging_buffer_info, &staging_alloc_create_info, &staging_buffer, &staging_alloc, &staging_alloc_info);
 
-        // Create image and transfer data to allocation
+    _ = c.vulkan.vmaCopyMemoryToAllocation(self.vma_allocator, image_info.data, staging_alloc, 0, image_size);
 
-        const image_create_info = c.vulkan.VkImageCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .imageType = c.vulkan.VK_IMAGE_TYPE_2D,
-            .extent = .{ .width = @intCast(image_info.width), .height = @intCast(image_info.height), .depth = 1},
-            .mipLevels = 1,
-            .arrayLayers = 1,
-            .format = c.vulkan.VK_FORMAT_R8G8B8A8_SRGB,
-            .tiling = c.vulkan.VK_IMAGE_TILING_OPTIMAL,
-            .initialLayout = c.vulkan.VK_IMAGE_LAYOUT_UNDEFINED,
-            .usage = c.vulkan.VK_IMAGE_USAGE_SAMPLED_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            .samples = c.vulkan.VK_SAMPLE_COUNT_1_BIT,
-            .sharingMode = c.vulkan.VK_SHARING_MODE_EXCLUSIVE,
-        };
-        std.debug.print("width: {} height: {}\n", .{image_create_info.extent.width, image_create_info.extent.height});
+    // Create image and transfer data to allocation
 
-        const alloc_info = c.vulkan.VmaAllocationCreateInfo{
-            .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
-            .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,//c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,//, //| ,
-            .priority = 1.0,
-        };
+    const image_create_info = c.vulkan.VkImageCreateInfo{
+        .sType = c.vulkan.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = c.vulkan.VK_IMAGE_TYPE_2D,
+        .extent = .{ .width = @intCast(image_info.width), .height = @intCast(image_info.height), .depth = 1 },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .format = c.vulkan.VK_FORMAT_R8G8B8A8_SRGB,
+        .tiling = c.vulkan.VK_IMAGE_TILING_OPTIMAL,
+        .initialLayout = c.vulkan.VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage = c.vulkan.VK_IMAGE_USAGE_SAMPLED_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .samples = c.vulkan.VK_SAMPLE_COUNT_1_BIT,
+        .sharingMode = c.vulkan.VK_SHARING_MODE_EXCLUSIVE,
+    };
+    std.debug.print("width: {} height: {}\n", .{ image_create_info.extent.width, image_create_info.extent.height });
 
-        const image_creation = c.vulkan.vmaCreateImage(self.vma_allocator, &image_create_info, &alloc_info, &image_info.image, &image_info.alloc, null);
-        if (image_creation != c.vulkan.VK_SUCCESS)
-        {
-            std.debug.print("Image creation failure: {}\n", .{image_creation});
-            return;
-        }
-        
-        const command_buffer_alloc_info = c.vulkan.VkCommandBufferAllocateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .level = c.vulkan.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandPool = self.command_pool,
-            .commandBufferCount = 1,
-        };
-        var command_buffer : c.vulkan.VkCommandBuffer = undefined;
-        const command_buffer_alloc_success = c.vulkan.vkAllocateCommandBuffers(self.device, &command_buffer_alloc_info, &command_buffer);
-        if (command_buffer_alloc_success != c.vulkan.VK_SUCCESS)
-        {
-            std.debug.print("Unable to Allocate command buffer for image staging: {}\n", .{command_buffer_alloc_success});
-            return;
-        }
+    const alloc_info = c.vulkan.VmaAllocationCreateInfo{
+        .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
+        .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT, //c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,//, //| ,
+        .priority = 1.0,
+    };
 
-        // Copy and proper layout from staging buffer to gpu
-        const begin_info = c.vulkan.VkCommandBufferBeginInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .flags = c.vulkan.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        };
+    const image_creation = c.vulkan.vmaCreateImage(self.vma_allocator, &image_create_info, &alloc_info, &image_info.image, &image_info.alloc, null);
+    if (image_creation != c.vulkan.VK_SUCCESS) {
+        std.debug.print("Image creation failure: {}\n", .{image_creation});
+        return;
+    }
 
-        const begin_cmd_buffer = c.vulkan.vkBeginCommandBuffer(command_buffer, &begin_info);
-        if (begin_cmd_buffer != c.vulkan.VK_SUCCESS)
-        {
-            return;
-        }
-        
-        // Translate to optimal tranfer layout
+    const command_buffer_alloc_info = c.vulkan.VkCommandBufferAllocateInfo{
+        .sType = c.vulkan.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level = c.vulkan.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandPool = self.command_pool,
+        .commandBufferCount = 1,
+    };
+    var command_buffer: c.vulkan.VkCommandBuffer = undefined;
+    const command_buffer_alloc_success = c.vulkan.vkAllocateCommandBuffers(self.device, &command_buffer_alloc_info, &command_buffer);
+    if (command_buffer_alloc_success != c.vulkan.VK_SUCCESS) {
+        std.debug.print("Unable to Allocate command buffer for image staging: {}\n", .{command_buffer_alloc_success});
+        return;
+    }
 
-        const transfer_barrier = c.vulkan.VkImageMemoryBarrier{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .oldLayout = c.vulkan.VK_IMAGE_LAYOUT_UNDEFINED,
-            .newLayout = c.vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .srcQueueFamilyIndex = c.vulkan.VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = c.vulkan.VK_QUEUE_FAMILY_IGNORED,
-            .image = image_info.image,
-            .subresourceRange = image_info.subresource_range,
-            .srcAccessMask = 0,
-            .dstAccessMask = c.vulkan.VK_ACCESS_TRANSFER_WRITE_BIT,
-        };
+    // Copy and proper layout from staging buffer to gpu
+    const begin_info = c.vulkan.VkCommandBufferBeginInfo{
+        .sType = c.vulkan.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = c.vulkan.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
 
-        c.vulkan.vkCmdPipelineBarrier(
-            command_buffer,
-            c.vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
-            0,
-            0,
-            null,
-            0,
-            null,
-            1,
-            &transfer_barrier
-            );
-        
-        // copy from staging buffer to image gpu destination
-        const image_subresource = c.vulkan.VkImageSubresourceLayers{
-            .aspectMask = c.vulkan.VK_IMAGE_ASPECT_COLOR_BIT,
-            .mipLevel = 0,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        };
-        
-        const region = c.vulkan.VkBufferImageCopy{
-            .bufferOffset = 0,
-            .bufferRowLength = 0,
-            .bufferImageHeight = 0,
-            .imageSubresource = image_subresource,
-            .imageOffset = .{ .x = 0, .y = 0, .z = 0 },
-            .imageExtent = .{ .width = @intCast(image_info.width), .height = @intCast(image_info.height), .depth = 1 },
-        };
+    const begin_cmd_buffer = c.vulkan.vkBeginCommandBuffer(command_buffer, &begin_info);
+    if (begin_cmd_buffer != c.vulkan.VK_SUCCESS) {
+        return;
+    }
 
-        c.vulkan.vkCmdCopyBufferToImage(
-            command_buffer,
-            staging_buffer,
-            image_info.image,
-            c.vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            1,
-            &region
-            );
-        // Optimal shader layout translation
-        const shader_read_barrier = c.vulkan.VkImageMemoryBarrier{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .oldLayout = c.vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .newLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .srcQueueFamilyIndex = c.vulkan.VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = c.vulkan.VK_QUEUE_FAMILY_IGNORED,
-            .image = image_info.image,
-            .subresourceRange = image_info.subresource_range,
-            .srcAccessMask = c.vulkan.VK_ACCESS_TRANSFER_WRITE_BIT,
-            .dstAccessMask = c.vulkan.VK_ACCESS_SHADER_READ_BIT,
-        };
+    // Translate to optimal tranfer layout
 
-        c.vulkan.vkCmdPipelineBarrier(
-            command_buffer,
-            c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
-            c.vulkan.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0,
-            0,
-            null,
-            0,
-            null,
-            1,
-            &shader_read_barrier
-            );
+    const transfer_barrier = c.vulkan.VkImageMemoryBarrier{
+        .sType = c.vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = c.vulkan.VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = c.vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .srcQueueFamilyIndex = c.vulkan.VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = c.vulkan.VK_QUEUE_FAMILY_IGNORED,
+        .image = image_info.image,
+        .subresourceRange = image_info.subresource_range,
+        .srcAccessMask = 0,
+        .dstAccessMask = c.vulkan.VK_ACCESS_TRANSFER_WRITE_BIT,
+    };
 
-        _ = c.vulkan.vkEndCommandBuffer(command_buffer);
+    c.vulkan.vkCmdPipelineBarrier(command_buffer, c.vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 1, &transfer_barrier);
 
-        const submit_info = c.vulkan.VkSubmitInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &command_buffer,
-        };
+    // copy from staging buffer to image gpu destination
+    const image_subresource = c.vulkan.VkImageSubresourceLayers{
+        .aspectMask = c.vulkan.VK_IMAGE_ASPECT_COLOR_BIT,
+        .mipLevel = 0,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+    };
 
-        _ = c.vulkan.vkQueueSubmit(self.present_queue, 1, &submit_info, null);
-        _ = c.vulkan.vkQueueWaitIdle(self.present_queue);
+    const region = c.vulkan.VkBufferImageCopy{
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource = image_subresource,
+        .imageOffset = .{ .x = 0, .y = 0, .z = 0 },
+        .imageExtent = .{ .width = @intCast(image_info.width), .height = @intCast(image_info.height), .depth = 1 },
+    };
 
-        c.vulkan.vkFreeCommandBuffers(self.device, self.command_pool, 1, &command_buffer);
+    c.vulkan.vkCmdCopyBufferToImage(command_buffer, staging_buffer, image_info.image, c.vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    // Optimal shader layout translation
+    const shader_read_barrier = c.vulkan.VkImageMemoryBarrier{
+        .sType = c.vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = c.vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .srcQueueFamilyIndex = c.vulkan.VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = c.vulkan.VK_QUEUE_FAMILY_IGNORED,
+        .image = image_info.image,
+        .subresourceRange = image_info.subresource_range,
+        .srcAccessMask = c.vulkan.VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = c.vulkan.VK_ACCESS_SHADER_READ_BIT,
+    };
 
-        c.vulkan.vmaDestroyBuffer(self.vma_allocator, staging_buffer, staging_alloc);
+    c.vulkan.vkCmdPipelineBarrier(command_buffer, c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT, c.vulkan.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, null, 0, null, 1, &shader_read_barrier);
+
+    _ = c.vulkan.vkEndCommandBuffer(command_buffer);
+
+    const submit_info = c.vulkan.VkSubmitInfo{
+        .sType = c.vulkan.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+    };
+
+    _ = c.vulkan.vkQueueSubmit(self.present_queue, 1, &submit_info, null);
+    _ = c.vulkan.vkQueueWaitIdle(self.present_queue);
+
+    c.vulkan.vkFreeCommandBuffers(self.device, self.command_pool, 1, &command_buffer);
+
+    c.vulkan.vmaDestroyBuffer(self.vma_allocator, staging_buffer, staging_alloc);
 }
 
 /// Required fields are, image, viewType, format, and the subresource_range
-pub fn create_image_view(device: c.vulkan.VkDevice, image_info: *const ImageInfo) VkAbstractionError!void
-{
+pub fn create_image_view(device: c.vulkan.VkDevice, image_info: *const ImageInfo) VkAbstractionError!void {
     const view_info = c.vulkan.VkImageViewCreateInfo{
         .sType = c.vulkan.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image = image_info.*.image,
@@ -1895,26 +1675,19 @@ pub fn create_image_view(device: c.vulkan.VkDevice, image_info: *const ImageInfo
 
     for (0..image_info.views.len) |i| {
         const success = c.vulkan.vkCreateImageView(device, &view_info, null, &image_info.views[i]);
-        if (success != c.vulkan.VK_SUCCESS)
-        {
-            std.debug.print("Failure to create texture image view: {}\n", .{success}); return;
+        if (success != c.vulkan.VK_SUCCESS) {
+            std.debug.print("Failure to create texture image view: {}\n", .{success});
+            return;
         }
     }
 }
 
-pub fn create_samplers(
-    instance: *VulkanState,
-    image_info: *ImageInfo,
-    filter: c.vulkan.VkFilter,
-    repeat_mode: c.vulkan.VkSamplerAddressMode,
-    anisotropy: bool
-    ) VkAbstractionError!void {
-
+pub fn create_samplers(instance: *VulkanState, image_info: *ImageInfo, filter: c.vulkan.VkFilter, repeat_mode: c.vulkan.VkSamplerAddressMode, anisotropy: bool) VkAbstractionError!void {
     const sampler_info = c.vulkan.VkSamplerCreateInfo{
         .sType = c.vulkan.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter = filter,//c.vulkan.VK_FILTER_LINEAR
+        .magFilter = filter, //c.vulkan.VK_FILTER_LINEAR
         .minFilter = filter,
-        .addressModeU = repeat_mode,//VK_SAMPLER_ADDRESS_MODE_REPEAT
+        .addressModeU = repeat_mode, //VK_SAMPLER_ADDRESS_MODE_REPEAT
         .addressModeV = repeat_mode,
         .addressModeW = repeat_mode,
         .anisotropyEnable = if (anisotropy) c.vulkan.VK_TRUE else c.vulkan.VK_FALSE,
@@ -1928,11 +1701,10 @@ pub fn create_samplers(
         .minLod = 0.0,
         .maxLod = 0.0,
     };
-    
+
     for (0..image_info.samplers.len) |i| {
         const success = c.vulkan.vkCreateSampler(instance.device, &sampler_info, null, &image_info.samplers[i]);
-        if (success != c.vulkan.VK_SUCCESS)
-        {
+        if (success != c.vulkan.VK_SUCCESS) {
             std.debug.print("Failure to create texture sampler: {}\n", .{success});
             return;
         }
@@ -1940,13 +1712,11 @@ pub fn create_samplers(
 }
 
 pub fn image_cleanup(self: *VulkanState, info: *ImageInfo) void {
-    for (0..info.views.len) |i|
-    {
+    for (0..info.views.len) |i| {
         c.vulkan.vkDestroyImageView(self.device, info.views[i], null);
     }
 
-    for (0..info.samplers.len) |i|
-    {
+    for (0..info.samplers.len) |i| {
         c.vulkan.vkDestroySampler(self.device, info.samplers[i], null);
     }
 
@@ -2031,12 +1801,7 @@ pub export fn glfw_error_callback(code: c_int, description: [*c]const u8) void {
 }
 
 /// Generates the unique data sent to the GPU for chunks
-pub fn update_chunk_ubo(
-    self: *VulkanState,
-    bodies: []main.Object,
-    player_index: u32,
-    ubo_index: u32
-    ) VkAbstractionError!void {
+pub fn update_chunk_ubo(self: *VulkanState, bodies: []main.Object, player_index: u32, ubo_index: u32) VkAbstractionError!void {
     var data = try std.ArrayList(ChunkRenderData).initCapacity(self.allocator.*, 16);
     defer data.deinit(self.allocator.*);
 
@@ -2044,64 +1809,44 @@ pub fn update_chunk_ubo(
     // but tbh, not sure I can do much about that atm
     for (bodies) |body| {
         if (body.body_type == .voxel_space) {
-                //const pos: @Vector(4, f32) = .{
-                //    physics_pos[0] +
-                //        @as(f32, @floatFromInt(chunk_index % vs.size[0] * 32)),
-                //    physics_pos[1] +
-                //        @as(f32, @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32)),
-                //    physics_pos[2] +
-                //        @as(f32, @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32)),
-                //    0.0,
-                //};
+            //const pos: @Vector(4, f32) = .{
+            //    physics_pos[0] +
+            //        @as(f32, @floatFromInt(chunk_index % vs.size[0] * 32)),
+            //    physics_pos[1] +
+            //        @as(f32, @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32)),
+            //    physics_pos[2] +
+            //        @as(f32, @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32)),
+            //    0.0,
+            //};
 
             const transform = body.render_transform(bodies[player_index].position);
-            try data.append(
-                self.allocator.*,
-                .{
+            try data.append(self.allocator.*, .{
                 .model = transform,
-                .size = .{0,0,0},
+                .size = .{ 0, 0, 0 },
             });
         }
     }
-    
-    try self.copy_data_via_staging_buffer(
-        &self.ubo_buffers.items[ubo_index],
-        @intCast(data.items.len * @sizeOf(ChunkRenderData)),
-        &data.items[0]
-        );
+
+    try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
 }
 
 /// Generates the unique data sent to the GPU for particles
 ///
 /// returns the number of particles sent to the GPU (used for instance rendering)
-pub fn update_particle_ubo(
-    self: *VulkanState,
-    bodies: []main.Object,
-    player_index: u32,
-    ubo_index: u32
-    ) VkAbstractionError!void {
-    
+pub fn update_particle_ubo(self: *VulkanState, bodies: []main.Object, player_index: u32, ubo_index: u32) VkAbstractionError!void {
     var data = try std.ArrayList(zm.Mat).initCapacity(self.allocator.*, 64);
     defer data.deinit(self.allocator.*);
 
     for (bodies) |body| {
         if (body.body_type == .particle) {
-            try data.append(
-                self.allocator.*,
-                body.render_transform(bodies[player_index].position)
-                );
+            try data.append(self.allocator.*, body.render_transform(bodies[player_index].position));
         }
     }
 
     if (data.items.len > 0) {
-        try self.copy_data_via_staging_buffer(
-            &self.ubo_buffers.items[ubo_index],
-            @intCast(data.items.len * @sizeOf(zm.Mat)),
-            &data.items[0]
-            );
+        try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(zm.Mat)), &data.items[0]);
     }
 }
-
 
 //THREAD
 /// Initializes all required boilerplate for the render state
@@ -2113,7 +1858,7 @@ pub fn render_init(self: *VulkanState) !void {
 
     self.vertex_buffers = try std.ArrayList(c.vulkan.VkBuffer).initCapacity(self.allocator.*, 8);
     self.vertex_allocs = try std.ArrayList(c.vulkan.VmaAllocation).initCapacity(self.allocator.*, 8);
-   
+
     self.ubo_buffers = try std.ArrayList(c.vulkan.VkBuffer).initCapacity(self.allocator.*, 1);
     self.ubo_allocs = try std.ArrayList(c.vulkan.VmaAllocation).initCapacity(self.allocator.*, 1);
 
@@ -2152,11 +1897,10 @@ pub fn render_init(self: *VulkanState) !void {
         .instance = self.vk_instance,
         .pVulkanFunctions = &functions,
     };
-    
+
     const vma_allocator_success = c.vulkan.vmaCreateAllocator(&vma_allocator_create_info, &self.vma_allocator);
 
-    if (vma_allocator_success != c.vulkan.VK_SUCCESS)
-    {
+    if (vma_allocator_success != c.vulkan.VK_SUCCESS) {
         std.debug.print("Unable to create vma allocator {}\n", .{vma_allocator_success});
     }
 
@@ -2170,60 +1914,31 @@ pub fn render_init(self: *VulkanState) !void {
         // must be a multiple of 4
         .size = self.PUSH_CONSTANT_SIZE,
     };
-    
+
     try self.create_pipeline_layout();
     try self.create_render_pass();
-    
-    var generic_binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{ 
-        c.vulkan.VkVertexInputBindingDescription{
-            .binding = 0,
-            .stride = @sizeOf(Vertex),
-            .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
-        }
+
+    var generic_binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{c.vulkan.VkVertexInputBindingDescription{
+        .binding = 0,
+        .stride = @sizeOf(Vertex),
+        .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
+    }};
+
+    var chunk_binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{c.vulkan.VkVertexInputBindingDescription{
+        .binding = 0,
+        .stride = @sizeOf(ChunkVertex),
+        .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
+    }};
+
+    var generic_attribute_description: [2]c.vulkan.VkVertexInputAttributeDescription = .{
+        .{ .binding = 0, .location = 0, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = 0 },
+        .{ .binding = 0, .location = 1, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = @sizeOf(@Vector(3, f32)) },
     };
-    
-    var chunk_binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{ 
-        c.vulkan.VkVertexInputBindingDescription{
-            .binding = 0,
-            .stride = @sizeOf(ChunkVertex),
-            .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
-        }
-    };
-    
-    var generic_attribute_description: [2]c.vulkan.VkVertexInputAttributeDescription =    .{
-        .{
-            .binding = 0,
-            .location = 0,
-            .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
-            .offset = 0
-        },
-        .{
-            .binding = 0,
-            .location = 1,
-            .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
-            .offset = @sizeOf(@Vector(3, f32))
-        },
-    };
-    
-    var chunk_attribute_description: [3]c.vulkan.VkVertexInputAttributeDescription =    .{
-        .{
-            .binding = 0,
-            .location = 0,
-            .format = c.vulkan.VK_FORMAT_R32_UINT,
-            .offset = 0
-        },
-        .{
-            .binding = 0,
-            .location = 1,
-            .format = c.vulkan.VK_FORMAT_R32G32_SFLOAT,
-            .offset = @sizeOf(u32)
-        },
-        .{
-            .binding = 0,
-            .location = 2,
-            .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT,
-            .offset = @sizeOf(u32) + @sizeOf(@Vector(2, f32))
-        },
+
+    var chunk_attribute_description: [3]c.vulkan.VkVertexInputAttributeDescription = .{
+        .{ .binding = 0, .location = 0, .format = c.vulkan.VK_FORMAT_R32_UINT, .offset = 0 },
+        .{ .binding = 0, .location = 1, .format = c.vulkan.VK_FORMAT_R32G32_SFLOAT, .offset = @sizeOf(u32) },
+        .{ .binding = 0, .location = 2, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = @sizeOf(u32) + @sizeOf(@Vector(2, f32)) },
     };
 
     // cursor
@@ -2236,7 +1951,7 @@ pub fn render_init(self: *VulkanState) !void {
         &generic_attribute_description,
         @intCast(generic_attribute_description.len),
         c.vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-        );
+    );
     // outline
     self.pipelines[1] = try self.create_pipeline(
         outline_vert_source,
@@ -2247,7 +1962,7 @@ pub fn render_init(self: *VulkanState) !void {
         &generic_attribute_description,
         @intCast(generic_attribute_description.len),
         c.vulkan.VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,
-        );
+    );
     // simple chunk
     self.pipelines[2] = try self.create_pipeline(
         chunk_vert_source,
@@ -2258,8 +1973,8 @@ pub fn render_init(self: *VulkanState) !void {
         &chunk_attribute_description,
         @intCast(chunk_attribute_description.len),
         c.vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-        );
-    
+    );
+
     try self.create_framebuffers();
     try self.create_command_pool();
     try self.create_command_buffers();
@@ -2267,37 +1982,19 @@ pub fn render_init(self: *VulkanState) !void {
 
     // GLFW INIT
     c.vulkan.glfwSetWindowSizeLimits(self.window, 480, 270, c.vulkan.GLFW_DONT_CARE, c.vulkan.GLFW_DONT_CARE);
-    
-    const cursor_vb_info = try self.create_vertex_buffer(
-        @sizeOf(Vertex),
-        @intCast(cursor_vertices.len * @sizeOf(Vertex)),
-        @ptrCast(@constCast(&cursor_vertices[0]))
-        );
-    const outline_vb_info = try self.create_vertex_buffer(
-        @sizeOf(Vertex),
-        @intCast(block_selection_cube.len * @sizeOf(Vertex)),
-        @ptrCast(@constCast(&block_selection_cube[0]))
-        );
+
+    const cursor_vb_info = try self.create_vertex_buffer(@sizeOf(Vertex), @intCast(cursor_vertices.len * @sizeOf(Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
+    const outline_vb_info = try self.create_vertex_buffer(@sizeOf(Vertex), @intCast(block_selection_cube.len * @sizeOf(Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
 
     // cursor
-    try self.render_targets.append(
-        self.allocator.*,
-        .{
-            .vertex_buffer = self.vertex_buffers.items[0],
-            .pipeline_index = 0,
-            .vertex_count = cursor_vb_info.vertex_count
-        }
-        );
+    try self.render_targets.append(self.allocator.*, .{ .vertex_buffer = self.vertex_buffers.items[0], .pipeline_index = 0, .vertex_count = cursor_vb_info.vertex_count });
     // outline
-    try self.render_targets.append(
-        self.allocator.*,
-        .{
-            .vertex_buffer = self.vertex_buffers.items[1],
-            .pipeline_index = 1,
-            .vertex_count = outline_vb_info.vertex_count,
-            .instance_count = 0,
-        }
-        );
+    try self.render_targets.append(self.allocator.*, .{
+        .vertex_buffer = self.vertex_buffers.items[1],
+        .pipeline_index = 1,
+        .vertex_count = outline_vb_info.vertex_count,
+        .instance_count = 0,
+    });
 
     // RENDER INIT
 
@@ -2307,7 +2004,8 @@ pub fn render_init(self: *VulkanState) !void {
     };
 
     const buffer_infos: [2]BufferInfo = .{
-        .{  .create_info = .{
+        .{
+            .create_info = .{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 .size = 500 * @sizeOf(zm.Mat),
                 .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -2317,7 +2015,8 @@ pub fn render_init(self: *VulkanState) !void {
                 .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
             },
         },
-        .{  .create_info = .{
+        .{
+            .create_info = .{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 .size = 100 * @sizeOf(ChunkRenderData),
                 .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -2333,9 +2032,8 @@ pub fn render_init(self: *VulkanState) !void {
         var ubo: c.vulkan.VkBuffer = undefined;
         var alloc: c.vulkan.VmaAllocation = undefined;
         const buffer_success = c.vulkan.vmaCreateBuffer(self.vma_allocator, &buffer.create_info, &buffer.alloc_info, &ubo, &alloc, null);
-        
-        if (buffer_success != c.vulkan.VK_SUCCESS)
-        {
+
+        if (buffer_success != c.vulkan.VK_SUCCESS) {
             std.debug.print("success: {}\n", .{buffer_success});
             return VkAbstractionError.UBOBufferCreationFailure;
         }
@@ -2358,20 +2056,12 @@ pub fn render_init(self: *VulkanState) !void {
     };
     //defer self.allocator.*.free(image_info0.views);
     //defer self.allocator.*.free(image_info0.samplers);
-   
-    const image_data0 = c.stb.stbi_load(
-        "fortnite.jpg",
-        &image_info0.width,
-        &image_info0.height,
-        &image_info0.channels,
-        c.stb.STBI_rgb_alpha
-        );
-    if (image_data0 == null){
+
+    const image_data0 = c.stb.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.stb.STBI_rgb_alpha);
+    if (image_data0 == null) {
         std.debug.print("Unable to find image file \n", .{});
         return;
-    }
-    else
-    {
+    } else {
         image_info0.data = image_data0;
     }
 
@@ -2380,7 +2070,7 @@ pub fn render_init(self: *VulkanState) !void {
 
     try create_image_view(self.device, &image_info0);
     try create_samplers(self, &image_info0, c.vulkan.VK_FILTER_LINEAR, c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT, true);
-    
+
     var image_info1 = ImageInfo{
         .depth = 1,
         .subresource_range = .{
@@ -2395,20 +2085,12 @@ pub fn render_init(self: *VulkanState) !void {
     };
     //defer self.allocator.*.free(image_info1.views);
     //defer self.allocator.*.free(image_info1.samplers);
-   
-    const image_data1 = c.stb.stbi_load(
-        "blocks.png",
-        &image_info1.width,
-        &image_info1.height,
-        &image_info1.channels,
-        c.stb.STBI_rgb_alpha
-        );
-    if (image_data1 == null){
+
+    const image_data1 = c.stb.stbi_load("blocks.png", &image_info1.width, &image_info1.height, &image_info1.channels, c.stb.STBI_rgb_alpha);
+    if (image_data1 == null) {
         std.debug.print("Unable to find image file \n", .{});
         return;
-    }
-    else
-    {
+    } else {
         image_info1.data = image_data1;
     }
 
@@ -2419,8 +2101,8 @@ pub fn render_init(self: *VulkanState) !void {
     try create_samplers(self, &image_info1, c.vulkan.VK_FILTER_NEAREST, c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
 
     // Descriptor Sets
-    
-    const layouts: [2]c.vulkan.VkDescriptorSetLayout = .{self.descriptor_set_layout, self.descriptor_set_layout};
+
+    const layouts: [2]c.vulkan.VkDescriptorSetLayout = .{ self.descriptor_set_layout, self.descriptor_set_layout };
     const descriptor_alloc_info = c.vulkan.VkDescriptorSetAllocateInfo{
         .sType = c.vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = self.descriptor_pool,
@@ -2428,14 +2110,10 @@ pub fn render_init(self: *VulkanState) !void {
         .pSetLayouts = &layouts,
     };
 
-    if (c.vulkan.vkAllocateDescriptorSets(
-            self.device,
-            &descriptor_alloc_info,
-            self.descriptor_sets.ptr
-            ) != c.vulkan.VK_SUCCESS) {
+    if (c.vulkan.vkAllocateDescriptorSets(self.device, &descriptor_alloc_info, self.descriptor_sets.ptr) != c.vulkan.VK_SUCCESS) {
         std.debug.print("Unable to allocate Descriptor Sets\n", .{});
     }
-    
+
     for (0..self.MAX_CONCURRENT_FRAMES) |i| {
         const buffers: [2]c.vulkan.VkDescriptorBufferInfo = .{
             // Particles
@@ -2451,19 +2129,16 @@ pub fn render_init(self: *VulkanState) !void {
                 .range = 100 * @sizeOf(ChunkRenderData),
             },
         };
-        
-        const images: [2]c.vulkan.VkDescriptorImageInfo = .{
-            c.vulkan.VkDescriptorImageInfo{
-                .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                .imageView = image_info0.views[i],
-                .sampler = image_info0.samplers[i],
-            },
-            c.vulkan.VkDescriptorImageInfo{
-                .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                .imageView = image_info1.views[i],
-                .sampler = image_info1.samplers[i],
-            }
-        };
+
+        const images: [2]c.vulkan.VkDescriptorImageInfo = .{ c.vulkan.VkDescriptorImageInfo{
+            .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = image_info0.views[i],
+            .sampler = image_info0.samplers[i],
+        }, c.vulkan.VkDescriptorImageInfo{
+            .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = image_info1.views[i],
+            .sampler = image_info1.samplers[i],
+        } };
 
         const descriptor_writes: [4]c.vulkan.VkWriteDescriptorSet = .{
             c.vulkan.VkWriteDescriptorSet{
@@ -2518,77 +2193,77 @@ pub fn render_init(self: *VulkanState) !void {
     self.push_constant_data = try self.allocator.*.alloc(u8, self.PUSH_CONSTANT_SIZE);
 }
 
-//                                                     ..::::------:::...                                                 
-//                                             .:-=+*#######################*+=-:.                                        
-//                                        .-+*#######*************+**********######*+=:.                                  
-//                                    .-+#####****+++******************+++++++++++****###*=:                              
-//                                 :=*###**++++*********++++++++++++++++++++++++++++++++**###+:                           
-//                              :+###**+++++++++++++++++++++++++++++++++++++++++++++++++++++*###=:                        
-//                           .=*##*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*##*=.                     
-//                         .+##*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*##+.                   
-//                       :+##*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++==+*#=                  
-//                     .+##*++++++++++++++++++++++++++++++++++++++++++++++++++=============+==========+**:                
-//                    -*#*++++++++++++++++++++++++++++++=+++++==++========================-=============+#+               
-//                  .=##+++++++++++++++======================================--============-==============**:             
-//                 :*#*=+++=====================================--============:=============-=========--===*#-            
-//                .*#+==========================================:-============--==-========-:-===-=====--===+#-           
-//               .*#=============================-=============-:==--==========:==--========::-==-:=====:====+*-          
-//               **=========================-:==-==============::==:===--==--==--==:-=======-::===--====--=====*-         
-//              +#===================-=====-.:=--=============-.:=:-====:==-.==-:-=::-=======::-===:=====:=====+*:        
-//             =#+================-=--=====:.:-:==============:.---=====:-=-.-=-.:=:.:-======---===--====--====-*+.       
-//            :**===============-::::==-==-.:::-==============::::======:-=-.:-=..:-..:-=====--:-==-:--==-:====--*=       
-//            +#===-===========-::::-=-:=-:.::.-=============-.::-====-=::=--.-=:..-:.::=====-::---=:-:-==--====:+*:      
-//           .*+==-:==========::::.-=-::=:..:..-=--========-=-..:=-===-=.:=-+::---.:-.:.-=--=-:---:=:--:==--=--=-:*+.     
-//           -*==-::========-::::.:==-.:-...:..:=-----------=:..-=----=-..--*:.--*:.-...:---=::---:=-:-.-=--=-=-=:=*-     
-//           =*==-::=======-:.:::.-=-:.-:...:..:--:----------:..-----=-::.-=#-.:=#=.::.:.:=-=:::--:-- :.:=-:=---=--*=     
-//           ++=-:::====-=-:.:...:=-:.::.......:--:----------:..------.==.:#%=.:#%*:.:.:.:---:::--.:. ::.--:=---=-.=*.    
-//           =+=-:::=---=-:.:....-=-...........:--:----------...-----..=: :+=: .===:......---.:::- :-::..:-:-=::=-::+=    
-//           =+-::::---=-:.::...:=-:............--.:--------- ..:---:.=+..+%#- +%%%+......:--.:::- :-+.:.:-:--:.--:.==    
-//           ==-::.:----:.......--:.............:-.:--------:...---:.-%+.-@@%-.%@@@#:.-....-:.:.:-::-*.:=.:::::.-=: --    
-//           :--::.:---:.......:-:..............:-.:---------...--:.:#%-.#@@%.+@%@@%-.+....-:...:--.*#.=*.:::::.:=: :-    
-//           .--.:.:--:.:......-:................-..---------..:-:..*@* *@%@+-@@@%%@=:*:...:...::+-:@#.==..::...:=: ::    
-//            -:.:.:-:....... ::.................:..:--------..::..+@@:=@%@%=%@%###%=+#:.......:-+.--.   .......:-: .:    
-//            .:...::.........:.......... ..........:--------:....=@@==@%@%*##******+%%-.:. -:.::. ::+= ......:.:-:  :    
-//            .:......................... ...........--------:...+@%*+@@@@%%%###**##%@%-...=*..=. .**%-.:.......:-. .:    
-//             .........................   ..........:--------..+@@@%@@%%#*+=-:.  -*%@%-.:*%-:#@+.:.=%... ......:-.  .    
-//             ........................    ...........:--:-:--:+@@#+=::.. :-==+**++#@@#.-#@*=%@@#=*-=+-.. ......::  .     
-//             .......................     ...........:--:-::-:+=..  .....*@@+%@@@@@@@#*@@%%@@%@@%#*#%*.. ..... :.        
-//             :.....................  -=-. ...........:-::-.:.:-. ::.:..::+--@@@@@@@@@@@@@@%@@@@@@@@@%: .......:         
-//             ...................... =##**-............:-.-::--##+==--***+-.*#*+#@@@@@@@@@@@@@@#%@%%%@-...... .:         
-//            .....................  .**=++-...... ......:::--:-#@%%#%##******#%%@@@@@@@@@@@@@@@%*%@@@@#:..... .          
-//           .....................   :#*+*++:...... ........:+-:=@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%#*%@%@-...::            
-//         ...    ................   :*#*+*#=.......... .....=*::#@%@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@%*@%@%:..:-:            
-//               ....................:**##+==..... ..... .....#*:=@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@@@@+...--:            
-//              ......................*#++=**-..... ..... ....=@#:+@%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@+...--:            
-//             .......................:**==##*...... ..........#@#-#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@%:...--:            
-//            .........................:+#++*#-............. ..-@@%+%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@-....--:            
-//          ...........................  :+*+++.............:...*@@%%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@=.....:-:            
-//        ............     .............   .=+*=..........:.::...#@%@@@@@@@@@@@@@@@@@@@@@@@@%%%@@@%@=...:. :-.            
-//                        ..............      :-..........:-.:-:.:#@%@@@@@@@@@@@@@@@@@@%%%%%%%@@%@@=...:-..::             
-//                        ..............         ..........--:---=*%@@@@@@@@@@@@@@@@@@@%%%%%@@@@@@=....--..::             
-//                       .....  ....:-..          .........:-----=@%@@@@@@@@@@@@@@@@@@@@@@##%@@@@=....:-:..::             
-//                       ..     ...: :.            ..-......-:---:*%%@@@@@@@@@@@@@@@@@@@@@@@@@%@= ....:-:  .              
-//                      ..     ...:  :.            ..=-.....::-----**##%%@@@@@@@@@@@@@@@@@@@@%@+......--:  .              
-//                      .      ...   :..:        -:  -*.....:.:----*++++**#%%%@@@@@@%%%%%%%%%@*......:--. .               
-//                            ..     :.-.       :#-..:#-......::.--###****+==+**##%%%@@@@@@@@%.......:-:  :               
-//                            .      :.-.   -. .*#--=:#*:.....:-:::*######+.    ..:-=+++***#*:.......::. ..               
-//                                   =-:.  == .*##-+*-*#+......:=-:*###*#+:                 .........::                   
-//                                   : .  =#..*##**##+**#-.....:+=:*####*=                  .........:.                   
-//                                     . -#+-%@%%%#*###*#+.....:++.*##*#+.                  .........:                    
-//                                   .:::*%%@@%%%@%%#*##*#-.....+*:*###*-                    . .....:.                    
-//                                  .=+=*%@@%%%%%%%@%#*#*#+....:**+*###+=-.                  . .....:                     
-//                                  =**=#@%%%%%%%%%%@%#*##*: ..-#######=+*+=---.             .:....:.                     
-//                                .=****+%@%@@%%%%%%%@@%#*#- ..=#**#*#*=*++****+-:=*=-+++****:=-....                      
-//                               :+#*+**#+%@%@%%%%%%%%@@%##+ ..*####*#+*#**++****+--*##%@@@@@+** . :                      
-//                             .=+=*%++*##*%@%@@@@@%%%@%@@%*. -#*#####=*#%%#*++***#+:-###%@%%%%%.  #*.                    
-//                           :+#@@*=#%++###*#@%@@@@@@@@@@@@%-.*######***#@@%%#*+***##=:+##%@%@%@= +@@#:                   
-//                       :=-:=%@%%%*=#%=+##%*#@@@@@@@@@@@@%%:=%***#####*%@%@@%%#*++*#%#=-*##%@%@*=@%%@%-                  
-//                    :-*##*+-:+%@@%*=#%=*%#%**@@%@@@@@@@%@#=@%%##***###%@%%%%@@%%#*+*%%*-=**#@%%%%%%%@%-                 
-//               :-+*#%%@@@%#*=--+%@%*=##+#%#%**%@%@@@@@@@@%%@%@@%%##**#%%%%%%%%@@%*+**#%%+-+*#%@@%%%%%%%-                
-//           :=*#%%@@@%%%%%@@%#*=-:+%@#+##*%##%#+#@%%@@@%%%@@%%%%%@%%%#%@%%%%%@@%#+*%@%#*#%#=+**%#%@%%%%@#:               
-//       .-*#%@@@%%%%%%%%%%%%%@%#*=:-*%#+#%####%#**@@%%@@@@@@@@@@@%%@@@@@%%%%%%#++%@%%%@%**#%*****+@%%%%%@*               
-//     .+#%@@%%%%%%%%%%%%%%%%%%%@%*+-:-##+*%#####%*+%@%###%%%%%%%%%%%%%%%%%%%#*##%@%%%%%@@#++#%#*+-+@%%%%%@+              
-//    -#@%%%%%%%%%%%%%%%%%%%%%%%%@%#*+-:=*+*%#####%#+#@%%%#################%%%%%@%%%%%%%%%@%*+*###*-+%@@%%%@=             
+//                                                     ..::::------:::...
+//                                             .:-=+*#######################*+=-:.
+//                                        .-+*#######*************+**********######*+=:.
+//                                    .-+#####****+++******************+++++++++++****###*=:
+//                                 :=*###**++++*********++++++++++++++++++++++++++++++++**###+:
+//                              :+###**+++++++++++++++++++++++++++++++++++++++++++++++++++++*###=:
+//                           .=*##*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*##*=.
+//                         .+##*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*##+.
+//                       :+##*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++==+*#=
+//                     .+##*++++++++++++++++++++++++++++++++++++++++++++++++++=============+==========+**:
+//                    -*#*++++++++++++++++++++++++++++++=+++++==++========================-=============+#+
+//                  .=##+++++++++++++++======================================--============-==============**:
+//                 :*#*=+++=====================================--============:=============-=========--===*#-
+//                .*#+==========================================:-============--==-========-:-===-=====--===+#-
+//               .*#=============================-=============-:==--==========:==--========::-==-:=====:====+*-
+//               **=========================-:==-==============::==:===--==--==--==:-=======-::===--====--=====*-
+//              +#===================-=====-.:=--=============-.:=:-====:==-.==-:-=::-=======::-===:=====:=====+*:
+//             =#+================-=--=====:.:-:==============:.---=====:-=-.-=-.:=:.:-======---===--====--====-*+.
+//            :**===============-::::==-==-.:::-==============::::======:-=-.:-=..:-..:-=====--:-==-:--==-:====--*=
+//            +#===-===========-::::-=-:=-:.::.-=============-.::-====-=::=--.-=:..-:.::=====-::---=:-:-==--====:+*:
+//           .*+==-:==========::::.-=-::=:..:..-=--========-=-..:=-===-=.:=-+::---.:-.:.-=--=-:---:=:--:==--=--=-:*+.
+//           -*==-::========-::::.:==-.:-...:..:=-----------=:..-=----=-..--*:.--*:.-...:---=::---:=-:-.-=--=-=-=:=*-
+//           =*==-::=======-:.:::.-=-:.-:...:..:--:----------:..-----=-::.-=#-.:=#=.::.:.:=-=:::--:-- :.:=-:=---=--*=
+//           ++=-:::====-=-:.:...:=-:.::.......:--:----------:..------.==.:#%=.:#%*:.:.:.:---:::--.:. ::.--:=---=-.=*.
+//           =+=-:::=---=-:.:....-=-...........:--:----------...-----..=: :+=: .===:......---.:::- :-::..:-:-=::=-::+=
+//           =+-::::---=-:.::...:=-:............--.:--------- ..:---:.=+..+%#- +%%%+......:--.:::- :-+.:.:-:--:.--:.==
+//           ==-::.:----:.......--:.............:-.:--------:...---:.-%+.-@@%-.%@@@#:.-....-:.:.:-::-*.:=.:::::.-=: --
+//           :--::.:---:.......:-:..............:-.:---------...--:.:#%-.#@@%.+@%@@%-.+....-:...:--.*#.=*.:::::.:=: :-
+//           .--.:.:--:.:......-:................-..---------..:-:..*@* *@%@+-@@@%%@=:*:...:...::+-:@#.==..::...:=: ::
+//            -:.:.:-:....... ::.................:..:--------..::..+@@:=@%@%=%@%###%=+#:.......:-+.--.   .......:-: .:
+//            .:...::.........:.......... ..........:--------:....=@@==@%@%*##******+%%-.:. -:.::. ::+= ......:.:-:  :
+//            .:......................... ...........--------:...+@%*+@@@@%%%###**##%@%-...=*..=. .**%-.:.......:-. .:
+//             .........................   ..........:--------..+@@@%@@%%#*+=-:.  -*%@%-.:*%-:#@+.:.=%... ......:-.  .
+//             ........................    ...........:--:-:--:+@@#+=::.. :-==+**++#@@#.-#@*=%@@#=*-=+-.. ......::  .
+//             .......................     ...........:--:-::-:+=..  .....*@@+%@@@@@@@#*@@%%@@%@@%#*#%*.. ..... :.
+//             :.....................  -=-. ...........:-::-.:.:-. ::.:..::+--@@@@@@@@@@@@@@%@@@@@@@@@%: .......:
+//             ...................... =##**-............:-.-::--##+==--***+-.*#*+#@@@@@@@@@@@@@@#%@%%%@-...... .:
+//            .....................  .**=++-...... ......:::--:-#@%%#%##******#%%@@@@@@@@@@@@@@@%*%@@@@#:..... .
+//           .....................   :#*+*++:...... ........:+-:=@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%#*%@%@-...::
+//         ...    ................   :*#*+*#=.......... .....=*::#@%@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@%*@%@%:..:-:
+//               ....................:**##+==..... ..... .....#*:=@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@@@@+...--:
+//              ......................*#++=**-..... ..... ....=@#:+@%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@+...--:
+//             .......................:**==##*...... ..........#@#-#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@%:...--:
+//            .........................:+#++*#-............. ..-@@%+%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@-....--:
+//          ...........................  :+*+++.............:...*@@%%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@=.....:-:
+//        ............     .............   .=+*=..........:.::...#@%@@@@@@@@@@@@@@@@@@@@@@@@%%%@@@%@=...:. :-.
+//                        ..............      :-..........:-.:-:.:#@%@@@@@@@@@@@@@@@@@@%%%%%%%@@%@@=...:-..::
+//                        ..............         ..........--:---=*%@@@@@@@@@@@@@@@@@@@%%%%%@@@@@@=....--..::
+//                       .....  ....:-..          .........:-----=@%@@@@@@@@@@@@@@@@@@@@@@##%@@@@=....:-:..::
+//                       ..     ...: :.            ..-......-:---:*%%@@@@@@@@@@@@@@@@@@@@@@@@@%@= ....:-:  .
+//                      ..     ...:  :.            ..=-.....::-----**##%%@@@@@@@@@@@@@@@@@@@@%@+......--:  .
+//                      .      ...   :..:        -:  -*.....:.:----*++++**#%%%@@@@@@%%%%%%%%%@*......:--. .
+//                            ..     :.-.       :#-..:#-......::.--###****+==+**##%%%@@@@@@@@%.......:-:  :
+//                            .      :.-.   -. .*#--=:#*:.....:-:::*######+.    ..:-=+++***#*:.......::. ..
+//                                   =-:.  == .*##-+*-*#+......:=-:*###*#+:                 .........::
+//                                   : .  =#..*##**##+**#-.....:+=:*####*=                  .........:.
+//                                     . -#+-%@%%%#*###*#+.....:++.*##*#+.                  .........:
+//                                   .:::*%%@@%%%@%%#*##*#-.....+*:*###*-                    . .....:.
+//                                  .=+=*%@@%%%%%%%@%#*#*#+....:**+*###+=-.                  . .....:
+//                                  =**=#@%%%%%%%%%%@%#*##*: ..-#######=+*+=---.             .:....:.
+//                                .=****+%@%@@%%%%%%%@@%#*#- ..=#**#*#*=*++****+-:=*=-+++****:=-....
+//                               :+#*+**#+%@%@%%%%%%%%@@%##+ ..*####*#+*#**++****+--*##%@@@@@+** . :
+//                             .=+=*%++*##*%@%@@@@@%%%@%@@%*. -#*#####=*#%%#*++***#+:-###%@%%%%%.  #*.
+//                           :+#@@*=#%++###*#@%@@@@@@@@@@@@%-.*######***#@@%%#*+***##=:+##%@%@%@= +@@#:
+//                       :=-:=%@%%%*=#%=+##%*#@@@@@@@@@@@@%%:=%***#####*%@%@@%%#*++*#%#=-*##%@%@*=@%%@%-
+//                    :-*##*+-:+%@@%*=#%=*%#%**@@%@@@@@@@%@#=@%%##***###%@%%%%@@%%#*+*%%*-=**#@%%%%%%%@%-
+//               :-+*#%%@@@%#*=--+%@%*=##+#%#%**%@%@@@@@@@@%%@%@@%%##**#%%%%%%%%@@%*+**#%%+-+*#%@@%%%%%%%-
+//           :=*#%%@@@%%%%%@@%#*=-:+%@#+##*%##%#+#@%%@@@%%%@@%%%%%@%%%#%@%%%%%@@%#+*%@%#*#%#=+**%#%@%%%%@#:
+//       .-*#%@@@%%%%%%%%%%%%%@%#*=:-*%#+#%####%#**@@%%@@@@@@@@@@@%%@@@@@%%%%%%#++%@%%%@%**#%*****+@%%%%%@*
+//     .+#%@@%%%%%%%%%%%%%%%%%%%@%*+-:-##+*%#####%*+%@%###%%%%%%%%%%%%%%%%%%%#*##%@%%%%%@@#++#%#*+-+@%%%%%@+
+//    -#@%%%%%%%%%%%%%%%%%%%%%%%%@%#*+-:=*+*%#####%#+#@%%%#################%%%%%@%%%%%%%%%@%*+*###*-+%@@%%%@=
 //   =%%%%%%%%%%%%%%%%%%%%%%%%%%%%%@%**=:-==*######%#**@@@@@@@%%%%@@@@@@@%%%%@@%%%%%%%%%%%%%@#++####++##****%-
 //
 //  :D

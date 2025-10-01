@@ -9,26 +9,25 @@ const zm = @import("zmath");
 //    size: @Vector(3, u32),
 //};
 
-/// Returns a chunk with of random noise for voxels 
+/// Returns a chunk with of random noise for voxels
 ///
 /// seed: the world specific RNG seed (unused)
 /// planet_index: unused
 /// chunk_pos: unused
 ///
 /// return: a 32**3 slice of voxel values
-pub fn get_chunk_data_random(seed: u64, planet_index: u32, chunk_pos: @Vector(3,u32)) ![32768]u8 {
+pub fn get_chunk_data_random(seed: u64, planet_index: u32, chunk_pos: @Vector(3, u32)) ![32768]u8 {
     var result: [32768]u8 = undefined;
     _ = &planet_index;
     _ = &chunk_pos;
 
-    var random = std.Random.Xoshiro256.init(seed);// + planet_index + chunk_pos[0] + chunk_pos[1] + chunk_pos[2]);
+    var random = std.Random.Xoshiro256.init(seed); // + planet_index + chunk_pos[0] + chunk_pos[1] + chunk_pos[2]);
     for (0..result.len) |index| {
         result[index] = random.random().int(u2);
     }
 
     return result;
 }
-
 
 pub fn get_chunk_data_sun() ![32768]u8 {
     var result: [32768]u8 = undefined;
@@ -43,7 +42,7 @@ pub fn get_chunk_data_sun() ![32768]u8 {
 /// chunk_pos: unused
 ///
 /// return: a 32**3 slice of voxel values
-pub fn get_chunk_data(seed: u64, planet_index: u32, chunk_pos: @Vector(3,u32)) ![32768]u8 {
+pub fn get_chunk_data(seed: u64, planet_index: u32, chunk_pos: @Vector(3, u32)) ![32768]u8 {
     var result: [32768]u8 = undefined;
     _ = &planet_index;
     _ = &chunk_pos;

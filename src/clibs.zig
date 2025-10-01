@@ -1,4 +1,4 @@
-//!Imported C libraries 
+//!Imported C libraries
 pub const c = @cImport({
     @cInclude("stdlib.h");
 });
