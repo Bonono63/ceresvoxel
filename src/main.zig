@@ -110,9 +110,8 @@ pub const Object = struct {
 
     // voxel space data
     size: @Vector(3, u32) = .{ 0, 0, 0 },
-    chunks: std.ArrayList(u8) = undefined, // 32768 * chunk count
+    chunks: std.ArrayList(chunk.Chunk) = undefined, // 32768 * chunk count
     chunk_occupancy: std.ArrayList(u32) = undefined,
-    block_occupancy: std.ArrayList(u1024) = undefined,
     vertex_buffers: std.ArrayList(vulkan.VertexBuffer) = undefined, // allocated seperate from VulkanState
 
     /// Returns the object's transform (for rendering or physics)
@@ -243,7 +242,7 @@ pub fn main() !void {
         .half_size = .{ 32768 * 5, 32768 * 5, 32768 * 5, 0.0 },
         .body_type = .voxel_space,
         .size = .{ 10, 10, 10 },
-        .chunks = try std.ArrayList(u8).initCapacity(allocator, 327680), // 10 chunks
+        .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10), // 10 chunks
         .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
     });
 
@@ -310,6 +309,21 @@ pub fn main() !void {
 
     for (0..game_state.objects.items.len) |obj_index| {
         try load_chunks(allocator, &game_state.objects.items[obj_index]);
+    }
+
+    for (game_state.objects.items) |object| {
+        for (object.chunks.items) |chunk| {
+            const chunk_mesh = try chunk.CullMesh(
+                &chunk.blocks,
+                0,
+                allocator,
+            );
+            const buffer_info = try vulkan.create_vertex_buffer(
+                &vulkan_state,
+                @sizeOf(vulkan.ChunkVertex),
+            );
+        }
+        try object.vertex_buffer.append();
     }
 
     // The responsibility of the main thread is to handle input and manage

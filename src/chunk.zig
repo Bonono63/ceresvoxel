@@ -2,6 +2,11 @@
 const std = @import("std");
 const zm = @import("zmath");
 
+/// Stores block and related metadata
+pub const Chunk = struct {
+    block_occupancy: [1024]u32,
+    blocks: [32768]u8,
+};
 //TODO add chunk saving and loading
 
 ///The fundamental structure of any array of voxels
