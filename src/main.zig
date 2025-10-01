@@ -785,6 +785,7 @@ pub fn generate_chunk_render_targets(
 pub fn load_chunks(allocator: std.mem.Allocator, obj: *Object) !void {
     for (0..(obj.size[0] * obj.size[1] * obj.size[2])) |chunk_index| {
         _ = &chunk_index;
-        try obj.chunks.appendSlice(allocator, try chunk.get_chunk_data_sun());
+        var data = try chunk.get_chunk_data_sun();
+        try obj.chunks.appendSlice(allocator, &data);
     }
 }
