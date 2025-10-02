@@ -268,7 +268,7 @@ pub fn CullMesh(data: *const [32768]u8, chunk_index: u32, allocator: *std.mem.Al
             }
         }
     }
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator.*);
 }
 
 //pub fn lattice_chunk () []vulkan.Vertex

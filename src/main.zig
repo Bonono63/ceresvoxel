@@ -6,6 +6,7 @@ const zm = @import("zmath");
 const chunk = @import("chunk.zig");
 const physics = @import("physics.zig");
 const cm = @import("ceresmath.zig");
+const mesh_generation = @import("mesh_generation.zig");
 
 pub const InputState = packed struct {
     MOUSE_SENSITIVITY: f64 = 0.1,
@@ -312,18 +313,16 @@ pub fn main() !void {
     }
 
     for (game_state.objects.items) |object| {
-        for (object.chunks.items) |chunk| {
-            const chunk_mesh = try chunk.CullMesh(
-                &chunk.blocks,
+        for (object.chunks.items) |chunk_data| {
+            const chunk_mesh = try mesh_generation.CullMesh(
+                &chunk_data.blocks,
                 0,
-                allocator,
+                &allocator,
             );
-            const buffer_info = try vulkan.create_vertex_buffer(
-                &vulkan_state,
-                @sizeOf(vulkan.ChunkVertex),
-            );
+            defer allocator.free(chunk_mesh);
+            const buffer_info = try vulkan.create_vertex_buffer(&vulkan_state, @sizeOf(vulkan.ChunkVertex), chunk_mesh.len * @sizeOf(vulkan.ChunkVertex), &chunk_mesh[0]);
+            try object.vertex_buffer.append(buffer_info);
         }
-        try object.vertex_buffer.append();
     }
 
     // The responsibility of the main thread is to handle input and manage
@@ -720,7 +719,11 @@ pub fn generate_chunk_render_targets(
 pub fn load_chunks(allocator: std.mem.Allocator, obj: *Object) !void {
     for (0..(obj.size[0] * obj.size[1] * obj.size[2])) |chunk_index| {
         _ = &chunk_index;
-        var data = try chunk.get_chunk_data_sun();
-        try obj.chunks.appendSlice(allocator, &data);
+        const data = try chunk.get_chunk_data_sun();
+        const chunk_data = chunk.Chunk{
+            .block_occupancy = undefined,
+            .blocks = data,
+        };
+        try obj.chunks.append(allocator, chunk_data);
     }
 }
