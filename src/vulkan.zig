@@ -288,7 +288,7 @@ pub const VulkanState = struct {
 
         std.debug.print("[Info] Vulkan Application Info:\n", .{});
         std.debug.print("\tApplication name: {s}\n", .{application_info.pApplicationName});
-        std.debug.print("\tEngine name: {s}\n", .{application_info.pEngineName});
+        std.debug.print("\tEngine name: {s}\n\n", .{application_info.pEngineName});
 
         var available_extensions_count: u32 = 0;
         _ = c.vulkan.vkEnumerateInstanceExtensionProperties(
@@ -313,6 +313,8 @@ pub const VulkanState = struct {
             std.debug.print("\t{s} version: {}\n", .{ extension.extensionName, extension.specVersion });
         }
 
+        std.debug.print("\n", .{});
+
         var required_extension_count: u32 = 0;
         const required_extensions = c.vulkan.glfwGetRequiredInstanceExtensions(&required_extension_count) orelse return VkAbstractionError.RequiredExtensionsFailure;
 
@@ -331,6 +333,7 @@ pub const VulkanState = struct {
         for (extensions_arraylist.items) |item| {
             std.debug.print("\t{s}\n", .{item});
         }
+        std.debug.print("\n", .{});
 
         var available_layers_count: u32 = 0;
         if (c.vulkan.vkEnumerateInstanceLayerProperties(&available_layers_count, null) != c.vulkan.VK_SUCCESS) {
@@ -350,11 +353,13 @@ pub const VulkanState = struct {
         for (available_layers) |validation_layer| {
             std.debug.print("\t{s}\n", .{validation_layer.layerName});
         }
+        std.debug.print("\n", .{});
 
         std.debug.print("[Info] Vulkan Instance Validation layers ({}):\n", .{validation_layers.len});
         for (validation_layers) |validation_layer| {
             std.debug.print("\t{s}\n", .{validation_layer});
         }
+        std.debug.print("\n", .{});
 
         const create_info = c.vulkan.VkInstanceCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -1813,14 +1818,17 @@ fn query_swapchain_support(self: *VulkanState) VkAbstractionError!swapchain_supp
 pub fn glfw_initialization() VkAbstractionError!void {
     if (c.vulkan.glfwInit() != c.vulkan.GLFW_TRUE) {
         return VkAbstractionError.GLFWInitializationFailure;
+    } else {
+        std.debug.print("[Info] GLFW initialized\n", .{});
     }
 
     const vulkan_support = c.vulkan.glfwVulkanSupported();
     if (vulkan_support != c.vulkan.GLFW_TRUE) {
         std.debug.print("[Error] GLFW could not find Vulkan support.\n", .{});
         return VkAbstractionError.VulkanUnavailable;
+    } else {
+        std.debug.print("[Info] Vulkan is minimally supported\n", .{});
     }
-
     _ = c.vulkan.glfwSetErrorCallback(glfw_error_callback);
 }
 
