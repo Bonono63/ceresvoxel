@@ -58,6 +58,7 @@ pub const VkAbstractionError = error{
     OutOfMemory,
     GLFWInitializationFailure,
     NullWindow,
+    AvailableExtensionsEnumerationFailure,
     RequiredExtensionsFailure,
     VkInstanceCreationFailure,
     SurfaceCreationFailure,
@@ -138,7 +139,6 @@ pub const Vertex = struct {
 /// Chunk specific vertex format
 /// Given the uniqueness of each chunk's vertices it needs to have an index field for it's place in the UBO (or SBO)
 pub const ChunkVertex = packed struct {
-    index: u32,
     uv: @Vector(2, f32), // TODO Make the UV split into a texture index and the normal values (we can do basic lighting and have access to all textures using a texture atlas essentially with the same amount of data)
     pos: @Vector(3, f32),
 };
@@ -243,8 +243,7 @@ pub const VulkanState = struct {
     // scenes will likely be simple enough to do a runtime determination
 
     /// keeps track of GPU memory (Vertex buffers)
-    vertex_buffers: std.ArrayList(c.vulkan.VkBuffer) = undefined,
-    vertex_allocs: std.ArrayList(c.vulkan.VmaAllocation) = undefined,
+    vertex_buffers: std.ArrayList(VertexBuffer) = undefined,
 
     // keeps track of GPU memory (Uniform buffers)
     ubo_buffers: std.ArrayList(c.vulkan.VkBuffer) = undefined,
@@ -290,6 +289,29 @@ pub const VulkanState = struct {
         std.debug.print("[Info] Vulkan Application Info:\n", .{});
         std.debug.print("\tApplication name: {s}\n", .{application_info.pApplicationName});
         std.debug.print("\tEngine name: {s}\n", .{application_info.pEngineName});
+
+        var available_extensions_count: u32 = 0;
+        _ = c.vulkan.vkEnumerateInstanceExtensionProperties(
+            null,
+            &available_extensions_count,
+            null,
+        );
+        std.debug.print("[Info] Available Vulkan Extensions ({}):\n", .{available_extensions_count});
+        const available_extension_properties: []c.vulkan.VkExtensionProperties = try self.allocator.*.alloc(c.vulkan.VkExtensionProperties, available_extensions_count);
+        defer self.allocator.*.free(available_extension_properties);
+        const enumerate_available_extensions = c.vulkan.vkEnumerateInstanceExtensionProperties(
+            null,
+            &available_extensions_count,
+            &available_extension_properties[0],
+        );
+        if (enumerate_available_extensions != c.vulkan.VK_SUCCESS) {
+            std.debug.print("[Error] Unable to enumerate the available vulkan extensions. {}\n", .{enumerate_available_extensions});
+            return VkAbstractionError.AvailableExtensionsEnumerationFailure;
+        }
+
+        for (available_extension_properties) |extension| {
+            std.debug.print("\t{s} version: {}\n", .{ extension.extensionName, extension.specVersion });
+        }
 
         var required_extension_count: u32 = 0;
         const required_extensions = c.vulkan.glfwGetRequiredInstanceExtensions(&required_extension_count) orelse return VkAbstractionError.RequiredExtensionsFailure;
@@ -1347,7 +1369,7 @@ pub const VulkanState = struct {
     }
 
     pub fn create_vertex_buffer(self: *VulkanState, stride_size: u32, size: u32, ptr: *anyopaque) VkAbstractionError!VertexBuffer {
-        var vertex_buffer: c.vulkan.VkBuffer = undefined;
+        var buffer: c.vulkan.VkBuffer = undefined;
         var alloc: c.vulkan.VmaAllocation = undefined;
 
         var buffer_create_info = c.vulkan.VkBufferCreateInfo{
@@ -1361,24 +1383,31 @@ pub const VulkanState = struct {
             .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
         };
 
-        const buffer_success = c.vulkan.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &vertex_buffer, &alloc, null);
+        const buffer_success = c.vulkan.vmaCreateBuffer(
+            self.vma_allocator,
+            &buffer_create_info,
+            &alloc_create_info,
+            &buffer,
+            &alloc,
+            null,
+        );
 
         if (buffer_success != c.vulkan.VK_SUCCESS) {
             std.debug.print("success: {}\n", .{buffer_success});
             return VkAbstractionError.VertexBufferCreationFailure;
         }
 
-        try self.copy_data_via_staging_buffer(&vertex_buffer, size, ptr);
+        try self.copy_data_via_staging_buffer(&buffer, size, ptr);
 
-        try self.vertex_buffers.append(self.allocator.*, vertex_buffer);
-        try self.vertex_allocs.append(self.allocator.*, alloc);
-        const vertex_count = size / stride_size;
-        return VertexBuffer{
-            .buffer = self.vertex_buffers.getLast(),
+        const vertex_buffer = VertexBuffer{
+            .buffer = buffer,
             .alloc = alloc,
-            .vertex_count = vertex_count,
+            .vertex_count = size / stride_size,
             .byte_count = size,
         };
+
+        try self.vertex_buffers.append(self.allocator.*, vertex_buffer);
+        return vertex_buffer;
     }
 
     /// DEPRECATED
@@ -1462,11 +1491,10 @@ pub const VulkanState = struct {
         self.ubo_allocs.deinit(self.allocator.*);
 
         for (0..self.vertex_buffers.items.len) |i| {
-            c.vulkan.vmaDestroyBuffer(self.vma_allocator, self.vertex_buffers.items[i], self.vertex_allocs.items[i]);
+            c.vulkan.vmaDestroyBuffer(self.vma_allocator, self.vertex_buffers.items[i].buffer, self.vertex_buffers.items[i].alloc);
         }
 
         self.vertex_buffers.deinit(self.allocator.*);
-        self.vertex_allocs.deinit(self.allocator.*);
 
         for (0..self.images.items.len) |image_index| {
             image_cleanup(self, &self.images.items[image_index]);
@@ -1801,31 +1829,25 @@ pub export fn glfw_error_callback(code: c_int, description: [*c]const u8) void {
 }
 
 /// Generates the unique data sent to the GPU for chunks
-pub fn update_chunk_ubo(self: *VulkanState, bodies: []main.Object, player_index: u32, ubo_index: u32) VkAbstractionError!void {
+pub fn update_chunk_ubo(self: *VulkanState, objects: []main.Object, player_index: u32, ubo_index: u32) VkAbstractionError!void {
     var data = try std.ArrayList(ChunkRenderData).initCapacity(self.allocator.*, 16);
     defer data.deinit(self.allocator.*);
 
     // Iterating through every single physics body reeks a little to me,
     // but tbh, not sure I can do much about that atm
-    for (bodies) |body| {
-        if (body.body_type == .voxel_space) {
-            //const pos: @Vector(4, f32) = .{
-            //    physics_pos[0] +
-            //        @as(f32, @floatFromInt(chunk_index % vs.size[0] * 32)),
-            //    physics_pos[1] +
-            //        @as(f32, @floatFromInt(chunk_index / vs.size[0] % vs.size[1] * 32)),
-            //    physics_pos[2] +
-            //        @as(f32, @floatFromInt(chunk_index / vs.size[0] / vs.size[1] % vs.size[2] * 32)),
-            //    0.0,
-            //};
-
-            const transform = body.render_transform(bodies[player_index].position);
-            try data.append(self.allocator.*, .{
-                .model = transform,
-                .size = .{ 0, 0, 0 },
-            });
+    for (objects) |object| {
+        if (object.body_type == .voxel_space) {
+            for (0..object.chunks.items.len) |chunk_index| {
+                const transform = object.render_transform_chunk(objects[player_index].position, @intCast(chunk_index));
+                try data.append(self.allocator.*, .{
+                    .model = transform,
+                    .size = .{ 0, 0, 0 },
+                });
+            }
         }
     }
+
+    //std.debug.print("chunk ubos: {any}\n", .{data.items});
 
     try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
 }
@@ -1856,8 +1878,7 @@ pub fn render_init(self: *VulkanState) !void {
 
     self.pipelines = try self.allocator.*.alloc(c.vulkan.VkPipeline, 3);
 
-    self.vertex_buffers = try std.ArrayList(c.vulkan.VkBuffer).initCapacity(self.allocator.*, 8);
-    self.vertex_allocs = try std.ArrayList(c.vulkan.VmaAllocation).initCapacity(self.allocator.*, 8);
+    self.vertex_buffers = try std.ArrayList(VertexBuffer).initCapacity(self.allocator.*, 8);
 
     self.ubo_buffers = try std.ArrayList(c.vulkan.VkBuffer).initCapacity(self.allocator.*, 1);
     self.ubo_allocs = try std.ArrayList(c.vulkan.VmaAllocation).initCapacity(self.allocator.*, 1);
@@ -1981,18 +2002,39 @@ pub fn render_init(self: *VulkanState) !void {
     try self.create_sync_objects();
 
     // GLFW INIT
-    c.vulkan.glfwSetWindowSizeLimits(self.window, 480, 270, c.vulkan.GLFW_DONT_CARE, c.vulkan.GLFW_DONT_CARE);
+    c.vulkan.glfwSetWindowSizeLimits(
+        self.window,
+        480,
+        270,
+        c.vulkan.GLFW_DONT_CARE,
+        c.vulkan.GLFW_DONT_CARE,
+    );
 
-    const cursor_vb_info = try self.create_vertex_buffer(@sizeOf(Vertex), @intCast(cursor_vertices.len * @sizeOf(Vertex)), @ptrCast(@constCast(&cursor_vertices[0])));
-    const outline_vb_info = try self.create_vertex_buffer(@sizeOf(Vertex), @intCast(block_selection_cube.len * @sizeOf(Vertex)), @ptrCast(@constCast(&block_selection_cube[0])));
+    const cursor_vb_info = try self.create_vertex_buffer(
+        @sizeOf(Vertex),
+        @intCast(cursor_vertices.len * @sizeOf(Vertex)),
+        @ptrCast(@constCast(&cursor_vertices[0])),
+    );
+    const outline_vb_info = try self.create_vertex_buffer(
+        @sizeOf(Vertex),
+        @intCast(block_selection_cube.len * @sizeOf(Vertex)),
+        @ptrCast(@constCast(&block_selection_cube[0])),
+    );
+
+    try self.vertex_buffers.append(self.allocator.*, cursor_vb_info);
+    try self.vertex_buffers.append(self.allocator.*, outline_vb_info);
 
     // cursor
-    try self.render_targets.append(self.allocator.*, .{ .vertex_buffer = self.vertex_buffers.items[0], .pipeline_index = 0, .vertex_count = cursor_vb_info.vertex_count });
+    try self.render_targets.append(self.allocator.*, .{
+        .vertex_buffer = self.vertex_buffers.items[0].buffer,
+        .pipeline_index = 0,
+        .vertex_count = self.vertex_buffers.items[0].vertex_count,
+    });
     // outline
     try self.render_targets.append(self.allocator.*, .{
-        .vertex_buffer = self.vertex_buffers.items[1],
+        .vertex_buffer = self.vertex_buffers.items[1].buffer,
         .pipeline_index = 1,
-        .vertex_count = outline_vb_info.vertex_count,
+        .vertex_count = self.vertex_buffers.items[1].vertex_count,
         .instance_count = 0,
     });
 

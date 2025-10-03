@@ -108,14 +108,16 @@ pub fn BasicMesh(data: *const [32768]u8, chunk_index: u32, allocator: *std.mem.A
 /// containing more than one chunk (Should be deprecated)
 ///
 /// return: number of new additions to the given array list
-pub fn CullMesh(data: *const [32768]u8, chunk_index: u32, allocator: *std.mem.Allocator) ![]vulkan.ChunkVertex {
-    _ = &chunk_index;
+pub fn CullMesh(data: *const [32768]u8, allocator: *std.mem.Allocator) ![]vulkan.ChunkVertex {
 
     // TODO We should probably allocate less than 196 kilobytes for this, but to be frank I don't care rn
-    var result = try std.ArrayList(vulkan.ChunkVertex).initCapacity(allocator.*, 196608);
+    var result = try std.ArrayList(vulkan.ChunkVertex).initCapacity(allocator.*, 32768 * @sizeOf(vulkan.ChunkVertex));
     defer result.deinit(allocator.*);
 
-    for (data[0..32768], 0..32768) |val, index| {
+    std.debug.print("chunk data size: {}\n", .{data.len});
+
+    for (data, 0..data.len) |val, index| {
+        //std.debug.print("{} {} {}\n", .{ index, val, result.capacity });
         if (val != 0) {
             const step: f32 = 1.0 / BLOCK_COUNT;
             const uv_index: f32 = step * @as(f32, @floatFromInt(val - 1));
@@ -133,141 +135,145 @@ pub fn CullMesh(data: *const [32768]u8, chunk_index: u32, allocator: *std.mem.Al
                 const xp = data[index + 1];
                 if (xp == 0) {
                     //Right
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tr, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tr });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = br });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
 
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = br });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
                 }
             } else {
                 //Right
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tr, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tr });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = br });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
 
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = br, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = br });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
             }
 
             if (index % 32 > 0) {
                 const xn = data[index - 1];
                 if (xn == 0) {
                     //Left
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = bl, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = bl });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tl });
 
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tl });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr });
                 }
             } else {
                 //Left
-                result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = bl, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = bl });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tl });
 
-                result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tl, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tl });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr });
             }
 
             if (index / 32 / 32 % 32 < 31) {
                 const zp = data[index + 32 * 32];
                 if (zp == 0) {
                     //Back
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = bl });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr });
 
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = br, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = br });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = bl });
                 }
             } else {
                 //Back
-                result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = bl });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tl });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr });
 
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = br, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tr });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = br });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = bl });
             }
 
             if (index / 32 / 32 % 32 > 0) {
                 const zn = data[index - 32 * 32];
                 if (zn == 0) {
                     //Front
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tr, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = br, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tl });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tr });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = br });
 
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = br, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = bl, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = br });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = bl });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tl });
                 }
             } else {
                 //Front
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tr, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = br, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tl });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = tr });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = br });
 
-                result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = br, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = bl, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tl, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = br });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = bl });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = tl });
             }
 
             if (index / 32 % 32 < 31) {
                 const yp = data[index + 32];
                 if (yp == 0) {
                     //Bottom
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = bl, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = br });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = bl });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
 
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = br });
                 }
             } else {
                 //Bottom
-                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = bl, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = br });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z }, .uv = bl });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
 
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = br, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y + 1.0, z + 1.0 }, .uv = tl });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z + 1.0 }, .uv = tr });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y + 1.0, z }, .uv = br });
             }
 
             if (index / 32 % 32 > 0) {
                 const yn = data[index - 32];
                 if (yn == 0) {
                     //Top
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = tl, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = tl });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = tr });
 
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br, .index = chunk_index });
-                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = tr });
+                    result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br });
+                    result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
                 }
             } else {
                 //Top
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = tl, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z }, .uv = tl });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = tr });
 
-                result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = tr, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br, .index = chunk_index });
-                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl, .index = chunk_index });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y, z }, .uv = tr });
+                result.appendAssumeCapacity(.{ .pos = .{ x, y, z + 1.0 }, .uv = br });
+                result.appendAssumeCapacity(.{ .pos = .{ x + 1.0, y, z + 1.0 }, .uv = bl });
             }
         }
     }
+
+    //var slice: []vulkan.ChunkVertex = try allocator.*.alloc(vulkan.ChunkVertex, result.items.len);
+    //@memcpy(slice, result.items);
+    //_ = &slice;
     return result.toOwnedSlice(allocator.*);
 }
 

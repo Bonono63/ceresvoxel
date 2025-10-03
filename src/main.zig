@@ -113,7 +113,6 @@ pub const Object = struct {
     size: @Vector(3, u32) = .{ 0, 0, 0 },
     chunks: std.ArrayList(chunk.Chunk) = undefined, // 32768 * chunk count
     chunk_occupancy: std.ArrayList(u32) = undefined,
-    vertex_buffers: std.ArrayList(vulkan.VertexBuffer) = undefined, // allocated seperate from VulkanState
 
     /// Returns the object's transform (for rendering or physics)
     /// for safety reasons should only be called on objects within f32's range.
@@ -141,6 +140,32 @@ pub const Object = struct {
             0.0,
         });
         return zm.mul(zm.matFromQuat(self.orientation), world_pos);
+    }
+
+    /// Returns the object's transform (for rendering or physics)
+    /// for safety reasons should only be called on objects within f32's range.
+    pub fn render_transform_chunk(self: *const Object, player_pos: @Vector(3, f128), chunk_index: u32) zm.Mat {
+        _ = &chunk_index;
+        _ = &self;
+        _ = &player_pos;
+        const result: zm.Mat = zm.identity();
+        //const half_offset: zm.Mat = zm.translationV(.{ 0.0, 0.0, 0.0, 0.0 });
+        //const chunk_offset: zm.Mat = zm.translationV(.{
+        //@as(f32, @floatFromInt(chunk_index % self.size[0] * 32)),
+        //@as(f32, @floatFromInt(chunk_index / self.size[0] % self.size[1] * 32)),
+        //@as(f32, @floatFromInt(chunk_index / self.size[0] / self.size[1] % self.size[2] * 32)),
+        //0.0,
+        //});
+        //const world_pos: zm.Mat = zm.translationV(.{
+        //@as(f32, @floatCast(self.position[0] - player_pos[0])),
+        //@as(f32, @floatCast(self.position[1] - player_pos[1])),
+        //@as(f32, @floatCast(self.position[2] - player_pos[2])),
+        //0.0,
+        //});
+        //result = zm.mul(result, world_pos);
+        //result = zm.mul(result, zm.matFromQuat(self.orientation));
+        //result = zm.mul(result, chunk_offset);
+        return result;
     }
 
     /// Returns the X axis given the body's current transform
@@ -202,6 +227,8 @@ pub fn main() !void {
         allocator = gpa.allocator();
     }
 
+    const program_start_time = std.time.milliTimestamp();
+
     // VULKAN INIT
     var vulkan_state = vulkan.VulkanState{
         .ENGINE_NAME = ENGINE_NAME,
@@ -240,35 +267,26 @@ pub fn main() !void {
         .planet = false,
         .gravity = false,
         .torque_accumulation = .{ std.math.pi, 0.0, 0.0, 0.0 },
-        .half_size = .{ 32768 * 5, 32768 * 5, 32768 * 5, 0.0 },
+        .half_size = .{ 16 * 3, 16 * 3, 16 * 3, 0.0 },
         .body_type = .voxel_space,
-        .size = .{ 10, 10, 10 },
+        .size = .{ 3, 3, 3 },
         .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10), // 10 chunks
         .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
     });
 
-    //for (2..9) |index| {
-    //    const rand = std.crypto.random;
-    //
-    //    try physics_state.bodies.append(
-    //        allocator,
-    //        .{
-    //            .position = .{0.0, 0.0, 0.0},
-    //            .inverse_mass = 0.0,
-    //            .planet = true,
-    //            .gravity = false,
-    //            .orbit_radius = @as(f128, @floatFromInt(index * index * index * 3)),
-    //            .eccentricity = 1.0,
-    //            .eccliptic_offset = .{rand.float(f32) / 10.0, rand.float(f32) / 10.0},
-    //            .half_size = .{0.5, 0.5, 0.5, 0.0},
-    //            .body_type = .voxel_space,
-    //        }
-    //    );
-    //}
+    try game_state.objects.append(allocator, .{
+        .position = .{ 0.0, 0.0, 0.0 },
+        .inverse_mass = 0.0,
+        .planet = false,
+        .gravity = false,
+        .torque_accumulation = .{ 0.0, 0.0, 0.0, 0.0 },
+        .half_size = .{ 0.5, 0.5, 0.5, 0.0 },
+        .body_type = .other,
+    });
 
     // player
     try game_state.objects.append(allocator, .{
-        .position = .{ 0.0, 0.0, 0.0 },
+        .position = .{ 0.0, 1.0, 0.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
         .body_type = .player,
@@ -276,6 +294,41 @@ pub fn main() !void {
     game_state.player_index = @intCast(game_state.objects.items.len - 1);
 
     try vulkan.render_init(&vulkan_state);
+
+    std.debug.print("[Debug] Loading chunks {}ms\n", .{std.time.milliTimestamp() - program_start_time});
+    for (0..game_state.objects.items.len) |obj_index| {
+        if (game_state.objects.items[obj_index].body_type == .voxel_space) {
+            try load_chunks(allocator, &game_state, &game_state.objects.items[obj_index]);
+        }
+    }
+
+    var chunk_count: i32 = 0;
+    std.debug.print("[Debug] Generating chunk meshes {}ms\n", .{std.time.milliTimestamp() - program_start_time});
+    for (game_state.objects.items) |object| {
+        if (object.body_type == .voxel_space) {
+            for (0..object.chunks.items.len) |chunk_index| {
+                std.debug.print("chunk_index: {} | chunk mesh time: {}ms | chunk count: {} | chunk mesh data: \n", .{
+                    chunk_index,
+                    std.time.milliTimestamp() - program_start_time,
+                    chunk_count,
+                    //chunk_mesh,
+                });
+
+                const chunk_mesh = try mesh_generation.CullMesh(
+                    &object.chunks.items[chunk_index].blocks,
+                    &allocator,
+                );
+                object.chunks.items[chunk_index].vertex_buffer = try vulkan.VulkanState.create_vertex_buffer(
+                    &vulkan_state,
+                    @sizeOf(vulkan.ChunkVertex),
+                    @intCast(chunk_mesh.len * @sizeOf(vulkan.ChunkVertex)),
+                    &chunk_mesh[0],
+                );
+                chunk_count += 1;
+                allocator.free(chunk_mesh);
+            }
+        }
+    }
 
     // Game Loop and additional prerequisites
     var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
@@ -307,23 +360,6 @@ pub fn main() !void {
     std.debug.print("fps limit: {}\n", .{fps_limit});
 
     var current_render_targets = try std.ArrayList(vulkan.RenderInfo).initCapacity(allocator, 200);
-
-    for (0..game_state.objects.items.len) |obj_index| {
-        try load_chunks(allocator, &game_state.objects.items[obj_index]);
-    }
-
-    for (game_state.objects.items) |object| {
-        for (object.chunks.items) |chunk_data| {
-            const chunk_mesh = try mesh_generation.CullMesh(
-                &chunk_data.blocks,
-                0,
-                &allocator,
-            );
-            defer allocator.free(chunk_mesh);
-            const buffer_info = try vulkan.create_vertex_buffer(&vulkan_state, @sizeOf(vulkan.ChunkVertex), chunk_mesh.len * @sizeOf(vulkan.ChunkVertex), &chunk_mesh[0]);
-            try object.vertex_buffer.append(buffer_info);
-        }
-    }
 
     // The responsibility of the main thread is to handle input and manage
     // all the other threads
@@ -385,7 +421,6 @@ pub fn main() !void {
             input_vec -= cm.scale_f32(right, game_state.camera_state.speed);
         }
 
-        // TODO make this only work while glfw is initialized it is producing that error
         if (input_state.mouse_capture) {
             c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_DISABLED);
         } else {
@@ -506,7 +541,13 @@ pub fn main() !void {
             }
 
             // TODO throw this into a different thread and join when the tick is done
-            try physics.physics_tick(&allocator, delta_time_float, game_state.sim_start_time, game_state.objects.items, &contacts);
+            try physics.physics_tick(
+                &allocator,
+                delta_time_float,
+                game_state.sim_start_time,
+                game_state.objects.items,
+                &contacts,
+            );
         }
 
         current_render_targets.clearRetainingCapacity();
@@ -522,7 +563,13 @@ pub fn main() !void {
     }
 }
 
-pub export fn key_callback(window: ?*c.vulkan.GLFWwindow, key: i32, scancode: i32, action: i32, mods: i32) void {
+pub export fn key_callback(
+    window: ?*c.vulkan.GLFWwindow,
+    key: i32,
+    scancode: i32,
+    action: i32,
+    mods: i32,
+) void {
     _ = &scancode;
     _ = &mods;
 
@@ -607,7 +654,11 @@ pub export fn key_callback(window: ?*c.vulkan.GLFWwindow, key: i32, scancode: i3
     }
 }
 
-pub export fn cursor_pos_callback(window: ?*c.vulkan.GLFWwindow, _xpos: f64, _ypos: f64) void {
+pub export fn cursor_pos_callback(
+    window: ?*c.vulkan.GLFWwindow,
+    _xpos: f64,
+    _ypos: f64,
+) void {
     _ = &window;
     dx = _xpos - xpos;
     dy = _ypos - ypos;
@@ -621,7 +672,12 @@ pub export fn cursor_pos_callback(window: ?*c.vulkan.GLFWwindow, _xpos: f64, _yp
     }
 }
 
-pub export fn mouse_button_input_callback(window: ?*c.vulkan.GLFWwindow, button: i32, action: i32, mods: i32) void {
+pub export fn mouse_button_input_callback(
+    window: ?*c.vulkan.GLFWwindow,
+    button: i32,
+    action: i32,
+    mods: i32,
+) void {
     _ = &button;
     _ = &window;
     _ = &mods;
@@ -648,7 +704,11 @@ pub export fn mouse_button_input_callback(window: ?*c.vulkan.GLFWwindow, button:
     }
 }
 
-pub export fn window_resize_callback(window: ?*c.vulkan.GLFWwindow, width: c_int, height: c_int) void {
+pub export fn window_resize_callback(
+    window: ?*c.vulkan.GLFWwindow,
+    width: c_int,
+    height: c_int,
+) void {
     _ = &width;
     _ = &height;
     const instance: *vulkan.VulkanState = @ptrCast(@alignCast(c.vulkan.glfwGetWindowUserPointer(window)));
@@ -697,13 +757,37 @@ pub fn generate_chunk_render_targets(
     // TODO add more culling algorithms
     for (objects) |object| {
         if (object.body_type == .voxel_space) {
-            for (object.vertex_buffers.items) |chunk_vb| {
-                try list.append(allocator.*, vulkan.RenderInfo{
-                    .vertex_buffer = chunk_vb.buffer,
-                    .pipeline_index = 2,
-                    .vertex_count = chunk_vb.vertex_count,
-                });
+            for (object.chunks.items) |chunk_data| {
+                if (chunk_data.empty == false) {
+                    try list.append(allocator.*, vulkan.RenderInfo{
+                        .vertex_buffer = chunk_data.vertex_buffer.buffer,
+                        .pipeline_index = 2,
+                        .vertex_count = chunk_data.vertex_buffer.vertex_count,
+                    });
+                }
             }
+        }
+    }
+
+    return try list.toOwnedSlice(allocator.*);
+}
+
+pub fn generate_other_render_targets(
+    allocator: *std.mem.Allocator,
+    vulkan_state: *vulkan.VulkanState,
+    objects: []Object,
+) ![]vulkan.RenderInfo {
+    var list = try std.ArrayList(vulkan.RenderInfo).initCapacity(allocator.*, 10);
+    defer list.deinit(allocator.*);
+
+    // TODO add more culling algorithms
+    for (objects) |object| {
+        if (object.body_type == .other) {
+            try list.append(allocator.*, vulkan.RenderInfo{
+                .vertex_buffer = vulkan_state.vertex_buffers.items[1],
+                .pipeline_index = 1,
+                .vertex_count = vulkan_state.vertex_buffers.items[1].vertex_count,
+            });
         }
     }
 
@@ -716,11 +800,12 @@ pub fn generate_chunk_render_targets(
 //}
 //
 /// decides which chunks to load
-pub fn load_chunks(allocator: std.mem.Allocator, obj: *Object) !void {
+pub fn load_chunks(allocator: std.mem.Allocator, game_state: *GameState, obj: *Object) !void {
     for (0..(obj.size[0] * obj.size[1] * obj.size[2])) |chunk_index| {
         _ = &chunk_index;
-        const data = try chunk.get_chunk_data_sun();
+        const data = try chunk.get_chunk_data_random(game_state.seed);
         const chunk_data = chunk.Chunk{
+            .empty = false,
             .block_occupancy = undefined,
             .blocks = data,
         };

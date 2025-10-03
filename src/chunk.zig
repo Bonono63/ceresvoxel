@@ -1,11 +1,14 @@
 //!Voxel storage, manipulation, and generation. Still WIP
 const std = @import("std");
 const zm = @import("zmath");
+const vulkan = @import("vulkan.zig");
 
 /// Stores block and related metadata
 pub const Chunk = struct {
+    empty: bool = true,
     block_occupancy: [1024]u32,
     blocks: [32768]u8,
+    vertex_buffer: vulkan.VertexBuffer = undefined,
 };
 //TODO add chunk saving and loading
 
@@ -21,10 +24,8 @@ pub const Chunk = struct {
 /// chunk_pos: unused
 ///
 /// return: a 32**3 slice of voxel values
-pub fn get_chunk_data_random(seed: u64, planet_index: u32, chunk_pos: @Vector(3, u32)) ![32768]u8 {
+pub fn get_chunk_data_random(seed: u64) ![32768]u8 {
     var result: [32768]u8 = undefined;
-    _ = &planet_index;
-    _ = &chunk_pos;
 
     var random = std.Random.Xoshiro256.init(seed); // + planet_index + chunk_pos[0] + chunk_pos[1] + chunk_pos[2]);
     for (0..result.len) |index| {
@@ -36,7 +37,7 @@ pub fn get_chunk_data_random(seed: u64, planet_index: u32, chunk_pos: @Vector(3,
 
 pub fn get_chunk_data_sun() ![32768]u8 {
     var result: [32768]u8 = undefined;
-    @memset(@as([]u8, @ptrCast(&result[0])), 2);
+    @memset(@as([]u8, @ptrCast(result[0..32768])), 2);
     return result;
 }
 
