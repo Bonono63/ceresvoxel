@@ -2036,7 +2036,7 @@ pub fn render_init(self: *VulkanState) !void {
 
     var chunk_attribute_description: [2]c.vulkan.VkVertexInputAttributeDescription = .{
         .{ .binding = 0, .location = 0, .format = c.vulkan.VK_FORMAT_R32G32_SFLOAT, .offset = 0 },
-        .{ .binding = 0, .location = 1, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = @sizeOf(@Vector(2, f32)) },
+        .{ .binding = 0, .location = 1, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = 8 }, //@sizeOf(@Vector(2, f32)) },
     };
 
     // cursor
