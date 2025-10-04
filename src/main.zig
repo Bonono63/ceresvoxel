@@ -145,26 +145,29 @@ pub const Object = struct {
     /// Returns the object's transform (for rendering or physics)
     /// for safety reasons should only be called on objects within f32's range.
     pub fn render_transform_chunk(self: *const Object, player_pos: @Vector(3, f128), chunk_index: u32) zm.Mat {
-        _ = &chunk_index;
-        _ = &self;
-        _ = &player_pos;
-        const result: zm.Mat = zm.identity();
-        //const half_offset: zm.Mat = zm.translationV(.{ 0.0, 0.0, 0.0, 0.0 });
-        //const chunk_offset: zm.Mat = zm.translationV(.{
-        //@as(f32, @floatFromInt(chunk_index % self.size[0] * 32)),
-        //@as(f32, @floatFromInt(chunk_index / self.size[0] % self.size[1] * 32)),
-        //@as(f32, @floatFromInt(chunk_index / self.size[0] / self.size[1] % self.size[2] * 32)),
-        //0.0,
-        //});
-        //const world_pos: zm.Mat = zm.translationV(.{
-        //@as(f32, @floatCast(self.position[0] - player_pos[0])),
-        //@as(f32, @floatCast(self.position[1] - player_pos[1])),
-        //@as(f32, @floatCast(self.position[2] - player_pos[2])),
-        //0.0,
-        //});
-        //result = zm.mul(result, world_pos);
-        //result = zm.mul(result, zm.matFromQuat(self.orientation));
-        //result = zm.mul(result, chunk_offset);
+        var result: zm.Mat = zm.identity();
+        const half_offset: zm.Mat = zm.translationV(.{
+            -self.half_size[0],
+            -self.half_size[1],
+            -self.half_size[2],
+            0.0,
+        });
+        const chunk_offset: zm.Mat = zm.translationV(.{
+            @as(f32, @floatFromInt(chunk_index % self.size[0] * 32)),
+            @as(f32, @floatFromInt(chunk_index / self.size[0] % self.size[1] * 32)),
+            @as(f32, @floatFromInt(chunk_index / self.size[0] / self.size[1] % self.size[2] * 32)),
+            0.0,
+        });
+        const world_pos: zm.Mat = zm.translationV(.{
+            @as(f32, @floatCast(self.position[0] - player_pos[0])),
+            @as(f32, @floatCast(self.position[1] - player_pos[1])),
+            @as(f32, @floatCast(self.position[2] - player_pos[2])),
+            0.0,
+        });
+        result = zm.mul(result, half_offset);
+        result = zm.mul(result, chunk_offset);
+        result = zm.mul(result, zm.matFromQuat(self.orientation));
+        result = zm.mul(result, world_pos);
         return result;
     }
 
@@ -263,10 +266,11 @@ pub fn main() !void {
     // "Sun"
     try game_state.objects.append(allocator, .{
         .position = .{ 0.0, 0.0, 0.0 },
-        .inverse_mass = 0.0,
+        .inverse_mass = 1.0 / 1000.0,
         .planet = false,
         .gravity = false,
-        .torque_accumulation = .{ std.math.pi, 0.0, 0.0, 0.0 },
+        .orientation = .{ 0.0, 0.0, std.math.pi * 0.5, std.math.pi * 0.5 },
+        .angular_velocity = .{ std.math.pi * 0.25, 0.0, 0.0, 0.0 },
         .half_size = .{ 16 * 3, 16 * 3, 16 * 3, 0.0 },
         .body_type = .voxel_space,
         .size = .{ 3, 3, 3 },
@@ -472,7 +476,7 @@ pub fn main() !void {
             vulkan_state.render_targets.items[1].instance_count = render_frame.particle_count;
 
             // DRAW
-            try vulkan_state.draw_frame(current_frame_index, &vulkan_state.render_targets.items);
+            try vulkan_state.draw_frame(current_frame_index, &current_render_targets.items);
 
             var average_frame_time: f32 = 0;
             for (frame_time_cyclic_buffer) |time| {
@@ -681,7 +685,6 @@ pub export fn mouse_button_input_callback(
     _ = &button;
     _ = &window;
     _ = &mods;
-    _ = &action;
 
     switch (button) {
         c.vulkan.GLFW_MOUSE_BUTTON_LEFT => {
@@ -755,6 +758,7 @@ pub fn generate_chunk_render_targets(
     defer list.deinit(allocator.*);
 
     // TODO add more culling algorithms
+    var chunk_index: u32 = 0;
     for (objects) |object| {
         if (object.body_type == .voxel_space) {
             for (object.chunks.items) |chunk_data| {
@@ -763,7 +767,9 @@ pub fn generate_chunk_render_targets(
                         .vertex_buffer = chunk_data.vertex_buffer.buffer,
                         .pipeline_index = 2,
                         .vertex_count = chunk_data.vertex_buffer.vertex_count,
+                        .push_constant_index = chunk_index,
                     });
+                    chunk_index += 1;
                 }
             }
         }
@@ -802,8 +808,7 @@ pub fn generate_other_render_targets(
 /// decides which chunks to load
 pub fn load_chunks(allocator: std.mem.Allocator, game_state: *GameState, obj: *Object) !void {
     for (0..(obj.size[0] * obj.size[1] * obj.size[2])) |chunk_index| {
-        _ = &chunk_index;
-        const data = try chunk.get_chunk_data_random(game_state.seed);
+        const data = try chunk.get_chunk_data_random(game_state.seed + chunk_index);
         const chunk_data = chunk.Chunk{
             .empty = false,
             .block_occupancy = undefined,

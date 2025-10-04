@@ -851,7 +851,12 @@ pub const VulkanState = struct {
             .pCode = @ptrCast(@alignCast(file_source.ptr)),
         };
 
-        const create_shader_module_success = c.vulkan.vkCreateShaderModule(self.device, &create_info, null, &shader_module);
+        const create_shader_module_success = c.vulkan.vkCreateShaderModule(
+            self.device,
+            &create_info,
+            null,
+            &shader_module,
+        );
         if (create_shader_module_success != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.CreateShaderModuleFailure;
         }
@@ -875,7 +880,12 @@ pub const VulkanState = struct {
                 .layers = 1,
             };
 
-            const framebuffer_success = c.vulkan.vkCreateFramebuffer(self.device, &framebuffer_create_info, null, &self.frame_buffers[i]);
+            const framebuffer_success = c.vulkan.vkCreateFramebuffer(
+                self.device,
+                &framebuffer_create_info,
+                null,
+                &self.frame_buffers[i],
+            );
             if (framebuffer_success != c.vulkan.VK_SUCCESS) {
                 return VkAbstractionError.FramebufferCreationFailure;
             }
@@ -889,7 +899,12 @@ pub const VulkanState = struct {
             .queueFamilyIndex = self.queue_family_index,
         };
 
-        const command_pool_success = c.vulkan.vkCreateCommandPool(self.device, &command_pool_info, null, &self.command_pool);
+        const command_pool_success = c.vulkan.vkCreateCommandPool(
+            self.device,
+            &command_pool_info,
+            null,
+            &self.command_pool,
+        );
         if (command_pool_success != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.CreateCommandPoolFailure;
         }
@@ -903,13 +918,23 @@ pub const VulkanState = struct {
             .commandBufferCount = @intCast(self.command_buffers.len),
         };
 
-        if (c.vulkan.vkAllocateCommandBuffers(self.device, &allocation_info, self.command_buffers.ptr) != c.vulkan.VK_SUCCESS) {
+        if (c.vulkan.vkAllocateCommandBuffers(
+            self.device,
+            &allocation_info,
+            self.command_buffers.ptr,
+        ) != c.vulkan.VK_SUCCESS) {
             return VkAbstractionError.CommandBufferAllocationFailure;
         }
     }
 
     /// Records the commands that produce a frame
-    fn record_command_buffer(self: *VulkanState, command_buffer: c.vulkan.VkCommandBuffer, render_state: *[]RenderInfo, image_index: u32, frame_index: u32) VkAbstractionError!void {
+    fn record_command_buffer(
+        self: *VulkanState,
+        command_buffer: c.vulkan.VkCommandBuffer,
+        render_state: *[]RenderInfo,
+        image_index: u32,
+        frame_index: u32,
+    ) VkAbstractionError!void {
         const begin_info = c.vulkan.VkCommandBufferBeginInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .flags = 0,
@@ -935,7 +960,11 @@ pub const VulkanState = struct {
             .pClearValues = &clear_colors,
         };
 
-        c.vulkan.vkCmdBeginRenderPass(command_buffer, &render_pass_info, c.vulkan.VK_SUBPASS_CONTENTS_INLINE);
+        c.vulkan.vkCmdBeginRenderPass(
+            command_buffer,
+            &render_pass_info,
+            c.vulkan.VK_SUBPASS_CONTENTS_INLINE,
+        );
 
         const viewport = c.vulkan.VkViewport{
             .x = 0.0,
@@ -955,24 +984,63 @@ pub const VulkanState = struct {
 
         c.vulkan.vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-        c.vulkan.vkCmdPushConstants(command_buffer, self.pipeline_layout, c.vulkan.VK_SHADER_STAGE_ALL, 0, self.push_constant_info.size, &self.push_constant_data[0]);
+        c.vulkan.vkCmdPushConstants(
+            command_buffer,
+            self.pipeline_layout,
+            c.vulkan.VK_SHADER_STAGE_ALL,
+            0,
+            self.push_constant_info.size,
+            &self.push_constant_data[0],
+        );
 
-        c.vulkan.vkCmdBindDescriptorSets(command_buffer, c.vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline_layout, 0, 1, &self.descriptor_sets[frame_index], 0, null);
+        c.vulkan.vkCmdBindDescriptorSets(
+            command_buffer,
+            c.vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS,
+            self.pipeline_layout,
+            0,
+            1,
+            &self.descriptor_sets[frame_index],
+            0,
+            null,
+        );
 
         var previous_pipeline_index: u32 = std.math.maxInt(u32);
         for (render_state.*) |target| {
             const pipeline_index = target.pipeline_index;
             if (pipeline_index != previous_pipeline_index) {
-                c.vulkan.vkCmdBindPipeline(command_buffer, c.vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipelines[pipeline_index]);
+                c.vulkan.vkCmdBindPipeline(
+                    command_buffer,
+                    c.vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    self.pipelines[pipeline_index],
+                );
                 previous_pipeline_index = pipeline_index;
             }
 
-            c.vulkan.vkCmdBindVertexBuffers(command_buffer, 0, 1, &target.vertex_buffer, &target.vertex_buffer_offset);
+            c.vulkan.vkCmdBindVertexBuffers(
+                command_buffer,
+                0,
+                1,
+                &target.vertex_buffer,
+                &target.vertex_buffer_offset,
+            );
 
             // push constant index for draw call
-            c.vulkan.vkCmdPushConstants(command_buffer, self.pipeline_layout, c.vulkan.VK_SHADER_STAGE_ALL, @sizeOf(zm.Mat) + @sizeOf(f32), @sizeOf(u32), &target.push_constant_index);
+            c.vulkan.vkCmdPushConstants(
+                command_buffer,
+                self.pipeline_layout,
+                c.vulkan.VK_SHADER_STAGE_ALL,
+                @sizeOf(zm.Mat) + @sizeOf(f32),
+                @sizeOf(u32),
+                &target.push_constant_index,
+            );
 
-            c.vulkan.vkCmdDraw(command_buffer, target.vertex_count, target.instance_count, 0, 0);
+            c.vulkan.vkCmdDraw(
+                command_buffer,
+                target.vertex_count,
+                target.instance_count,
+                0,
+                0,
+            );
         }
 
         c.vulkan.vkCmdEndRenderPass(command_buffer);
@@ -1953,6 +2021,8 @@ pub fn render_init(self: *VulkanState) !void {
         .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
     }};
 
+    std.debug.print("{}\n", .{@sizeOf(ChunkVertex)});
+
     var chunk_binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{c.vulkan.VkVertexInputBindingDescription{
         .binding = 0,
         .stride = @sizeOf(ChunkVertex),
@@ -1964,10 +2034,9 @@ pub fn render_init(self: *VulkanState) !void {
         .{ .binding = 0, .location = 1, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = @sizeOf(@Vector(3, f32)) },
     };
 
-    var chunk_attribute_description: [3]c.vulkan.VkVertexInputAttributeDescription = .{
-        .{ .binding = 0, .location = 0, .format = c.vulkan.VK_FORMAT_R32_UINT, .offset = 0 },
-        .{ .binding = 0, .location = 1, .format = c.vulkan.VK_FORMAT_R32G32_SFLOAT, .offset = @sizeOf(u32) },
-        .{ .binding = 0, .location = 2, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = @sizeOf(u32) + @sizeOf(@Vector(2, f32)) },
+    var chunk_attribute_description: [2]c.vulkan.VkVertexInputAttributeDescription = .{
+        .{ .binding = 0, .location = 0, .format = c.vulkan.VK_FORMAT_R32G32_SFLOAT, .offset = 0 },
+        .{ .binding = 0, .location = 1, .format = c.vulkan.VK_FORMAT_R32G32B32_SFLOAT, .offset = @sizeOf(@Vector(2, f32)) },
     };
 
     // cursor
