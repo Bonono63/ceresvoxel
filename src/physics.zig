@@ -36,6 +36,8 @@ pub fn physics_tick(allocator: *std.mem.Allocator, delta_time: f64, sim_start_ti
             // TODO Use eccentricity to skew one axis (x or z), the barocenter will have to be adjusted for more accurate
             // deterministic motion
             const time = @as(f64, @floatFromInt(std.time.milliTimestamp() - sim_start_time));
+
+            //const barocenter_x: f128 = 0.0;
             const x: f128 = bodies[index].orbit_radius * @cos(time / bodies[index].orbit_radius / bodies[index].orbit_radius);
             const z: f128 = bodies[index].orbit_radius * @sin(time / bodies[index].orbit_radius / bodies[index].orbit_radius);
             const y: f128 = bodies[index].eccliptic_offset[0] * x + bodies[index].eccliptic_offset[1] * z;
@@ -55,7 +57,7 @@ pub fn physics_tick(allocator: *std.mem.Allocator, delta_time: f64, sim_start_ti
     for (0..bodies.len) |a| {
         for ((a + 1)..bodies.len) |b| {
             if (a != b) {
-                if (cm.distance_f128(bodies[a].position, bodies[b].position) < 2.0) {
+                if (cm.distance_f128(bodies[a].position, bodies[b].position) < 32.0) {
                     try generate_contacts(&bodies[a], &bodies[b], contacts, allocator);
                 }
             }
@@ -69,63 +71,85 @@ pub fn physics_tick(allocator: *std.mem.Allocator, delta_time: f64, sim_start_ti
     contacts.clearRetainingCapacity();
     // clear contacts
 
-    //std.debug.print("{}ms\n", .{std.time.milliTimestamp() - start_time});
+    integration(bodies, delta_time);
+}
 
-    // Classical Mechanics (Integrator)
-    for (0..bodies.len) |index| {
-        if (bodies[index].inverse_mass > 0.0) {
+/// Classical Mechanics (Integrator)
+pub fn integration(objects: []main.Object, delta_time: f64) void {
+    for (0..objects.len) |index| {
+        if (objects[index].inverse_mass > 0.0) {
             // linear acceleration integration
-            const resulting_linear_acceleration = cm.scale_f32(bodies[index].force_accumulation, bodies[index].inverse_mass * @as(f32, @floatCast(delta_time)));
+            const resulting_linear_acceleration = cm.scale_f32(
+                objects[index].force_accumulation,
+                objects[index].inverse_mass * @as(f32, @floatCast(delta_time)),
+            );
 
-            bodies[index].velocity += .{
+            objects[index].velocity += .{
                 resulting_linear_acceleration[0],
                 resulting_linear_acceleration[1],
                 resulting_linear_acceleration[2],
                 0.0,
             };
 
-            const resulting_angular_acceleration: zm.Vec = zm.mul(bodies[index].inverse_inertia_tensor, bodies[index].torque_accumulation);
+            const resulting_angular_acceleration: zm.Vec = zm.mul(
+                objects[index].inverse_inertia_tensor,
+                objects[index].torque_accumulation,
+            );
 
-            bodies[index].angular_velocity += cm.scale_f32(resulting_angular_acceleration, @as(f32, @floatCast(delta_time)));
+            objects[index].angular_velocity += cm.scale_f32(
+                resulting_angular_acceleration,
+                @as(f32, @floatCast(delta_time)),
+            );
 
             // linear damping
-            bodies[index].velocity = cm.scale_f32(bodies[index].velocity, bodies[index].linear_damping);
+            objects[index].velocity = cm.scale_f32(
+                objects[index].velocity,
+                objects[index].linear_damping,
+            );
 
             // angular damping
-            bodies[index].angular_velocity = cm.scale_f32(bodies[index].angular_velocity, bodies[index].angular_damping);
+            objects[index].angular_velocity = cm.scale_f32(
+                objects[index].angular_velocity,
+                objects[index].angular_damping,
+            );
 
             // velocity integration
-            bodies[index].position += .{
-                bodies[index].velocity[0] * delta_time,
-                bodies[index].velocity[1] * delta_time,
-                bodies[index].velocity[2] * delta_time,
+            objects[index].position += .{
+                objects[index].velocity[0] * delta_time,
+                objects[index].velocity[1] * delta_time,
+                objects[index].velocity[2] * delta_time,
             };
 
             // angular velocity integration
-            cm.q_add_vector(&bodies[index].orientation, .{
-                bodies[index].angular_velocity[0] * @as(f32, @floatCast(delta_time)),
-                bodies[index].angular_velocity[1] * @as(f32, @floatCast(delta_time)),
-                bodies[index].angular_velocity[2] * @as(f32, @floatCast(delta_time)),
-                0,
-            });
+            cm.q_add_vector(
+                &objects[index].orientation,
+                .{
+                    objects[index].angular_velocity[0] * @as(f32, @floatCast(delta_time)),
+                    objects[index].angular_velocity[1] * @as(f32, @floatCast(delta_time)),
+                    objects[index].angular_velocity[2] * @as(f32, @floatCast(delta_time)),
+                    0,
+                },
+            );
 
-            // calculate cached data
-            bodies[index].orientation = cm.qnormalize(bodies[index].orientation);
+            objects[index].orientation = cm.qnormalize(objects[index].orientation);
 
             // reset forces
-            bodies[index].force_accumulation = .{ 0.0, 0.0, 0.0, 0.0 };
-            bodies[index].torque_accumulation = .{ 0.0, 0.0, 0.0, 0.0 };
+            objects[index].force_accumulation = .{ 0.0, 0.0, 0.0, 0.0 };
+            objects[index].torque_accumulation = .{ 0.0, 0.0, 0.0, 0.0 };
         }
     }
 }
 
 /// produces a set of contacts between 2 bodies (boxes)
-/// Up to 15 contacts per resolution
-///
-///
-fn generate_contacts(a: *main.Object, b: *main.Object, contacts: *std.ArrayList(Contact), allocator: *std.mem.Allocator) !void {
+fn generate_contacts(
+    a: *main.Object,
+    b: *main.Object,
+    contacts: *std.ArrayList(Contact),
+    allocator: *std.mem.Allocator,
+) !void {
     const ab_center_line_f128 = a.*.position - b.*.position;
-    // this cast should be safe since the 2 bodies should be close enough for it to not be a problem
+    // The cast is fine as long as the calculation
+    // is between 2 bodies that are close enough to each other
     const ab_center_line: zm.Vec = .{
         @as(f32, @floatCast(ab_center_line_f128[0])),
         @as(f32, @floatCast(ab_center_line_f128[1])),
@@ -133,11 +157,11 @@ fn generate_contacts(a: *main.Object, b: *main.Object, contacts: *std.ArrayList(
         0.0,
     };
 
-    var smallest_overlap_axis_index: u32 = 0;
-    var smallest_overlap: f32 = 10000.0;
+    var best_index: u32 = 0;
+    var best_overlap: f32 = 10000.0;
+    var penetration: bool = false;
     for (0..14) |i| {
         var axis: zm.Vec = SAT_axis(@intCast(i), a, b);
-        var penetration: bool = false;
 
         if (zm.lengthSq3(axis)[0] < 0.0001) {
             penetration = true;
@@ -156,53 +180,45 @@ fn generate_contacts(a: *main.Object, b: *main.Object, contacts: *std.ArrayList(
             if (overlap < 0) {
                 penetration = false;
             }
-            if (overlap < smallest_overlap) {
-                smallest_overlap = overlap;
-                smallest_overlap_axis_index = @intCast(i);
+            if (overlap < best_overlap) {
+                best_overlap = overlap;
+                best_index = @intCast(i);
             }
             penetration = true;
         }
     }
 
-    if (smallest_overlap_axis_index < 3) {
-        // face of box 1 and vertex of box 2
-    } else if (smallest_overlap_axis_index < 6) {
-        // vertex of box 1 and face of box 2
-
-    } else {
-        // Edge-Edge contact between box 1 and box 2
+    if (penetration) {
+        if (best_index < 3) {
+            try vertex_face_contact(
+                contacts,
+                allocator,
+                a,
+                b,
+                ab_center_line,
+                best_index,
+                best_overlap,
+            );
+        } else if (best_index < 6) {
+            try vertex_face_contact(
+                contacts,
+                allocator,
+                a,
+                b,
+                cm.scale_f32(ab_center_line, -1.0),
+                best_index - 3,
+                best_overlap,
+            );
+        } else {
+            try edge_edge_contact(
+                contacts,
+                allocator,
+            );
+        }
     }
-
-    const axis: zm.Vec = SAT_axis(smallest_overlap_axis_index, a, b);
-    var normal = axis;
-
-    // Correct normal direction
-    if (zm.dot3(normal, ab_center_line)[0] > 0.0) {
-        normal = cm.scale_f32(normal, -1.0);
-    }
-
-    var vertex: zm.Vec = b.half_size;
-    if (zm.dot3(b.getXAxis(), normal)[0] < 0.0) {
-        vertex[0] = -vertex[0];
-    }
-    if (zm.dot3(b.getYAxis(), normal)[0] < 0.0) {
-        vertex[1] = -vertex[1];
-    }
-    if (zm.dot3(b.getZAxis(), normal)[0] < 0.0) {
-        vertex[2] = -vertex[2];
-    }
-
-    const contact: Contact = .{
-        .normal = axis,
-        .penetration = smallest_overlap,
-        .position = vertex,
-        .restitution = 1.0,
-        .friction = 0.1,
-    };
-
-    try contacts.append(allocator.*, contact);
 }
 
+/// Produces the various axis' used in the SAT test
 fn SAT_axis(i: u32, a: *main.Object, b: *main.Object) zm.Vec {
     var axis: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
     switch (i) {
@@ -256,6 +272,89 @@ fn SAT_axis(i: u32, a: *main.Object, b: *main.Object) zm.Vec {
     return axis;
 }
 
+///
+pub fn vertex_face_contact(
+    list: *std.ArrayList(Contact),
+    allocator: *std.mem.Allocator,
+    a: *main.Object,
+    b: *main.Object,
+    center_line: zm.Vec,
+    best_index: u32,
+    penetration: f32,
+) !void {
+    _ = &list;
+    _ = &allocator;
+    _ = &a;
+    _ = &b;
+    _ = &center_line;
+    _ = &best_index;
+    _ = &penetration;
+    const normal: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
+    var vertex: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
+    // vertex of box 1 and face of box 2
+    if (zm.dot3(b.getXAxis(), normal)[0] < 0.0) {
+        vertex[0] = -vertex[0];
+    }
+    if (zm.dot3(b.getYAxis(), normal)[0] < 0.0) {
+        vertex[1] = -vertex[1];
+    }
+    if (zm.dot3(b.getZAxis(), normal)[0] < 0.0) {
+        vertex[2] = -vertex[2];
+    }
+    //const contact: Contact = .{
+    //    .normal = axis,
+    //    .penetration = best_overlap,
+    //    .position = vertex,
+    //    .restitution = 1.0,
+    //    .friction = 0.1,
+    //};
+
+    //try contacts.append(allocator.*, contact);
+}
+
+///
+pub fn edge_edge_contact(
+    list: *std.ArrayList(Contact),
+    allocator: *std.mem.Allocator,
+) !void {
+    _ = &list;
+    _ = &allocator;
+    //// Edge-Edge contact between box 1 and box 2
+    //var point_on_edge_one: zm.Vec = a.half_size;
+    //var point_on_edge_two: zm.Vec = b.half_size;
+
+    ////best_index -= 6;
+
+    ////const a_axis = a.getAxis(best_index / 3);
+    ////const b_axis = b.getAxis(best_index % 3);
+
+    //for (0..3) |i| {
+    //    if (i == best_index / 3) {
+    //        point_on_edge_one[i] = 0;
+    //    } else if (zm.dot3(a.getAxis(@intCast(i)), axis)[0] > 0) {
+    //        point_on_edge_one[i] = -point_on_edge_one[i];
+    //    }
+
+    //    if (i == best_index % 3) {
+    //        point_on_edge_two[i] = 0;
+    //    } else if (zm.dot3(b.getAxis(@intCast(i)), axis)[0] > 0) {
+    //        point_on_edge_two[i] = -point_on_edge_two[i];
+    //    }
+    //}
+
+    //point_on_edge_one = zm.mul(a.transform(), point_on_edge_one);
+    //point_on_edge_two = zm.mul(b.transform(), point_on_edge_two);
+    //    const contact: Contact = .{
+    //        .normal = axis,
+    //        .penetration = best_overlap,
+    //        .position = vertex,
+    //        .restitution = 1.0,
+    //        .friction = 0.1,
+    //    };
+
+    //    try contacts.append(allocator.*, contact);
+}
+
 /// Finds the penetrating depth of a Box A and a Box B on a given axis
 /// (Seperating Axis Theorum)
 ///
@@ -265,8 +364,14 @@ fn SAT_axis(i: u32, a: *main.Object, b: *main.Object) zm.Vec {
 /// transform_b: the model matrix (all rotations and translations) of box_b
 /// axis: the axis box_a and box_b will be projected onto to test whether they overlap or not
 /// ab_center_line: the vector from the center of box_a to box_b in world coordinates
-fn penetration_on_axis(box_a: zm.Vec, transform_a: zm.Mat, box_b: zm.Vec, transform_b: zm.Mat, axis: zm.Vec, ab_center_line: zm.Vec) f32 {
-    // TODO rework this for f128...
+fn penetration_on_axis(
+    box_a: zm.Vec,
+    transform_a: zm.Mat,
+    box_b: zm.Vec,
+    transform_b: zm.Mat,
+    axis: zm.Vec,
+    ab_center_line: zm.Vec,
+) f32 {
     const a_axis = zm.mul(transform_a, box_a);
     const b_axis = zm.mul(transform_b, box_b);
 

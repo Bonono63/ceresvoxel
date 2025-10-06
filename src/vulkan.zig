@@ -1405,7 +1405,18 @@ pub const VulkanState = struct {
             .dstAccessMask = c.vulkan.VK_ACCESS_TRANSFER_WRITE_BIT,
         };
 
-        c.vulkan.vkCmdPipelineBarrier(command_buffer, c.vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 1, &transfer_barrier, 0, null);
+        c.vulkan.vkCmdPipelineBarrier(
+            command_buffer,
+            c.vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0,
+            null,
+            1,
+            &transfer_barrier,
+            0,
+            null,
+        );
 
         const region = c.vulkan.VkBufferCopy{
             .srcOffset = 0,
@@ -1426,7 +1437,18 @@ pub const VulkanState = struct {
             .size = size,
         };
 
-        c.vulkan.vkCmdPipelineBarrier(command_buffer, c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT, c.vulkan.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, null, 1, &buffer_read_barrier, 0, null);
+        c.vulkan.vkCmdPipelineBarrier(
+            command_buffer,
+            c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
+            c.vulkan.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0,
+            0,
+            null,
+            1,
+            &buffer_read_barrier,
+            0,
+            null,
+        );
 
         _ = c.vulkan.vkEndCommandBuffer(command_buffer);
 
@@ -1486,88 +1508,26 @@ pub const VulkanState = struct {
         return vertex_buffer;
     }
 
-    /// DEPRECATED
-    pub fn replace_vertex_data(self: *VulkanState, render_index: u32, size: u32, ptr: *anyopaque) VkAbstractionError!void {
-        // needs to occur asynchronously
-        var vertex_buffer: c.vulkan.VkBuffer = undefined;
-        var alloc: c.vulkan.VmaAllocation = undefined;
-
-        var buffer_create_info = c.vulkan.VkBufferCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size = size,
-            .usage = c.vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        };
-
-        const alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
-            .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
-            .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-        };
-
-        const buffer_success = c.vulkan.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &vertex_buffer, &alloc, null);
-
-        if (buffer_success != c.vulkan.VK_SUCCESS) {
-            std.debug.print("success: {}\n", .{buffer_success});
-            return VkAbstractionError.VertexBufferCreationFailure;
-        }
-
-        try self.copy_data_via_staging_buffer(&vertex_buffer, size, ptr);
-
-        const old_buffer = self.vertex_buffers.items[self.render_targets.items[render_index].vertex_index];
-        const old_alloc = self.vertex_allocs.items[self.render_targets.items[render_index].vertex_index];
-        self.vertex_buffers.items[self.render_targets.items[render_index].vertex_index] = vertex_buffer;
-        self.vertex_allocs.items[self.render_targets.items[render_index].vertex_index] = alloc;
-
-        const vertex_count = size / @sizeOf(Vertex);
-        self.render_targets.items[render_index].vertex_count = vertex_count;
-
-        c.vulkan.vmaDestroyBuffer(self.vma_allocator, old_buffer, old_alloc);
-    }
-
-    // TODO decide whether we want to make this host coherent based on the frequency
-    // of chunk data updates
-    // TODO make a way to modify the buffer at all, could replace it or change
-    // data based on frequency and size...
-    /// DEPRECATED
-    pub fn create_ssbo(self: *VulkanState, size: u32, ptr: *anyopaque) VkAbstractionError!void {
-        var ssbo: c.vulkan.VkBuffer = undefined;
-        var alloc: c.vulkan.VmaAllocation = undefined;
-
-        var buffer_create_info = c.vulkan.VkBufferCreateInfo{
-            .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .size = size,
-            .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        };
-
-        const alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
-            .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
-            .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-        };
-
-        const buffer_success = c.vulkan.vmaCreateBuffer(self.vma_allocator, &buffer_create_info, &alloc_create_info, &ssbo, &alloc, null);
-
-        if (buffer_success != c.vulkan.VK_SUCCESS) {
-            std.debug.print("success: {}\n", .{buffer_success});
-            return VkAbstractionError.VertexBufferCreationFailure;
-        }
-
-        try self.copy_data_via_staging_buffer(&ssbo, size, ptr);
-
-        try self.ssbo_buffers.append(self.allocator.*, ssbo);
-        try self.ssbo_allocs.append(self.allocator.*, alloc);
-    }
-
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called
     pub fn cleanup(self: *VulkanState) void {
         for (0..self.ubo_buffers.items.len) |i| {
-            c.vulkan.vmaDestroyBuffer(self.vma_allocator, self.ubo_buffers.items[i], self.ubo_allocs.items[i]);
+            c.vulkan.vmaDestroyBuffer(
+                self.vma_allocator,
+                self.ubo_buffers.items[i],
+                self.ubo_allocs.items[i],
+            );
         }
 
         self.ubo_buffers.deinit(self.allocator.*);
         self.ubo_allocs.deinit(self.allocator.*);
 
         for (0..self.vertex_buffers.items.len) |i| {
-            c.vulkan.vmaDestroyBuffer(self.vma_allocator, self.vertex_buffers.items[i].buffer, self.vertex_buffers.items[i].alloc);
+            c.vulkan.vmaDestroyBuffer(
+                self.vma_allocator,
+                self.vertex_buffers.items[i].buffer,
+                self.vertex_buffers.items[i].alloc,
+            );
         }
 
         self.vertex_buffers.deinit(self.allocator.*);
@@ -1582,7 +1542,12 @@ pub const VulkanState = struct {
             c.vulkan.vkDestroyFence(self.device, self.in_flight_fences[i], null);
         }
 
-        c.vulkan.vkFreeCommandBuffers(self.device, self.command_pool, self.MAX_CONCURRENT_FRAMES, self.command_buffers.ptr);
+        c.vulkan.vkFreeCommandBuffers(
+            self.device,
+            self.command_pool,
+            self.MAX_CONCURRENT_FRAMES,
+            self.command_buffers.ptr,
+        );
 
         c.vulkan.vkDestroyCommandPool(self.device, self.command_pool, null);
 
@@ -1590,7 +1555,11 @@ pub const VulkanState = struct {
         cleanup_swapchain(self);
 
         for (0..self.shader_modules.items.len) |i| {
-            c.vulkan.vkDestroyShaderModule(self.device, self.shader_modules.items[i], null);
+            c.vulkan.vkDestroyShaderModule(
+                self.device,
+                self.shader_modules.items[i],
+                null,
+            );
         }
 
         for (0..self.pipelines.len) |i| {
@@ -1645,9 +1614,22 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
     var staging_alloc: c.vulkan.VmaAllocation = undefined;
     var staging_alloc_info: c.vulkan.VmaAllocationInfo = undefined;
 
-    _ = c.vulkan.vmaCreateBuffer(self.vma_allocator, &staging_buffer_info, &staging_alloc_create_info, &staging_buffer, &staging_alloc, &staging_alloc_info);
+    _ = c.vulkan.vmaCreateBuffer(
+        self.vma_allocator,
+        &staging_buffer_info,
+        &staging_alloc_create_info,
+        &staging_buffer,
+        &staging_alloc,
+        &staging_alloc_info,
+    );
 
-    _ = c.vulkan.vmaCopyMemoryToAllocation(self.vma_allocator, image_info.data, staging_alloc, 0, image_size);
+    _ = c.vulkan.vmaCopyMemoryToAllocation(
+        self.vma_allocator,
+        image_info.data,
+        staging_alloc,
+        0,
+        image_size,
+    );
 
     // Create image and transfer data to allocation
 
@@ -1672,7 +1654,14 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
         .priority = 1.0,
     };
 
-    const image_creation = c.vulkan.vmaCreateImage(self.vma_allocator, &image_create_info, &alloc_info, &image_info.image, &image_info.alloc, null);
+    const image_creation = c.vulkan.vmaCreateImage(
+        self.vma_allocator,
+        &image_create_info,
+        &alloc_info,
+        &image_info.image,
+        &image_info.alloc,
+        null,
+    );
     if (image_creation != c.vulkan.VK_SUCCESS) {
         std.debug.print("Image creation failure: {}\n", .{image_creation});
         return;
@@ -1685,7 +1674,12 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
         .commandBufferCount = 1,
     };
     var command_buffer: c.vulkan.VkCommandBuffer = undefined;
-    const command_buffer_alloc_success = c.vulkan.vkAllocateCommandBuffers(self.device, &command_buffer_alloc_info, &command_buffer);
+
+    const command_buffer_alloc_success = c.vulkan.vkAllocateCommandBuffers(
+        self.device,
+        &command_buffer_alloc_info,
+        &command_buffer,
+    );
     if (command_buffer_alloc_success != c.vulkan.VK_SUCCESS) {
         std.debug.print("Unable to Allocate command buffer for image staging: {}\n", .{command_buffer_alloc_success});
         return;
@@ -1716,7 +1710,18 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
         .dstAccessMask = c.vulkan.VK_ACCESS_TRANSFER_WRITE_BIT,
     };
 
-    c.vulkan.vkCmdPipelineBarrier(command_buffer, c.vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 1, &transfer_barrier);
+    c.vulkan.vkCmdPipelineBarrier(
+        command_buffer,
+        c.vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        0,
+        null,
+        0,
+        null,
+        1,
+        &transfer_barrier,
+    );
 
     // copy from staging buffer to image gpu destination
     const image_subresource = c.vulkan.VkImageSubresourceLayers{
@@ -1735,7 +1740,14 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
         .imageExtent = .{ .width = @intCast(image_info.width), .height = @intCast(image_info.height), .depth = 1 },
     };
 
-    c.vulkan.vkCmdCopyBufferToImage(command_buffer, staging_buffer, image_info.image, c.vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    c.vulkan.vkCmdCopyBufferToImage(
+        command_buffer,
+        staging_buffer,
+        image_info.image,
+        c.vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1,
+        &region,
+    );
     // Optimal shader layout translation
     const shader_read_barrier = c.vulkan.VkImageMemoryBarrier{
         .sType = c.vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -1749,7 +1761,18 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
         .dstAccessMask = c.vulkan.VK_ACCESS_SHADER_READ_BIT,
     };
 
-    c.vulkan.vkCmdPipelineBarrier(command_buffer, c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT, c.vulkan.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, null, 0, null, 1, &shader_read_barrier);
+    c.vulkan.vkCmdPipelineBarrier(
+        command_buffer,
+        c.vulkan.VK_PIPELINE_STAGE_TRANSFER_BIT,
+        c.vulkan.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0,
+        0,
+        null,
+        0,
+        null,
+        1,
+        &shader_read_barrier,
+    );
 
     _ = c.vulkan.vkEndCommandBuffer(command_buffer);
 
@@ -2092,19 +2115,16 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
         c.vulkan.GLFW_DONT_CARE,
     );
 
-    const cursor_vb_info = try self.create_vertex_buffer(
+    _ = try self.create_vertex_buffer(
         @sizeOf(Vertex),
         @intCast(cursor_vertices.len * @sizeOf(Vertex)),
         @ptrCast(@constCast(&cursor_vertices[0])),
     );
-    const outline_vb_info = try self.create_vertex_buffer(
+    _ = try self.create_vertex_buffer(
         @sizeOf(Vertex),
         @intCast(block_selection_cube.len * @sizeOf(Vertex)),
         @ptrCast(@constCast(&block_selection_cube[0])),
     );
-
-    try self.vertex_buffers.append(self.allocator.*, cursor_vb_info);
-    try self.vertex_buffers.append(self.allocator.*, outline_vb_info);
 
     // cursor
     try self.render_targets.append(self.allocator.*, .{
