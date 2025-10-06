@@ -37,7 +37,7 @@ pub fn get_chunk_data_random(seed: u64) ![32768]u8 {
 
 pub fn get_chunk_data_sun() ![32768]u8 {
     var result: [32768]u8 = undefined;
-    @memset(@as([]u8, @ptrCast(result[0..32768])), 2);
+    @memset(@as([]u8, @ptrCast(result[0..32768])), 3);
     return result;
 }
 

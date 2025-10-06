@@ -117,29 +117,35 @@ pub const Object = struct {
     /// Returns the object's transform (for rendering or physics)
     /// for safety reasons should only be called on objects within f32's range.
     pub fn transform(self: *const Object) zm.Mat {
-        const center: zm.Vec = cm.scale_f32(self.half_size, -1.0);
-        const world_pos: zm.Mat = zm.translationV(.{
+        var result: zm.Mat = zm.identity();
+        const half_offset = zm.translationV(cm.scale_f32(self.half_size, -1.0));
+        const world_pos = zm.translationV(.{
             @as(f32, @floatCast(self.position[0])),
             @as(f32, @floatCast(self.position[1])),
             @as(f32, @floatCast(self.position[2])),
             0.0,
         });
-        var result: zm.Mat = zm.identity();
-        result = zm.mul(zm.matFromQuat(self.orientation), zm.translationV(center));
-        return zm.mul(result, world_pos);
+        result = zm.mul(result, half_offset);
+        result = zm.mul(result, zm.matFromQuat(self.orientation));
+        result = zm.mul(result, world_pos);
+        return result;
     }
 
     /// Returns the object's transform (for rendering or physics)
     /// for safety reasons should only be called on objects within f32's range.
     pub fn render_transform(self: *const Object, player_pos: @Vector(3, f128)) zm.Mat {
-        //const center: zm.Vec = cm.scale_f32(self.half_size, 1.0);
-        const world_pos: zm.Mat = zm.translationV(.{
+        var result: zm.Mat = zm.identity();
+        const half_offset = zm.translationV(cm.scale_f32(self.half_size, -1.0));
+        const world_pos = zm.translationV(.{
             @as(f32, @floatCast(self.position[0] - player_pos[0])),
             @as(f32, @floatCast(self.position[1] - player_pos[1])),
             @as(f32, @floatCast(self.position[2] - player_pos[2])),
             0.0,
         });
-        return zm.mul(zm.matFromQuat(self.orientation), world_pos);
+        result = zm.mul(result, half_offset);
+        result = zm.mul(result, zm.matFromQuat(self.orientation));
+        result = zm.mul(result, world_pos);
+        return result;
     }
 
     /// Returns the object's transform (for rendering or physics)
@@ -270,7 +276,7 @@ pub fn main() !void {
         .planet = false,
         .gravity = false,
         .orientation = .{ 0.0, 0.0, std.math.pi * 0.5, std.math.pi * 0.5 },
-        .angular_velocity = .{ std.math.pi * 0.25, 0.0, 0.0, 0.0 },
+        .angular_velocity = .{ 0.0, 0.0, 0.0, 0.0 }, //std.math.pi * 0.25, 0.0, 0.0, 0.0 },
         .half_size = .{ 16 * 3, 16 * 3, 16 * 3, 0.0 },
         .body_type = .voxel_space,
         .size = .{ 3, 3, 3 },
@@ -518,7 +524,7 @@ pub fn main() !void {
 
             for (game_state.objects.items, 0..game_state.objects.items.len) |body, index| {
                 if (body.body_type == .particle) {
-                    const MAX_PARTICLE_TIME: u32 = 1000;
+                    const MAX_PARTICLE_TIME: u32 = 100;
                     if (body.particle_time < MAX_PARTICLE_TIME) {
                         game_state.objects.items[index].particle_time += 1;
                     } else {
@@ -808,6 +814,8 @@ pub fn generate_other_render_targets(
 /// decides which chunks to load
 pub fn load_chunks(allocator: std.mem.Allocator, game_state: *GameState, obj: *Object) !void {
     for (0..(obj.size[0] * obj.size[1] * obj.size[2])) |chunk_index| {
+        _ = &game_state;
+        _ = &chunk_index;
         const data = try chunk.get_chunk_data_random(game_state.seed + chunk_index);
         const chunk_data = chunk.Chunk{
             .empty = false,

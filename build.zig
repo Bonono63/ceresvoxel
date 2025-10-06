@@ -38,23 +38,29 @@ pub fn build(b: *std.Build) void {
 
     exe.addIncludePath(b.path("glfw-3.4/include"));
     exe.addLibraryPath(b.path("glfw-3.4/build/src"));
-    
+
     if (target.result.os.tag == .windows)
         exe.linkSystemLibrary("glfw3");
     // Make sure to build glfw as a dll because it doesn't like to
     // work otherwise
     if (target.result.os.tag == .linux)
         exe.linkSystemLibrary("glfw");
-   
+
     const zmath = b.dependency("zmath", .{});
     exe.root_module.addImport("zmath", zmath.module("root"));
-    
+
+    const zphysics = b.dependency("zphysics", .{
+        .use_double_precision = true,
+        .enable_cross_platform_determinism = true,
+    });
+    exe.root_module.addImport("zphysics", zphysics.module("root"));
+    exe.linkLibrary(zphysics.artifact("joltc"));
+
     // Should be built against the vulkan system library, building it yourself is
     // not really recomended
     if (target.result.os.tag == .linux)
         exe.linkSystemLibrary("vulkan");
-    if (target.result.os.tag == .windows)
-    {
+    if (target.result.os.tag == .windows) {
         // Absolute paths are nono for zig, but we can cheese it with
         // a directory link so here you go
         exe.addIncludePath(b.path("vulkan_include"));

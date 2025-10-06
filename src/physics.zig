@@ -50,8 +50,7 @@ pub fn physics_tick(allocator: *std.mem.Allocator, delta_time: f64, sim_start_ti
 
     // Contact Generation
 
-    // TODO when this exceeds 20 ms the entire thing slows down SIGNIFICANTLY
-    // TODO implement 3D sweep and prune as a broad phase
+    // TODO implement 3D sweep and prune
     //const start_time = std.time.milliTimestamp();
     for (0..bodies.len) |a| {
         for ((a + 1)..bodies.len) |b| {
@@ -138,22 +137,40 @@ fn generate_contacts(a: *main.Object, b: *main.Object, contacts: *std.ArrayList(
     var smallest_overlap: f32 = 10000.0;
     for (0..14) |i| {
         var axis: zm.Vec = SAT_axis(@intCast(i), a, b);
+        var penetration: bool = false;
 
-        if (zm.lengthSq3(axis)[0] > 0.001) {
+        if (zm.lengthSq3(axis)[0] < 0.0001) {
+            penetration = true;
+        } else {
             axis = zm.normalize3(axis);
 
-            const a_transform: zm.Mat = zm.matFromQuat(a.*.orientation);
-            const b_transform: zm.Mat = zm.matFromQuat(b.*.orientation);
-            const overlap: f32 = penetration_on_axis(a.*.half_size, a_transform, b.*.half_size, b_transform, axis, ab_center_line);
+            const overlap: f32 = penetration_on_axis(
+                a.*.half_size,
+                a.*.transform(),
+                b.*.half_size,
+                b.*.transform(),
+                axis,
+                ab_center_line,
+            );
 
             if (overlap < 0) {
-                return;
+                penetration = false;
             }
             if (overlap < smallest_overlap) {
                 smallest_overlap = overlap;
                 smallest_overlap_axis_index = @intCast(i);
             }
+            penetration = true;
         }
+    }
+
+    if (smallest_overlap_axis_index < 3) {
+        // face of box 1 and vertex of box 2
+    } else if (smallest_overlap_axis_index < 6) {
+        // vertex of box 1 and face of box 2
+
+    } else {
+        // Edge-Edge contact between box 1 and box 2
     }
 
     const axis: zm.Vec = SAT_axis(smallest_overlap_axis_index, a, b);
@@ -193,46 +210,46 @@ fn SAT_axis(i: u32, a: *main.Object, b: *main.Object) zm.Vec {
             axis = a.getXAxis();
         },
         1 => {
-            axis = zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 0.0 }, zm.matFromQuat(a.*.orientation));
+            axis = a.getYAxis();
         },
         2 => {
-            axis = zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 0.0 }, zm.matFromQuat(a.*.orientation));
+            axis = a.getZAxis();
         },
         3 => {
-            axis = zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 0.0 }, zm.matFromQuat(b.*.orientation));
+            axis = b.getXAxis();
         },
         4 => {
-            axis = zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 0.0 }, zm.matFromQuat(b.*.orientation));
+            axis = b.getYAxis();
         },
         5 => {
-            axis = zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 0.0 }, zm.matFromQuat(b.*.orientation));
+            axis = b.getZAxis();
         },
         6 => {
-            axis = zm.cross3(zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 0.0 }, zm.matFromQuat(a.*.orientation)), zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 0.0 }, zm.matFromQuat(b.*.orientation)));
+            axis = zm.cross3(a.getXAxis(), b.getXAxis());
         },
         7 => {
-            axis = zm.cross3(zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 0.0 }, zm.matFromQuat(a.*.orientation)), zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 0.0 }, zm.matFromQuat(b.*.orientation)));
+            axis = zm.cross3(a.getXAxis(), b.getYAxis());
         },
         8 => {
-            axis = zm.cross3(zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 0.0 }, zm.matFromQuat(a.*.orientation)), zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 0.0 }, zm.matFromQuat(b.*.orientation)));
+            axis = zm.cross3(a.getXAxis(), b.getZAxis());
         },
         9 => {
-            axis = zm.cross3(zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 0.0 }, zm.matFromQuat(a.*.orientation)), zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 0.0 }, zm.matFromQuat(b.*.orientation)));
+            axis = zm.cross3(a.getYAxis(), b.getXAxis());
         },
         10 => {
-            axis = zm.cross3(zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 0.0 }, zm.matFromQuat(a.*.orientation)), zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 0.0 }, zm.matFromQuat(b.*.orientation)));
+            axis = zm.cross3(a.getYAxis(), b.getYAxis());
         },
         11 => {
-            axis = zm.cross3(zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 0.0 }, zm.matFromQuat(a.*.orientation)), zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 0.0 }, zm.matFromQuat(b.*.orientation)));
+            axis = zm.cross3(a.getYAxis(), b.getZAxis());
         },
         12 => {
-            axis = zm.cross3(zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 0.0 }, zm.matFromQuat(a.*.orientation)), zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 0.0 }, zm.matFromQuat(b.*.orientation)));
+            axis = zm.cross3(a.getZAxis(), b.getXAxis());
         },
         13 => {
-            axis = zm.cross3(zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 0.0 }, zm.matFromQuat(a.*.orientation)), zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 0.0 }, zm.matFromQuat(b.*.orientation)));
+            axis = zm.cross3(a.getZAxis(), b.getYAxis());
         },
         14 => {
-            axis = zm.cross3(zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 0.0 }, zm.matFromQuat(a.*.orientation)), zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 0.0 }, zm.matFromQuat(b.*.orientation)));
+            axis = zm.cross3(a.getZAxis(), b.getZAxis());
         },
         else => {},
     }
@@ -249,6 +266,7 @@ fn SAT_axis(i: u32, a: *main.Object, b: *main.Object) zm.Vec {
 /// axis: the axis box_a and box_b will be projected onto to test whether they overlap or not
 /// ab_center_line: the vector from the center of box_a to box_b in world coordinates
 fn penetration_on_axis(box_a: zm.Vec, transform_a: zm.Mat, box_b: zm.Vec, transform_b: zm.Mat, axis: zm.Vec, ab_center_line: zm.Vec) f32 {
+    // TODO rework this for f128...
     const a_axis = zm.mul(transform_a, box_a);
     const b_axis = zm.mul(transform_b, box_b);
 
