@@ -17,6 +17,9 @@ const outline_frag_source = @as([]align(4) u8, @ptrCast(@alignCast(@constCast(@e
 const cursor_vert_source = @as([]align(4) u8, @ptrCast(@alignCast(@constCast(@embedFile("shaders/cursor.vert.spv")))));
 const cursor_frag_source = @as([]align(4) u8, @ptrCast(@alignCast(@constCast(@embedFile("shaders/cursor.frag.spv")))));
 
+const cursor_source = @embedFile("fortnite.jpg");
+const blocks_source = @embedFile("blocks.png");
+
 const COLOR: @Vector(3, f32) = .{ 32.0 / 256.0, 252.0 / 256.0, 164.0 / 256.0 };
 const block_selection_cube: [17]Vertex = .{
     //front
@@ -1948,7 +1951,7 @@ pub fn update_particle_ubo(self: *VulkanState, bodies: []main.Object, player_ind
 
 //THREAD
 /// Initializes all required boilerplate for the render state
-pub fn render_init(self: *VulkanState) !void {
+pub fn render_init(self: *VulkanState, name: []const u8) !void {
     // Allocations
     self.shader_modules = try std.ArrayList(c.vulkan.VkShaderModule).initCapacity(self.allocator.*, 8);
 
@@ -1976,6 +1979,8 @@ pub fn render_init(self: *VulkanState) !void {
         .vkGetDeviceProcAddr = &c.vulkan.vkGetDeviceProcAddr,
     };
 
+    try glfw_initialization();
+    try self.window_setup(name, "Dawn");
     try self.create_surface();
     try self.pick_physical_device();
     c.vulkan.vkGetPhysicalDeviceMemoryProperties(self.physical_device, &self.mem_properties);
@@ -2176,7 +2181,8 @@ pub fn render_init(self: *VulkanState) !void {
     //defer self.allocator.*.free(image_info0.views);
     //defer self.allocator.*.free(image_info0.samplers);
 
-    const image_data0 = c.stb.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.stb.STBI_rgb_alpha);
+    //const image_data0 = c.stb.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.stb.STBI_rgb_alpha);
+    const image_data0 = c.stb.stbi_load_from_memory(&cursor_source[0], cursor_source.len, &image_info0.width, &image_info0.height, &image_info0.channels, c.stb.STBI_rgb_alpha);
     if (image_data0 == null) {
         std.debug.print("Unable to find image file \n", .{});
         return;
@@ -2205,7 +2211,7 @@ pub fn render_init(self: *VulkanState) !void {
     //defer self.allocator.*.free(image_info1.views);
     //defer self.allocator.*.free(image_info1.samplers);
 
-    const image_data1 = c.stb.stbi_load("blocks.png", &image_info1.width, &image_info1.height, &image_info1.channels, c.stb.STBI_rgb_alpha);
+    const image_data1 = c.stb.stbi_load_from_memory(&blocks_source[0], blocks_source.len, &image_info1.width, &image_info1.height, &image_info1.channels, c.stb.STBI_rgb_alpha);
     if (image_data1 == null) {
         std.debug.print("Unable to find image file \n", .{});
         return;

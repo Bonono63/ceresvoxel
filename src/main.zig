@@ -247,8 +247,7 @@ pub fn main() !void {
         .chunk_render_style = .basic,
     };
 
-    try vulkan.glfw_initialization();
-    try vulkan_state.window_setup(vulkan_state.ENGINE_NAME, vulkan_state.ENGINE_NAME);
+    try vulkan.render_init(&vulkan_state, "CeresVoxel");
 
     // GLFW Callbacks
     _ = c.vulkan.glfwSetKeyCallback(vulkan_state.window, key_callback);
@@ -303,12 +302,10 @@ pub fn main() !void {
     });
     game_state.player_index = @intCast(game_state.objects.items.len - 1);
 
-    try vulkan.render_init(&vulkan_state);
-
     std.debug.print("[Debug] Loading chunks {}ms\n", .{std.time.milliTimestamp() - program_start_time});
     for (0..game_state.objects.items.len) |obj_index| {
         if (game_state.objects.items[obj_index].body_type == .voxel_space) {
-            try load_chunks(allocator, &game_state, &game_state.objects.items[obj_index]);
+            try load_chunk(allocator, &game_state, &game_state.objects.items[obj_index]);
         }
     }
 
@@ -812,7 +809,7 @@ pub fn generate_other_render_targets(
 //}
 //
 /// decides which chunks to load
-pub fn load_chunks(allocator: std.mem.Allocator, game_state: *GameState, obj: *Object) !void {
+pub fn load_chunk(allocator: std.mem.Allocator, game_state: *GameState, obj: *Object) !void {
     for (0..(obj.size[0] * obj.size[1] * obj.size[2])) |chunk_index| {
         _ = &game_state;
         _ = &chunk_index;

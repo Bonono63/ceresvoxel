@@ -50,6 +50,7 @@
         "build.zig.zon",
         "src",
         "shaders",
+        "fortnite.jpg",
         // For example...
         //"LICENSE",
         //"README.md",
