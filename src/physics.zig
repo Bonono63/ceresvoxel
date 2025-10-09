@@ -28,21 +28,26 @@ pub const Contact = struct {
 /// sun_index: the index of the sun in @bodies
 ///
 /// bodies: the bodies to be simulated over
-pub fn physics_tick(allocator: *std.mem.Allocator, delta_time: f64, sim_start_time: i64, bodies: []main.Object, contacts: *std.ArrayList(Contact)) !void {
+pub fn physics_tick(
+    allocator: *std.mem.Allocator,
+    delta_time: f64,
+    sim_start_time: i64,
+    bodies: []main.Object,
+    contacts: *std.ArrayList(Contact),
+) !void {
     // Planetary Motion
     for (0..bodies.len) |index| {
         if (bodies[index].planet) {
             // TODO make the orbit have an offset according to the barocenter
             // TODO Use eccentricity to skew one axis (x or z), the barocenter will have to be adjusted for more accurate
             // deterministic motion
-            const time = @as(f64, @floatFromInt(std.time.milliTimestamp() - sim_start_time));
-
-            //const barocenter_x: f128 = 0.0;
-            const x: f128 = bodies[index].orbit_radius * @cos(time / bodies[index].orbit_radius / bodies[index].orbit_radius);
-            const z: f128 = bodies[index].orbit_radius * @sin(time / bodies[index].orbit_radius / bodies[index].orbit_radius);
+            const time = @as(f64, @floatFromInt(std.time.milliTimestamp() - sim_start_time)) / @as(f32, @floatCast(bodies[index].orbit_radius));
+            const x: f128 = bodies[index].orbit_radius * @cos(time / 8.0) + bodies[index].barycenter[0];
+            const z: f128 = bodies[index].orbit_radius * @sin(time / 8.0) + bodies[index].barycenter[1];
             const y: f128 = bodies[index].eccliptic_offset[0] * x + bodies[index].eccliptic_offset[1] * z;
 
             bodies[index].position = .{ x, y, z };
+            bodies[index].velocity = zm.normalize3(.{ -@as(f32, @floatCast(z)), @as(f32, @floatCast(y)), @as(f32, @floatCast(x)), 0.0 });
         }
     }
 

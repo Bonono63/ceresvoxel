@@ -88,9 +88,7 @@ pub const Object = struct {
     gravity: bool = true,
     planet: bool = false,
     orbit_radius: f128 = 0.0,
-    /// center of the object's orbit
-    barocenter: @Vector(3, f128) = .{ 0.0, 0.0, 0.0 },
-    eccentricity: f32 = 1.0,
+    barycenter: @Vector(2, f128) = .{ 0.0, 0.0 },
     eccliptic_offset: @Vector(2, f32) = .{ 0.0, 0.0 },
 
     orientation: zm.Quat = zm.qidentity(),
@@ -220,6 +218,7 @@ pub const GameState = struct {
     particle_count: u32 = 0,
     sim_start_time: i64,
     player_index: u32 = undefined,
+    sun_index: u32 = undefined,
 };
 
 pub const chicken = struct {};
@@ -293,21 +292,31 @@ pub fn main() !void {
         .gravity = false,
         .orientation = .{ 0.0, 0.0, std.math.pi * 0.5, std.math.pi * 0.5 },
         .angular_velocity = .{ 0.0, 0.0, 0.0, 0.0 }, //std.math.pi * 0.25, 0.0, 0.0, 0.0 },
-        .half_size = .{ 16, 16, 16, 0.0 },
+        .half_size = .{ 16 * 2, 16 * 2, 16 * 2, 0.0 },
         .body_type = .voxel_space,
-        .size = .{ 1, 1, 1 },
+        .size = .{ 2, 2, 2 },
         .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10), // 10 chunks
         .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
     });
+    game_state.sun_index = @intCast(game_state.objects.items.len - 1);
 
+    // Test planet
     try game_state.objects.append(allocator, .{
         .position = .{ 0.0, 0.0, 0.0 },
-        .inverse_mass = 0.0,
-        .planet = false,
+        .inverse_mass = 1.0 / 500.0,
+        .planet = true,
         .gravity = false,
         .torque_accumulation = .{ 0.0, 0.0, 0.0, 0.0 },
-        .half_size = .{ 0.5, 0.5, 0.5, 0.0 },
-        .body_type = .other,
+        .half_size = .{ 16, 16, 16, 0.0 },
+        .body_type = .voxel_space,
+        .size = .{ 1, 1, 1 },
+        .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10),
+        .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
+        .orbit_radius = 256.0,
+        .eccliptic_offset = .{
+            0.1,
+            0.3,
+        },
     });
 
     // player
@@ -359,7 +368,7 @@ pub fn main() !void {
 
     var prev_tick_time: i64 = 0;
     var prev_time: i64 = 0;
-    const MINIMUM_PHYSICS_TICK_TIME: i64 = 20;
+    const MINIMUM_PHYSICS_TICK_TIME: i64 = 10;
     const MINIMUM_RENDER_TICK_TIME: i64 = 0;
 
     var contacts = try std.ArrayList(physics.Contact).initCapacity(allocator, 200);
@@ -513,6 +522,8 @@ pub fn main() !void {
             // TODO make the integrator slightly more predicitvie some how?
             updated_objects = try allocator.realloc(updated_objects, game_state.objects.items.len);
             @memcpy(updated_objects, game_state.objects.items);
+            // Lower the percieved latency on player input
+            updated_objects[game_state.player_index].velocity = input_vec;
             physics.integration(updated_objects, physics_delta_time);
 
             const render_frame = vulkan.RenderFrame{
