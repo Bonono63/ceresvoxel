@@ -10,11 +10,11 @@ pub const AU: f128 = 149.6e9;
 pub const SCALE: f32 = 50.0;
 
 pub const Contact = struct {
-    position: zm.Vec,
-    normal: zm.Vec,
     penetration: f32,
     restitution: f32, // how close to ellastic vs inellastic
     friction: f32,
+    position: zm.Vec,
+    normal: zm.Vec,
 };
 
 /// Integrates all linear forces, torques, angular velocities, linear velocities, positions,
@@ -29,7 +29,6 @@ pub const Contact = struct {
 ///
 /// bodies: the bodies to be simulated over
 pub fn physics_tick(
-    allocator: *std.mem.Allocator,
     delta_time: f64,
     sim_start_time: i64,
     bodies: []main.Object,
@@ -63,7 +62,7 @@ pub fn physics_tick(
         for ((a + 1)..bodies.len) |b| {
             if (a != b) {
                 if (cm.distance_f128(bodies[a].position, bodies[b].position) < 32.0) {
-                    try generate_contacts(&bodies[a], &bodies[b], contacts, allocator);
+                    try generate_contacts(&bodies[a], &bodies[b], contacts);
                 }
             }
         }
@@ -73,7 +72,6 @@ pub fn physics_tick(
         _ = &contact;
         // resolve collisions (apply torques)
     }
-    contacts.clearRetainingCapacity();
     // clear contacts
 
     integration(bodies, delta_time);
@@ -150,7 +148,6 @@ fn generate_contacts(
     a: *main.Object,
     b: *main.Object,
     contacts: *std.ArrayList(Contact),
-    allocator: *std.mem.Allocator,
 ) !void {
     const ab_center_line_f128 = a.*.position - b.*.position;
     // The cast is fine as long as the calculation
@@ -197,7 +194,6 @@ fn generate_contacts(
         if (best_index < 3) {
             try vertex_face_contact(
                 contacts,
-                allocator,
                 a,
                 b,
                 ab_center_line,
@@ -207,7 +203,6 @@ fn generate_contacts(
         } else if (best_index < 6) {
             try vertex_face_contact(
                 contacts,
-                allocator,
                 a,
                 b,
                 cm.scale_f32(ab_center_line, -1.0),
@@ -215,9 +210,13 @@ fn generate_contacts(
                 best_overlap,
             );
         } else {
-            try edge_edge_contact(
+            edge_edge_contact(
                 contacts,
-                allocator,
+                a,
+                b,
+                best_index,
+                best_overlap,
+                ab_center_line,
             );
         }
     }
@@ -280,22 +279,18 @@ fn SAT_axis(i: u32, a: *main.Object, b: *main.Object) zm.Vec {
 ///
 pub fn vertex_face_contact(
     list: *std.ArrayList(Contact),
-    allocator: *std.mem.Allocator,
     a: *main.Object,
     b: *main.Object,
     center_line: zm.Vec,
     best_index: u32,
     penetration: f32,
 ) !void {
-    _ = &list;
-    _ = &allocator;
-    _ = &a;
-    _ = &b;
-    _ = &center_line;
-    _ = &best_index;
-    _ = &penetration;
-    const normal: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
-    var vertex: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
+    var normal: zm.Vec = a.getAxis(best_index);
+    if (zm.dot3(a.getAxis(best_index), center_line)[0] > 0.0) {
+        normal = cm.scale_f32(normal, -1.0);
+    }
+
+    var vertex: zm.Vec = b.half_size;
     // vertex of box 1 and face of box 2
     if (zm.dot3(b.getXAxis(), normal)[0] < 0.0) {
         vertex[0] = -vertex[0];
@@ -306,58 +301,71 @@ pub fn vertex_face_contact(
     if (zm.dot3(b.getZAxis(), normal)[0] < 0.0) {
         vertex[2] = -vertex[2];
     }
-    //const contact: Contact = .{
-    //    .normal = axis,
-    //    .penetration = best_overlap,
-    //    .position = vertex,
-    //    .restitution = 1.0,
-    //    .friction = 0.1,
-    //};
 
-    //try contacts.append(allocator.*, contact);
+    // TODO add materials for blocks and have the
+    // friction and restitution derived from it
+    const contact: Contact = .{
+        .normal = normal,
+        .penetration = penetration,
+        .position = zm.mul(b.transform(), vertex),
+        .restitution = 1.0,
+        .friction = 0.1,
+    };
+
+    list.appendAssumeCapacity(contact);
 }
 
 ///
 pub fn edge_edge_contact(
     list: *std.ArrayList(Contact),
-    allocator: *std.mem.Allocator,
-) !void {
-    _ = &list;
-    _ = &allocator;
-    //// Edge-Edge contact between box 1 and box 2
-    //var point_on_edge_one: zm.Vec = a.half_size;
-    //var point_on_edge_two: zm.Vec = b.half_size;
+    a: *main.Object,
+    b: *main.Object,
+    best_index: u32,
+    penetration: f32,
+    center_line: zm.Vec,
+) void {
+    // Edge-Edge contact between box 1 and box 2
 
-    ////best_index -= 6;
+    const a_axis = a.getAxis(best_index / 3);
+    const b_axis = b.getAxis(best_index % 3);
 
-    ////const a_axis = a.getAxis(best_index / 3);
-    ////const b_axis = b.getAxis(best_index % 3);
+    var axis = zm.normalize3(zm.cross3(a_axis, b_axis));
 
-    //for (0..3) |i| {
-    //    if (i == best_index / 3) {
-    //        point_on_edge_one[i] = 0;
-    //    } else if (zm.dot3(a.getAxis(@intCast(i)), axis)[0] > 0) {
-    //        point_on_edge_one[i] = -point_on_edge_one[i];
-    //    }
+    if (zm.dot3(axis, center_line)[0] > 0.0) {
+        axis = cm.scale_f32(axis, -1.0);
+    }
 
-    //    if (i == best_index % 3) {
-    //        point_on_edge_two[i] = 0;
-    //    } else if (zm.dot3(b.getAxis(@intCast(i)), axis)[0] > 0) {
-    //        point_on_edge_two[i] = -point_on_edge_two[i];
-    //    }
-    //}
+    var point_on_edge_one: zm.Vec = a.half_size;
+    var point_on_edge_two: zm.Vec = b.half_size;
 
-    //point_on_edge_one = zm.mul(a.transform(), point_on_edge_one);
-    //point_on_edge_two = zm.mul(b.transform(), point_on_edge_two);
-    //    const contact: Contact = .{
-    //        .normal = axis,
-    //        .penetration = best_overlap,
-    //        .position = vertex,
-    //        .restitution = 1.0,
-    //        .friction = 0.1,
-    //    };
+    for (0..3) |i| {
+        if (i == best_index / 3) {
+            point_on_edge_one[i] = 0;
+        } else if (zm.dot3(a.getAxis(@intCast(i)), axis)[0] > 0) {
+            point_on_edge_one[i] = -point_on_edge_one[i];
+        }
 
-    //    try contacts.append(allocator.*, contact);
+        if (i == best_index % 3) {
+            point_on_edge_two[i] = 0;
+        } else if (zm.dot3(b.getAxis(@intCast(i)), axis)[0] < 0) {
+            point_on_edge_two[i] = -point_on_edge_two[i];
+        }
+    }
+
+    point_on_edge_one = zm.mul(a.transform(), point_on_edge_one);
+    point_on_edge_two = zm.mul(b.transform(), point_on_edge_two);
+
+    const vertex: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
+
+    const contact: Contact = .{
+        .normal = axis,
+        .penetration = penetration,
+        .position = vertex,
+        .restitution = 1.0,
+        .friction = 0.1,
+    };
+
+    list.appendAssumeCapacity(contact);
 }
 
 /// Finds the penetrating depth of a Box A and a Box B on a given axis

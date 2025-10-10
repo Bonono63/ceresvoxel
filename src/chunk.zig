@@ -9,6 +9,7 @@ pub const Chunk = struct {
     block_occupancy: [1024]u32,
     blocks: [32768]u8,
     vertex_buffer: vulkan.VertexBuffer = undefined,
+    lod: u32 = 0,
 };
 //TODO add chunk saving and loading
 

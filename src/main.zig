@@ -371,7 +371,7 @@ pub fn main() !void {
     const MINIMUM_PHYSICS_TICK_TIME: i64 = 10;
     const MINIMUM_RENDER_TICK_TIME: i64 = 0;
 
-    var contacts = try std.ArrayList(physics.Contact).initCapacity(allocator, 200);
+    var contacts = try std.ArrayList(physics.Contact).initCapacity(allocator, 2000);
     defer contacts.deinit(allocator);
 
     var frame_count: u64 = 0;
@@ -502,7 +502,6 @@ pub fn main() !void {
 
             // TODO throw this into a different thread and join when the tick is done
             try physics.physics_tick(
-                &allocator,
                 delta_time_float,
                 game_state.sim_start_time,
                 game_state.objects.items,
@@ -571,9 +570,10 @@ pub fn main() !void {
             }
             average_frame_time /= FTCB_SIZE;
 
-            std.debug.print("{s} {} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
+            std.debug.print("{s} b:{} c:{} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
                 if (input_state.mouse_capture) "on " else "off",
                 render_frame.bodies.len,
+                contacts.items.len,
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])),
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
@@ -594,6 +594,7 @@ pub fn main() !void {
             frame_count += 1;
         }
 
+        contacts.clearRetainingCapacity();
         current_render_targets.clearRetainingCapacity();
     }
 
@@ -826,8 +827,6 @@ pub fn generate_chunk_render_targets(
 /// decides which chunks to load
 pub fn load_chunk(allocator: std.mem.Allocator, game_state: *GameState, obj: *Object) !void {
     for (0..(obj.size[0] * obj.size[1] * obj.size[2])) |chunk_index| {
-        _ = &game_state;
-        _ = &chunk_index;
         const data = try chunk.get_chunk_data_random(game_state.seed + chunk_index);
         const chunk_data = chunk.Chunk{
             .empty = false,
