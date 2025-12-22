@@ -26,14 +26,17 @@ pub const InputState = packed struct {
     mouse_dy: f64 = 0.0,
 };
 
-pub const CameraState = struct {
+pub const ClientState = struct {
     yaw: f32 = std.math.pi / 2.0,
     pitch: f32 = 0.0,
+    /// Whether the camera position is constrained to the player's head or not
     free_cam: bool = false,
-    // free cam only
-    speed: f32 = 5.0,
+    free_cam_speed: f32 = 15.0,
+    camera_pos: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
+    /// For use once OBB system is finished
+    camera_direction: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
 
-    pub fn look(self: *const CameraState) zm.Quat {
+    pub fn look(self: *const ClientState) zm.Quat {
         const result = cm.qnormalize(@Vector(4, f32){
             @cos(self.yaw / 2.0) * @cos(0.0),
             @sin(self.pitch / 2.0) * @cos(0.0),
@@ -44,7 +47,7 @@ pub const CameraState = struct {
         return result;
     }
 
-    pub fn lookV(self: *const CameraState) zm.Vec {
+    pub fn lookV(self: *const ClientState) zm.Vec {
         const result = zm.normalize3(@Vector(4, f32){
             @cos(self.yaw) * @cos(self.pitch),
             @sin(self.pitch),
@@ -55,12 +58,12 @@ pub const CameraState = struct {
         return result;
     }
 
-    pub fn up(self: *const CameraState) zm.Vec {
+    pub fn up(self: *const ClientState) zm.Vec {
         _ = &self;
         return .{ 0.0, 1.0, 0.0, 0.0 };
     }
 
-    pub fn right(self: *const CameraState) zm.Vec {
+    pub fn right(self: *const ClientState) zm.Vec {
         return zm.normalize3(zm.cross3(self.up(), self.lookV()));
     }
 };
@@ -84,13 +87,6 @@ pub const Object = struct {
     force_accumulation: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
     ///Helps with simulation stability, but for space it doesn't make much sense
     linear_damping: f32 = 0.99999,
-
-    gravity: bool = true,
-    planet: bool = false,
-    orbit_radius: f128 = 0.0,
-    barycenter: @Vector(2, f128) = .{ 0.0, 0.0 },
-    eccliptic_offset: @Vector(2, f32) = .{ 0.0, 0.0 },
-
     orientation: zm.Quat = zm.qidentity(),
     /// axis-angle representation
     angular_velocity: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
@@ -106,6 +102,12 @@ pub const Object = struct {
 
     body_type: Type,
     particle_time: u32 = 0,
+
+    gravity: bool = true,
+    planet: bool = false,
+    orbit_radius: f128 = 0.0,
+    barycenter: @Vector(2, f128) = .{ 0.0, 0.0 },
+    eccliptic_offset: @Vector(2, f32) = .{ 0.0, 0.0 },
 
     // voxel space data
     size: @Vector(3, u32) = .{ 0, 0, 0 },
@@ -130,7 +132,6 @@ pub const Object = struct {
     }
 
     /// Returns the object's transform (for rendering or physics)
-    /// for safety reasons should only be called on objects within f32's range.
     pub fn render_transform(self: *const Object, player_pos: @Vector(3, f128)) zm.Mat {
         var result: zm.Mat = zm.identity();
         const half_offset = zm.translationV(cm.scale_f32(self.half_size, -1.0));
@@ -140,6 +141,13 @@ pub const Object = struct {
             @as(f32, @floatCast(self.position[2] - player_pos[2])),
             0.0,
         });
+        const scale = zm.matFromArr(.{
+            self.half_size[0] * 2.0, 0.0, 0.0, 0.0, //
+            0.0, self.half_size[1] * 2.0, 0.0, 0.0, //
+            0.0, 0.0, self.half_size[2] * 2.0, 0.0, //
+            0.0, 0.0, 0.0, 1.0, //
+        });
+        result = zm.mul(result, scale);
         result = zm.mul(result, half_offset);
         result = zm.mul(result, zm.matFromQuat(self.orientation));
         result = zm.mul(result, world_pos);
@@ -212,7 +220,7 @@ pub const Object = struct {
 pub const GameState = struct {
     objects: std.ArrayList(Object),
     seed: u64 = 0,
-    camera_state: CameraState,
+    client_state: ClientState,
     completion_signal: bool,
     allocator: *std.mem.Allocator,
     particle_count: u32 = 0,
@@ -277,7 +285,7 @@ pub fn main() !void {
 
     var game_state = GameState{
         .completion_signal = true,
-        .camera_state = CameraState{},
+        .client_state = ClientState{},
         .allocator = &allocator,
         .sim_start_time = std.time.milliTimestamp(),
         .objects = try std.ArrayList(Object).initCapacity(allocator, 100),
@@ -411,50 +419,52 @@ pub fn main() !void {
         c.vulkan.glfwPollEvents();
 
         if (input_state.control) {
-            game_state.camera_state.speed = 100.0;
+            game_state.client_state.free_cam_speed = 100.0;
         } else {
-            game_state.camera_state.speed = 5.0;
+            game_state.client_state.free_cam_speed = 5.0;
         }
 
         if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
-            game_state.camera_state.yaw -= @as(f32, @floatCast(input_state.mouse_dx * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+            game_state.client_state.yaw -= @as(f32, @floatCast(input_state.mouse_dx * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
             input_state.mouse_dx = 0.0;
         }
 
         if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
-            game_state.camera_state.pitch += @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
-            if (game_state.camera_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
-                game_state.camera_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
+            game_state.client_state.pitch += @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+            if (game_state.client_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
+                game_state.client_state
+                    .pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
             }
-            if (game_state.camera_state.pitch < -std.math.pi / 2.0 + std.math.pi / 256.0) {
-                game_state.camera_state.pitch = -std.math.pi / 2.0 + std.math.pi / 256.0;
+            if (game_state.client_state.pitch < -std.math.pi / 2.0 + std.math.pi / 256.0) {
+                game_state.client_state
+                    .pitch = -std.math.pi / 2.0 + std.math.pi / 256.0;
             }
             input_state.mouse_dy = 0.0;
         }
 
-        const look = game_state.camera_state.lookV();
-        const up = game_state.camera_state.up();
-        const right = game_state.camera_state.right();
+        const look = game_state.client_state.lookV();
+        const up = game_state.client_state.up();
+        const right = game_state.client_state.right();
 
         var input_vec: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
 
         if (input_state.space) {
-            input_vec -= cm.scale_f32(up, game_state.camera_state.speed);
+            input_vec -= cm.scale_f32(up, game_state.client_state.free_cam_speed);
         }
         if (input_state.shift) {
-            input_vec += cm.scale_f32(up, game_state.camera_state.speed);
+            input_vec += cm.scale_f32(up, game_state.client_state.free_cam_speed);
         }
         if (input_state.w) {
-            input_vec += cm.scale_f32(look, game_state.camera_state.speed);
+            input_vec += cm.scale_f32(look, game_state.client_state.free_cam_speed);
         }
         if (input_state.s) {
-            input_vec -= cm.scale_f32(look, game_state.camera_state.speed);
+            input_vec -= cm.scale_f32(look, game_state.client_state.free_cam_speed);
         }
         if (input_state.d) {
-            input_vec += cm.scale_f32(right, game_state.camera_state.speed);
+            input_vec += cm.scale_f32(right, game_state.client_state.free_cam_speed);
         }
         if (input_state.a) {
-            input_vec -= cm.scale_f32(right, game_state.camera_state.speed);
+            input_vec -= cm.scale_f32(right, game_state.client_state.free_cam_speed);
         }
 
         if (input_state.mouse_capture) {
@@ -488,8 +498,10 @@ pub fn main() !void {
                 try game_state.objects.append(allocator, .{
                     .position = player_physics_state.*.position,
                     .inverse_mass = 1.0 / 32.0,
-                    .orientation = game_state.camera_state.look(),
-                    .velocity = cm.scale_f32(game_state.camera_state.lookV(), 1.0 * 32.0) + player_physics_state.*.velocity,
+                    .orientation = game_state.client_state
+                        .look(),
+                    .velocity = cm.scale_f32(game_state.client_state
+                        .lookV(), 1.0 * 32.0) + player_physics_state.*.velocity,
                     //.angular_velocity = .{1.0,0.0,0.0,0.0},
                     .half_size = .{ 0.5, 0.5, 0.5, 0.0 },
                     .body_type = .particle,
@@ -530,7 +542,7 @@ pub fn main() !void {
                 .bodies = updated_objects,
                 .particle_count = game_state.particle_count,
                 .player_index = game_state.player_index,
-                .camera_state = &game_state.camera_state,
+                .client_state = &game_state.client_state,
             };
 
             c.vulkan.glfwGetWindowSize(vulkan_state.window, &window_width, &window_height);
@@ -552,14 +564,15 @@ pub fn main() !void {
                 1,
             );
 
-            try vulkan.update_particle_ubo(
+            // TODO make it so outlines can be enabled or disabled per object
+            try vulkan.update_outline_ubo(
                 &vulkan_state,
                 render_frame.bodies,
                 render_frame.player_index,
                 0,
             );
 
-            vulkan_state.render_targets.items[1].instance_count = render_frame.particle_count;
+            vulkan_state.render_targets.items[1].instance_count = @intCast(render_frame.bodies.len);
 
             // DRAW
             try vulkan_state.draw_frame(current_frame_index, &current_render_targets.items);
@@ -570,15 +583,18 @@ pub fn main() !void {
             }
             average_frame_time /= FTCB_SIZE;
 
-            std.debug.print("{s} b:{} c:{} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
+            // TODO make the position printed the camera position
+            std.debug.print("mc: {s} #b:{} #c:{} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
                 if (input_state.mouse_capture) "on " else "off",
                 render_frame.bodies.len,
                 contacts.items.len,
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])),
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
-                render_frame.camera_state.yaw,
-                render_frame.camera_state.pitch,
+                render_frame.client_state
+                    .yaw,
+                render_frame.client_state
+                    .pitch,
                 average_frame_time * 1000.0,
                 1.0 / average_frame_time,
             });

@@ -190,7 +190,7 @@ pub const RenderFrame = struct {
     particle_count: u32 = 0,
     player_index: u32,
     /// ONLY EVER READ FROM THE CAMERA STATE NEVER WRITE ANY DATA EVER
-    camera_state: *main.CameraState,
+    client_state: *main.ClientState,
 };
 
 /// The vulkan/render state
@@ -1957,14 +1957,14 @@ pub fn update_chunk_ubo(self: *VulkanState, objects: []main.Object, player_index
 /// Generates the unique data sent to the GPU for particles
 ///
 /// returns the number of particles sent to the GPU (used for instance rendering)
-pub fn update_particle_ubo(self: *VulkanState, bodies: []main.Object, player_index: u32, ubo_index: u32) VkAbstractionError!void {
+pub fn update_outline_ubo(self: *VulkanState, bodies: []main.Object, player_index: u32, ubo_index: u32) VkAbstractionError!void {
     var data = try std.ArrayList(zm.Mat).initCapacity(self.allocator.*, 64);
     defer data.deinit(self.allocator.*);
 
     for (bodies) |body| {
-        if (body.body_type == .particle) {
-            try data.append(self.allocator.*, body.render_transform(bodies[player_index].position));
-        }
+        //if (body.body_type == .particle) {
+        try data.append(self.allocator.*, body.render_transform(bodies[player_index].position));
+        //}
     }
 
     if (data.items.len > 0) {

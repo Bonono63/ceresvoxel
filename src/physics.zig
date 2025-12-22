@@ -71,6 +71,7 @@ pub fn physics_tick(
     for (contacts.items) |contact| {
         _ = &contact;
         // resolve collisions (apply torques)
+        //generate_impulses();
     }
     // clear contacts
 
@@ -398,3 +399,20 @@ fn penetration_on_axis(
 
     return a_projected_length + b_projected_length - distance;
 }
+
+//fn generate_impulses(contacts: std.ArrayListUnmanaged(Contact)) void {
+//for (contacts) |contact| {
+//if (@abs(contact.normal[0]) > @abs(contact.normal[1])) {
+//const x: zm.Vec = contact.normal;
+//const scale_factor: f32 = 1.0 / @sqrt(x[2] * x[2] + x[0] * x[0]);
+//const z = .{ x[2] * scale_factor, 0.0, -x[0] * scale_factor, 0.0 };
+//const y = .{ x[1] * z[0], z[0] * z[0] - x[0] * z[2], -x[1] * z[0], 0.0 };
+//} else {
+//const x: zm.Vec = contact.normal;
+//const scale_factor: f32 = 1.0 / @sqrt(x[2] * x[2] + x[0] * x[0]);
+//const z = .{ x[2] * scale_factor, 0.0, -x[0] * scale_factor, 0.0 };
+//const y = .{ x[1] * z[0], z[0] * z[0] - x[0] * z[2], -x[1] * z[0], 0.0 };
+//}
+//}
+//}
+//
