@@ -169,11 +169,11 @@ fn generate_contacts(
         0.0,
     };
 
-    var best_index: u32 = 0;
+    var best_index: u32 = 100;
     var best_overlap: f32 = 10000.0;
     var penetration: bool = false;
     for (0..14) |i| {
-        var axis: zm.Vec = SAT_axis(@intCast(i), a, b);
+        var axis: zm.Vec = get_axis(@intCast(i), a, b);
 
         if (zm.lengthSq3(axis)[0] < 0.0001) {
             penetration = true;
@@ -181,22 +181,21 @@ fn generate_contacts(
             axis = zm.normalize3(axis);
 
             const overlap: f32 = penetration_on_axis(
-                a.*.half_size,
-                a.*.transform(),
-                b.*.half_size,
-                b.*.transform(),
+                a,
+                b,
                 axis,
                 ab_center_line,
             );
 
             if (overlap < 0) {
                 penetration = false;
+            } else {
+                if (overlap < best_overlap) {
+                    best_overlap = overlap;
+                    best_index = @intCast(i);
+                }
+                penetration = true;
             }
-            if (overlap < best_overlap) {
-                best_overlap = overlap;
-                best_index = @intCast(i);
-            }
-            penetration = true;
         }
     }
 
@@ -236,7 +235,7 @@ fn generate_contacts(
 }
 
 /// Produces the various axis' used in the SAT test
-fn SAT_axis(i: u32, a: *main.Object, b: *main.Object) zm.Vec {
+fn get_axis(i: u32, a: *main.Object, b: *main.Object) zm.Vec {
     var axis: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
     switch (i) {
         0 => {
@@ -391,25 +390,24 @@ pub fn edge_edge_contact(
 /// axis: the axis box_a and box_b will be projected onto to test whether they overlap or not
 /// ab_center_line: the vector from the center of box_a to box_b in world coordinates
 fn penetration_on_axis(
-    box_a: zm.Vec,
-    transform_a: zm.Mat,
-    box_b: zm.Vec,
-    transform_b: zm.Mat,
+    box_a: *main.Object,
+    box_b: *main.Object,
     axis: zm.Vec,
     ab_center_line: zm.Vec,
 ) f32 {
-    const a_axis = zm.mul(transform_a, box_a);
-    const b_axis = zm.mul(transform_b, box_b);
+    const scaled_transform_box_a_axis: f32 =
+        box_a.half_size[0] * @abs(zm.dot3(axis, box_a.getXAxis()))[0] +
+        box_a.half_size[1] * @abs(zm.dot3(axis, box_a.getYAxis()))[0] +
+        box_a.half_size[2] * @abs(zm.dot3(axis, box_a.getZAxis()))[0];
 
-    const a_projected = cm.projectV(a_axis, axis);
-    const b_projected = cm.projectV(b_axis, axis);
+    const scaled_transform_box_b_axis: f32 =
+        box_b.half_size[0] * @abs(zm.dot3(axis, box_b.getXAxis()))[0] +
+        box_b.half_size[1] * @abs(zm.dot3(axis, box_b.getYAxis()))[0] +
+        box_b.half_size[2] * @abs(zm.dot3(axis, box_b.getZAxis()))[0];
 
-    const a_projected_length: f32 = zm.length3(a_projected)[0];
-    const b_projected_length: f32 = zm.length3(b_projected)[0];
+    const distance: f32 = @abs(zm.dot3(axis, ab_center_line)[0]);
 
-    const distance: f32 = zm.length3(cm.projectV(axis, ab_center_line))[0];
-
-    return a_projected_length + b_projected_length - distance;
+    return scaled_transform_box_a_axis + scaled_transform_box_b_axis - distance;
 }
 
 //fn generate_impulses(contacts: std.ArrayListUnmanaged(Contact)) void {

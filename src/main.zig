@@ -374,7 +374,7 @@ pub fn main() !void {
 
     // Game Loop and additional prerequisites
     var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
-    const VOMIT_COOLDOWN: i64 = 100;
+    const VOMIT_COOLDOWN: i64 = 20;
 
     var prev_tick_time: i64 = 0;
     var prev_time: i64 = 0;
@@ -586,6 +586,8 @@ pub fn main() !void {
                 average_frame_time += time;
             }
             average_frame_time /= FTCB_SIZE;
+
+            std.debug.print("{any}\n", .{contacts.items});
 
             // TODO make the position printed the camera position
             std.debug.print("mc: {s} #b:{d:3} #c:{d:4} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:2.3}ms {d:5.1}fps    \r", .{
