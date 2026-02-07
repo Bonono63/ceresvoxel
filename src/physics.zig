@@ -396,14 +396,14 @@ fn penetration_on_axis(
     ab_center_line: zm.Vec,
 ) f32 {
     const scaled_transform_box_a_axis: f32 =
-        box_a.half_size[0] * @abs(zm.dot3(axis, box_a.getXAxis()))[0] +
-        box_a.half_size[1] * @abs(zm.dot3(axis, box_a.getYAxis()))[0] +
-        box_a.half_size[2] * @abs(zm.dot3(axis, box_a.getZAxis()))[0];
+        box_a.half_size[0] * @abs(zm.dot3(axis, box_a.getXAxis())[0]) +
+        box_a.half_size[1] * @abs(zm.dot3(axis, box_a.getYAxis())[0]) +
+        box_a.half_size[2] * @abs(zm.dot3(axis, box_a.getZAxis())[0]);
 
     const scaled_transform_box_b_axis: f32 =
-        box_b.half_size[0] * @abs(zm.dot3(axis, box_b.getXAxis()))[0] +
-        box_b.half_size[1] * @abs(zm.dot3(axis, box_b.getYAxis()))[0] +
-        box_b.half_size[2] * @abs(zm.dot3(axis, box_b.getZAxis()))[0];
+        box_b.half_size[0] * @abs(zm.dot3(axis, box_b.getXAxis())[0]) +
+        box_b.half_size[1] * @abs(zm.dot3(axis, box_b.getYAxis())[0]) +
+        box_b.half_size[2] * @abs(zm.dot3(axis, box_b.getZAxis())[0]);
 
     const distance: f32 = @abs(zm.dot3(axis, ab_center_line)[0]);
 
