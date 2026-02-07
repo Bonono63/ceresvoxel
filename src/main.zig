@@ -100,6 +100,8 @@ pub const Object = struct {
     ///Make sure to only ever put in half the length of each dimension of the collision box
     half_size: zm.Vec,
 
+    colliding: bool = false,
+
     body_type: Type,
     particle_time: u32 = 0,
 
@@ -300,9 +302,9 @@ pub fn main() !void {
         .gravity = false,
         .orientation = .{ 0.0, 0.0, std.math.pi * 0.5, std.math.pi * 0.5 },
         .angular_velocity = .{ 0.0, 0.0, 0.0, 0.0 }, //std.math.pi * 0.25, 0.0, 0.0, 0.0 },
-        .half_size = .{ 16 * 2, 16 * 2, 16 * 2, 0.0 },
+        .half_size = .{ 16, 16, 16, 0.0 },
         .body_type = .voxel_space,
-        .size = .{ 2, 2, 2 },
+        .size = .{ 1, 1, 1 },
         .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10), // 10 chunks
         .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
     });
@@ -372,7 +374,7 @@ pub fn main() !void {
 
     // Game Loop and additional prerequisites
     var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
-    const VOMIT_COOLDOWN: i64 = 20;
+    const VOMIT_COOLDOWN: i64 = 100;
 
     var prev_tick_time: i64 = 0;
     var prev_time: i64 = 0;
@@ -405,6 +407,8 @@ pub fn main() !void {
     defer allocator.free(updated_objects);
     @memcpy(updated_objects, game_state.objects.items);
 
+    var contact_count: u32 = @intCast(contacts.items.len);
+
     // The responsibility of the main thread is to handle input and manage
     // all the other threads
     // This will ensure the lowest input state for the various threads and have slightly
@@ -432,12 +436,10 @@ pub fn main() !void {
         if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
             game_state.client_state.pitch += @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
             if (game_state.client_state.pitch >= std.math.pi / 2.0 - std.math.pi / 256.0) {
-                game_state.client_state
-                    .pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
+                game_state.client_state.pitch = std.math.pi / 2.0 - std.math.pi / 256.0;
             }
             if (game_state.client_state.pitch < -std.math.pi / 2.0 + std.math.pi / 256.0) {
-                game_state.client_state
-                    .pitch = -std.math.pi / 2.0 + std.math.pi / 256.0;
+                game_state.client_state.pitch = -std.math.pi / 2.0 + std.math.pi / 256.0;
             }
             input_state.mouse_dy = 0.0;
         }
@@ -521,8 +523,10 @@ pub fn main() !void {
             );
 
             previous_physics_tick_time = std.time.milliTimestamp();
+            contact_count = @intCast(contacts.items.len);
         }
 
+        //_ = &MINIMUM_RENDER_TICK_TIME;
         if (delta_time > MINIMUM_RENDER_TICK_TIME) {
             const chunk_render_targets = try generate_chunk_render_targets(&allocator, game_state.objects.items);
             current_render_targets.appendSliceAssumeCapacity(vulkan_state.render_targets.items);
@@ -548,7 +552,7 @@ pub fn main() !void {
             c.vulkan.glfwGetWindowSize(vulkan_state.window, &window_width, &window_height);
             const aspect_ratio: f32 = @as(f32, @floatFromInt(window_width)) / @as(f32, @floatFromInt(window_height));
 
-            const player_pos: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
+            const player_pos: zm.Vec = .{ 0.0, -0.45, 0.0, 0.0 };
             const view: zm.Mat = zm.lookToLh(player_pos, look, up);
             const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
             const view_proj: zm.Mat = zm.mul(view, projection);
@@ -584,10 +588,10 @@ pub fn main() !void {
             average_frame_time /= FTCB_SIZE;
 
             // TODO make the position printed the camera position
-            std.debug.print("mc: {s} #b:{} #c:{} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:.3}ms {d:5.1}fps    \r", .{
+            std.debug.print("mc: {s} #b:{d:3} #c:{d:4} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:2.3}ms {d:5.1}fps    \r", .{
                 if (input_state.mouse_capture) "on " else "off",
                 render_frame.bodies.len,
-                contacts.items.len,
+                contact_count,
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])),
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
                 @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
@@ -841,9 +845,15 @@ pub fn generate_chunk_render_targets(
 //}
 //
 /// decides which chunks to load
-pub fn load_chunk(allocator: std.mem.Allocator, game_state: *GameState, obj: *Object) !void {
+pub fn load_chunk(
+    allocator: std.mem.Allocator,
+    game_state: *GameState,
+    obj: *Object,
+) !void {
     for (0..(obj.size[0] * obj.size[1] * obj.size[2])) |chunk_index| {
-        const data = try chunk.get_chunk_data_random(game_state.seed + chunk_index);
+        _ = &chunk_index;
+        _ = &game_state;
+        const data = try chunk.get_chunk_data_sun(); //game_state.seed + chunk_index);
         const chunk_data = chunk.Chunk{
             .empty = false,
             .block_occupancy = undefined,

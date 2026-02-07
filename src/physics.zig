@@ -34,6 +34,40 @@ pub fn physics_tick(
     bodies: []main.Object,
     contacts: *std.ArrayList(Contact),
 ) !void {
+    // Force Accumulation
+    // Gravity
+    // Bouyancy
+    // Magnetism
+
+    // Contact Generation
+
+    for (0..bodies.len) |i| {
+        bodies[i].colliding = false;
+    }
+
+    // TODO implement 3D sweep and prune
+    //const start_time = std.time.milliTimestamp();
+    for (0..bodies.len) |a| {
+        for ((a + 1)..bodies.len) |b| {
+            if (a != b) {
+                if (cm.distance_f128(bodies[a].position, bodies[b].position) < 128.0) {
+                    try generate_contacts(&bodies[a], &bodies[b], contacts);
+                }
+            }
+        }
+    }
+
+    // TODO use simultaneuos collision resolution eventually since it will be more
+    // accurate. But also much harder to implement and require a re understanding
+    // of how we apply forces. A decision should probably be made on whether that approach
+    // is our ultimate solution or not before we implement too much physics breaking stuff
+    for (contacts.items) |contact| {
+        _ = &contact;
+        // resolve collisions (apply torques)
+        //generate_impulses();
+    }
+    // clear contacts
+
     // Planetary Motion
     for (0..bodies.len) |index| {
         if (bodies[index].planet) {
@@ -49,31 +83,6 @@ pub fn physics_tick(
             bodies[index].velocity = zm.normalize3(.{ -@as(f32, @floatCast(z)), @as(f32, @floatCast(y)), @as(f32, @floatCast(x)), 0.0 });
         }
     }
-
-    // Gravity
-    // Bouyancy
-    // Magnetism
-
-    // Contact Generation
-
-    // TODO implement 3D sweep and prune
-    //const start_time = std.time.milliTimestamp();
-    for (0..bodies.len) |a| {
-        for ((a + 1)..bodies.len) |b| {
-            if (a != b) {
-                if (cm.distance_f128(bodies[a].position, bodies[b].position) < 32.0) {
-                    try generate_contacts(&bodies[a], &bodies[b], contacts);
-                }
-            }
-        }
-    }
-
-    for (contacts.items) |contact| {
-        _ = &contact;
-        // resolve collisions (apply torques)
-        //generate_impulses();
-    }
-    // clear contacts
 
     integration(bodies, delta_time);
 }
@@ -190,6 +199,9 @@ fn generate_contacts(
             penetration = true;
         }
     }
+
+    a.colliding = penetration;
+    b.colliding = penetration;
 
     if (penetration) {
         if (best_index < 3) {

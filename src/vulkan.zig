@@ -1958,17 +1958,36 @@ pub fn update_chunk_ubo(self: *VulkanState, objects: []main.Object, player_index
 ///
 /// returns the number of particles sent to the GPU (used for instance rendering)
 pub fn update_outline_ubo(self: *VulkanState, bodies: []main.Object, player_index: u32, ubo_index: u32) VkAbstractionError!void {
-    var data = try std.ArrayList(zm.Mat).initCapacity(self.allocator.*, 64);
+    const ubo_uniform = struct {
+        mat: zm.Mat = zm.identity(),
+        color: @Vector(4, f32) = .{ 0.0, 0.0, 0.0, 0.0 },
+    };
+
+    var data = try std.ArrayList(ubo_uniform).initCapacity(self.allocator.*, 64);
     defer data.deinit(self.allocator.*);
 
     for (bodies) |body| {
-        //if (body.body_type == .particle) {
-        try data.append(self.allocator.*, body.render_transform(bodies[player_index].position));
-        //}
+        if (body.colliding) {
+            try data.append(
+                self.allocator.*,
+                ubo_uniform{
+                    .color = .{ 0.0, 1.0, 1.0, 1.0 },
+                    .mat = body.render_transform(bodies[player_index].position),
+                },
+            );
+        } else {
+            try data.append(
+                self.allocator.*,
+                ubo_uniform{
+                    .color = .{ 1.0, 1.0, 1.0, 1.0 },
+                    .mat = body.render_transform(bodies[player_index].position),
+                },
+            );
+        }
     }
 
     if (data.items.len > 0) {
-        try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(zm.Mat)), &data.items[0]);
+        try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ubo_uniform)), &data.items[0]);
     }
 }
 
@@ -2151,7 +2170,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
         .{
             .create_info = .{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = 500 * @sizeOf(zm.Mat),
+                .size = 1000 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
                 .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             },
             .alloc_info = .{
@@ -2202,7 +2221,14 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
     //defer self.allocator.*.free(image_info0.samplers);
 
     //const image_data0 = c.stb.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.stb.STBI_rgb_alpha);
-    const image_data0 = c.stb.stbi_load_from_memory(&cursor_source[0], cursor_source.len, &image_info0.width, &image_info0.height, &image_info0.channels, c.stb.STBI_rgb_alpha);
+    const image_data0 = c.stb.stbi_load_from_memory(
+        &cursor_source[0],
+        cursor_source.len,
+        &image_info0.width,
+        &image_info0.height,
+        &image_info0.channels,
+        c.stb.STBI_rgb_alpha,
+    );
     if (image_data0 == null) {
         std.debug.print("Unable to find image file \n", .{});
         return;
@@ -2214,7 +2240,13 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
     c.stb.stbi_image_free(image_info0.data);
 
     try create_image_view(self.device, &image_info0);
-    try create_samplers(self, &image_info0, c.vulkan.VK_FILTER_LINEAR, c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT, true);
+    try create_samplers(
+        self,
+        &image_info0,
+        c.vulkan.VK_FILTER_LINEAR,
+        c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        true,
+    );
 
     var image_info1 = ImageInfo{
         .depth = 1,
@@ -2231,7 +2263,14 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
     //defer self.allocator.*.free(image_info1.views);
     //defer self.allocator.*.free(image_info1.samplers);
 
-    const image_data1 = c.stb.stbi_load_from_memory(&blocks_source[0], blocks_source.len, &image_info1.width, &image_info1.height, &image_info1.channels, c.stb.STBI_rgb_alpha);
+    const image_data1 = c.stb.stbi_load_from_memory(
+        &blocks_source[0],
+        blocks_source.len,
+        &image_info1.width,
+        &image_info1.height,
+        &image_info1.channels,
+        c.stb.STBI_rgb_alpha,
+    );
     if (image_data1 == null) {
         std.debug.print("Unable to find image file \n", .{});
         return;
@@ -2265,7 +2304,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
             c.vulkan.VkDescriptorBufferInfo{
                 .buffer = self.ubo_buffers.items[0],
                 .offset = 0,
-                .range = 500 * @sizeOf(zm.Mat),
+                .range = 1000 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
             },
             // Chunks
             c.vulkan.VkDescriptorBufferInfo{
