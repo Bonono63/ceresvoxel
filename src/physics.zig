@@ -159,7 +159,9 @@ fn generate_contacts(
     b: *main.Object,
     contacts: *std.ArrayList(Contact),
 ) !void {
-    const ab_center_line_f128 = a.*.position - b.*.position;
+    _ = &contacts;
+
+    const ab_center_line_f128 = b.*.position - a.*.position;
     // The cast is fine as long as the calculation
     // is between 2 bodies that are close enough to each other
     const ab_center_line: zm.Vec = .{
@@ -171,121 +173,221 @@ fn generate_contacts(
 
     var best_index: u32 = 100;
     var best_overlap: f32 = 10000.0;
-    var penetration: bool = false;
-    for (0..14) |i| {
-        var axis: zm.Vec = get_axis(@intCast(i), a, b);
 
-        if (zm.lengthSq3(axis)[0] < 0.0001) {
-            penetration = true;
-        } else {
-            axis = zm.normalize3(axis);
+    var are_penetrating: bool = false;
 
-            const overlap: f32 = penetration_on_axis(
-                a,
-                b,
-                axis,
-                ab_center_line,
-            );
+    // Box A axis'
+    are_penetrating = tryAxis(
+        0,
+        a.getXAxis(),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        1,
+        a.getYAxis(),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        2,
+        a.getZAxis(),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
 
-            if (overlap < 0) {
-                penetration = false;
-            } else {
-                if (overlap < best_overlap) {
-                    best_overlap = overlap;
-                    best_index = @intCast(i);
-                }
-                penetration = true;
-            }
-        }
+    // Box B axis'
+    are_penetrating = are_penetrating and tryAxis(
+        3,
+        b.getXAxis(),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        4,
+        b.getYAxis(),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        5,
+        b.getZAxis(),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+
+    // MISC axis'
+    are_penetrating = are_penetrating and tryAxis(
+        6,
+        zm.cross3(a.getXAxis(), b.getXAxis()),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        7,
+        zm.cross3(a.getXAxis(), b.getYAxis()),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        8,
+        zm.cross3(a.getXAxis(), b.getZAxis()),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        9,
+        zm.cross3(a.getYAxis(), b.getXAxis()),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        10,
+        zm.cross3(a.getYAxis(), b.getYAxis()),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        11,
+        zm.cross3(a.getYAxis(), b.getZAxis()),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        12,
+        zm.cross3(a.getZAxis(), b.getXAxis()),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        13,
+        zm.cross3(a.getZAxis(), b.getYAxis()),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+    are_penetrating = are_penetrating and tryAxis(
+        14,
+        zm.cross3(a.getZAxis(), b.getZAxis()),
+        a,
+        b,
+        ab_center_line,
+        &best_overlap,
+        &best_index,
+    );
+
+    if (are_penetrating) {
+        a.colliding = true;
+        b.colliding = true;
+        //std.debug.print("{} {}\n", .{ best_index, best_overlap });
     }
 
-    a.colliding = penetration;
-    b.colliding = penetration;
-
-    if (penetration) {
-        if (best_index < 3) {
-            try vertex_face_contact(
-                contacts,
-                a,
-                b,
-                ab_center_line,
-                best_index,
-                best_overlap,
-            );
-        } else if (best_index < 6) {
-            try vertex_face_contact(
-                contacts,
-                a,
-                b,
-                cm.scale_f32(ab_center_line, -1.0),
-                best_index - 3,
-                best_overlap,
-            );
-        } else {
-            edge_edge_contact(
-                contacts,
-                a,
-                b,
-                best_index,
-                best_overlap,
-                ab_center_line,
-            );
-        }
-    }
+    //if (penetration) {
+    //    if (best_index < 3) {
+    //        try vertex_face_contact(
+    //            contacts,
+    //            a,
+    //            b,
+    //            ab_center_line,
+    //            best_index,
+    //            best_overlap,
+    //        );
+    //    } else if (best_index < 6) {
+    //        try vertex_face_contact(
+    //            contacts,
+    //            a,
+    //            b,
+    //            cm.scale_f32(ab_center_line, -1.0),
+    //            best_index - 3,
+    //            best_overlap,
+    //        );
+    //    } // else {
+    //    //    // TODO complete edge edge contact generation
+    //    //    edge_edge_contact(
+    //    //        contacts,
+    //    //        a,
+    //    //        b,
+    //    //        best_index - 6,
+    //    //        best_overlap,
+    //    //        ab_center_line,
+    //    //    );
+    //    //}
+    //}
 }
 
-/// Produces the various axis' used in the SAT test
-fn get_axis(i: u32, a: *main.Object, b: *main.Object) zm.Vec {
-    var axis: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
-    switch (i) {
-        0 => {
-            axis = a.getXAxis();
-        },
-        1 => {
-            axis = a.getYAxis();
-        },
-        2 => {
-            axis = a.getZAxis();
-        },
-        3 => {
-            axis = b.getXAxis();
-        },
-        4 => {
-            axis = b.getYAxis();
-        },
-        5 => {
-            axis = b.getZAxis();
-        },
-        6 => {
-            axis = zm.cross3(a.getXAxis(), b.getXAxis());
-        },
-        7 => {
-            axis = zm.cross3(a.getXAxis(), b.getYAxis());
-        },
-        8 => {
-            axis = zm.cross3(a.getXAxis(), b.getZAxis());
-        },
-        9 => {
-            axis = zm.cross3(a.getYAxis(), b.getXAxis());
-        },
-        10 => {
-            axis = zm.cross3(a.getYAxis(), b.getYAxis());
-        },
-        11 => {
-            axis = zm.cross3(a.getYAxis(), b.getZAxis());
-        },
-        12 => {
-            axis = zm.cross3(a.getZAxis(), b.getXAxis());
-        },
-        13 => {
-            axis = zm.cross3(a.getZAxis(), b.getYAxis());
-        },
-        14 => {
-            axis = zm.cross3(a.getZAxis(), b.getZAxis());
-        },
-        else => {},
+fn tryAxis(
+    index: u32,
+    axis: zm.Vec,
+    a: *main.Object,
+    b: *main.Object,
+    center_line: zm.Vec,
+    best_overlap: *f32,
+    best_index: *u32,
+) bool {
+    if (zm.lengthSq3(axis)[0] < 0.0001) {
+        return true;
     }
-    return axis;
+
+    const axis_normalized = zm.normalize3(axis);
+
+    const overlap: f32 = penetration_on_axis(
+        a,
+        b,
+        axis_normalized,
+        center_line,
+    );
+
+    if (overlap < 0) {
+        return false;
+    }
+
+    if (overlap < best_overlap.*) {
+        best_overlap.* = overlap;
+        best_index.* = index;
+    }
+
+    return true;
 }
 
 ///
@@ -395,19 +497,19 @@ fn penetration_on_axis(
     axis: zm.Vec,
     ab_center_line: zm.Vec,
 ) f32 {
-    const scaled_transform_box_a_axis: f32 =
+    const a_projection: f32 =
         box_a.half_size[0] * @abs(zm.dot3(axis, box_a.getXAxis())[0]) +
         box_a.half_size[1] * @abs(zm.dot3(axis, box_a.getYAxis())[0]) +
         box_a.half_size[2] * @abs(zm.dot3(axis, box_a.getZAxis())[0]);
 
-    const scaled_transform_box_b_axis: f32 =
+    const b_projection: f32 =
         box_b.half_size[0] * @abs(zm.dot3(axis, box_b.getXAxis())[0]) +
         box_b.half_size[1] * @abs(zm.dot3(axis, box_b.getYAxis())[0]) +
         box_b.half_size[2] * @abs(zm.dot3(axis, box_b.getZAxis())[0]);
 
     const distance: f32 = @abs(zm.dot3(axis, ab_center_line)[0]);
 
-    return scaled_transform_box_a_axis + scaled_transform_box_b_axis - distance;
+    return a_projection + b_projection - distance;
 }
 
 //fn generate_impulses(contacts: std.ArrayListUnmanaged(Contact)) void {

@@ -302,9 +302,9 @@ pub fn main() !void {
         .gravity = false,
         .orientation = .{ 0.0, 0.0, std.math.pi * 0.5, std.math.pi * 0.5 },
         .angular_velocity = .{ 0.0, 0.0, 0.0, 0.0 }, //std.math.pi * 0.25, 0.0, 0.0, 0.0 },
-        .half_size = .{ 16, 16, 16, 0.0 },
+        .half_size = .{ 32, 32, 32, 0.0 },
         .body_type = .voxel_space,
-        .size = .{ 1, 1, 1 },
+        .size = .{ 2, 2, 2 },
         .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10), // 10 chunks
         .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
     });
@@ -316,6 +316,25 @@ pub fn main() !void {
         .inverse_mass = 1.0 / 500.0,
         .planet = true,
         .gravity = false,
+        .torque_accumulation = .{ 0.0, 0.0, 0.0, 0.0 },
+        .half_size = .{ 16, 16, 16, 0.0 },
+        .body_type = .voxel_space,
+        .size = .{ 1, 1, 1 },
+        .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10),
+        .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
+        .orbit_radius = 256.0,
+        .eccliptic_offset = .{
+            0.1,
+            0.3,
+        },
+    });
+
+    try game_state.objects.append(allocator, .{
+        .position = .{ 64.0, 0.0, 0.0 },
+        .inverse_mass = 1.0 / 10000.0,
+        .planet = false,
+        .gravity = false,
+        .orientation = .{ std.math.pi * 0.25, 0.0, 0.0, std.math.pi * 0.75 },
         .torque_accumulation = .{ 0.0, 0.0, 0.0, 0.0 },
         .half_size = .{ 16, 16, 16, 0.0 },
         .body_type = .voxel_space,
@@ -587,7 +606,7 @@ pub fn main() !void {
             }
             average_frame_time /= FTCB_SIZE;
 
-            std.debug.print("{any}\n", .{contacts.items});
+            //std.debug.print("{any}\n", .{contacts.items});
 
             // TODO make the position printed the camera position
             std.debug.print("mc: {s} #b:{d:3} #c:{d:4} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:2.3}ms {d:5.1}fps    \r", .{
