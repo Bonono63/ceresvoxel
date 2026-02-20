@@ -50,7 +50,8 @@ pub fn physics_tick(
     for (0..bodies.len) |a| {
         for ((a + 1)..bodies.len) |b| {
             if (a != b) {
-                if (cm.distance_f128(bodies[a].position, bodies[b].position) < 128.0) {
+                // TODO make this distance check according to half size instead of arbitrary
+                if (cm.distance_f128(bodies[a].position, bodies[b].position) < 300.0) {
                     try generate_contacts(&bodies[a], &bodies[b], contacts);
                 }
             }
@@ -391,39 +392,40 @@ fn try_axis(
     return true;
 }
 
-fn box_ray_intersection(
-    half_size: zm.Vec,
-    transform: zm.Mat,
-    origin_pos: zm.Vec,
-    direction: zm.Vec,
-) bool {
-    const MAX_STEPS: u32 = 30;
-    var step: u32 = 0;
-    var result = false;
-    const dir_norm = zm.normalize3(direction) * 0.1;
-    while (!result and step < MAX_STEPS) {
-        result = point_box_test(half_size, transform, origin_pos + dir_norm * step);
-        step += 1;
-    }
-    return result;
-}
-
-fn point_box_test(
-    half_size: zm.Vec,
-    box_transform: zm.Mat,
-    point: zm.Vec,
-) bool {
-    var result = false;
-    const inverse_box_transform = zm.inverse(box_transform);
-    const relative_point = zm.mul(point, inverse_box_transform);
-
-    // TODO test other axis
-    if (relative_point[0] < half_size[0] and relative_point[0] > -half_size[0]) {
-        result = true;
-    }
-
-    return result;
-}
+// TODO decide whether we need this atm
+//fn box_ray_intersection(
+//    half_size: zm.Vec,
+//    transform: zm.Mat,
+//    origin_pos: zm.Vec,
+//    direction: zm.Vec,
+//) bool {
+//    const MAX_STEPS: u32 = 30;
+//    var step: u32 = 0;
+//    var result = false;
+//    const dir_norm = zm.normalize3(direction) * 0.1;
+//    while (!result and step < MAX_STEPS) {
+//        result = point_box_test(half_size, transform, origin_pos + dir_norm * step);
+//        step += 1;
+//    }
+//    return result;
+//}
+//
+//fn point_box_test(
+//    half_size: zm.Vec,
+//    box_transform: zm.Mat,
+//    point: zm.Vec,
+//) bool {
+//    var result = false;
+//    const inverse_box_transform = zm.inverse(box_transform);
+//    const relative_point = zm.mul(point, inverse_box_transform);
+//
+//    // TODO test other axis
+//    if (relative_point[0] < half_size[0] and relative_point[0] > -half_size[0]) {
+//        result = true;
+//    }
+//
+//    return result;
+//}
 
 ///
 pub fn vertex_face_contact(
@@ -520,10 +522,8 @@ pub fn edge_edge_contact(
 /// Finds the penetrating depth of a Box A and a Box B on a given axis
 /// (Seperating Axis Theorum)
 ///
-/// box_a: the half size of box a
-/// transform_a: the model matrix (all rotations and translations) of box_a
-/// box_b: the half size of box b
-/// transform_b: the model matrix (all rotations and translations) of box_b
+/// box_a: transformations pertaining to box a
+/// box_b: transformation pertaining to box b
 /// axis: the axis box_a and box_b will be projected onto to test whether they overlap or not
 /// ab_center_line: the vector from the center of box_a to box_b in world coordinates
 fn penetration_on_axis(
@@ -547,6 +547,7 @@ fn penetration_on_axis(
     return a_projection + b_projection - distance;
 }
 
+// TODO decide whether to switch to Jacobian based forces (super difficult)
 //fn generate_impulses(contacts: std.ArrayListUnmanaged(Contact)) void {
 //for (contacts) |contact| {
 //if (@abs(contact.normal[0]) > @abs(contact.normal[1])) {

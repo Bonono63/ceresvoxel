@@ -212,8 +212,7 @@ pub const Object = struct {
         const transform_matrix = self.transform();
         return .{
             transform_matrix[0][0], transform_matrix[0][1], transform_matrix[0][2], 0.0,
-            //transform_matrix[0][0], transform_matrix[1][0], transform_matrix[2][0], 0.0,
-        }; //zm.normalize3(zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 }));
+        };
     }
 
     /// Returns the Y axis given the body's current transform
@@ -221,8 +220,7 @@ pub const Object = struct {
         const transform_matrix = self.transform();
         return .{
             transform_matrix[1][0], transform_matrix[1][1], transform_matrix[1][2], 0.0,
-        }; //zm.normalize3(zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 }));
-        //return zm.normalize3(zm.mul(self.transform(), zm.Vec{ 0.0, 1.0, 0.0, 0.0 }));
+        };
     }
 
     /// Returns the Z axis given the body's current transform
@@ -230,8 +228,7 @@ pub const Object = struct {
         const transform_matrix = self.transform();
         return .{
             transform_matrix[2][0], transform_matrix[2][1], transform_matrix[2][2], 0.0,
-        }; //zm.normalize3(zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 }));
-        //return zm.normalize3(zm.mul(self.transform(), zm.Vec{ 0.0, 0.0, 1.0, 0.0 }));
+        };
     }
 
     pub fn getAxis(self: *const Object, index: u32) zm.Vec {
@@ -333,9 +330,9 @@ pub fn main() !void {
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
         .gravity = false,
-        .half_size = .{ 16, 16, 16, 0.0 },
+        .size = .{ 3, 3, 3 },
+        .half_size = .{ 16 * 3, 16 * 3, 16 * 3, 0.0 },
         .body_type = .voxel_space,
-        .size = .{ 1, 1, 1 },
         .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10), // 10 chunks
         .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
     });
@@ -343,7 +340,7 @@ pub fn main() !void {
 
     // Test Box
     try game_state.objects.append(allocator, .{
-        .position = .{ 20.0, 0.0, 0.0 },
+        .position = .{ 128.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
         .gravity = false,
