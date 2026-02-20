@@ -42,7 +42,7 @@ pub fn physics_tick(
     // Contact Generation
 
     for (0..bodies.len) |i| {
-        bodies[i].colliding = false;
+        bodies[i].colliding = main.CollisionType.NONE;
     }
 
     // TODO implement 3D sweep and prune
@@ -177,7 +177,7 @@ fn generate_contacts(
     var are_penetrating: bool = false;
 
     // Box A axis'
-    are_penetrating = tryAxis(
+    are_penetrating = try_axis(
         0,
         a.getXAxis(),
         a,
@@ -186,7 +186,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         1,
         a.getYAxis(),
         a,
@@ -195,7 +195,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         2,
         a.getZAxis(),
         a,
@@ -206,7 +206,7 @@ fn generate_contacts(
     );
 
     // Box B axis'
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         3,
         b.getXAxis(),
         a,
@@ -215,7 +215,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         4,
         b.getYAxis(),
         a,
@@ -224,7 +224,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         5,
         b.getZAxis(),
         a,
@@ -235,7 +235,7 @@ fn generate_contacts(
     );
 
     // MISC axis'
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         6,
         zm.cross3(a.getXAxis(), b.getXAxis()),
         a,
@@ -244,7 +244,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         7,
         zm.cross3(a.getXAxis(), b.getYAxis()),
         a,
@@ -253,7 +253,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         8,
         zm.cross3(a.getXAxis(), b.getZAxis()),
         a,
@@ -262,7 +262,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         9,
         zm.cross3(a.getYAxis(), b.getXAxis()),
         a,
@@ -271,7 +271,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         10,
         zm.cross3(a.getYAxis(), b.getYAxis()),
         a,
@@ -280,7 +280,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         11,
         zm.cross3(a.getYAxis(), b.getZAxis()),
         a,
@@ -289,7 +289,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         12,
         zm.cross3(a.getZAxis(), b.getXAxis()),
         a,
@@ -298,7 +298,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         13,
         zm.cross3(a.getZAxis(), b.getYAxis()),
         a,
@@ -307,7 +307,7 @@ fn generate_contacts(
         &best_overlap,
         &best_index,
     );
-    are_penetrating = are_penetrating and tryAxis(
+    are_penetrating = are_penetrating and try_axis(
         14,
         zm.cross3(a.getZAxis(), b.getZAxis()),
         a,
@@ -318,8 +318,10 @@ fn generate_contacts(
     );
 
     if (are_penetrating) {
-        a.colliding = true;
-        b.colliding = true;
+        //if (a.body_type == main.Type.particle or b.body_type == main.Type.particle) {
+        a.colliding = main.CollisionType.PARTICLE;
+        b.colliding = main.CollisionType.PARTICLE;
+        //}
         //std.debug.print("{} {}\n", .{ best_index, best_overlap });
     }
 
@@ -356,7 +358,7 @@ fn generate_contacts(
     //}
 }
 
-fn tryAxis(
+fn try_axis(
     index: u32,
     axis: zm.Vec,
     a: *main.Object,
@@ -388,6 +390,40 @@ fn tryAxis(
     }
 
     return true;
+}
+
+fn box_ray_intersection(
+    half_size: zm.Vec,
+    transform: zm.Mat,
+    origin_pos: zm.Vec,
+    direction: zm.Vec,
+) bool {
+    const MAX_STEPS: u32 = 30;
+    var step: u32 = 0;
+    var result = false;
+    const dir_norm = zm.normalize3(direction) * 0.1;
+    while (!result and step < MAX_STEPS) {
+        result = point_box_test(half_size, transform, origin_pos + dir_norm * step);
+        step += 1;
+    }
+    return result;
+}
+
+fn point_box_test(
+    half_size: zm.Vec,
+    box_transform: zm.Mat,
+    point: zm.Vec,
+) bool {
+    var result = false;
+    const inverse_box_transform = zm.inverse(box_transform);
+    const relative_point = zm.mul(point, inverse_box_transform);
+
+    // TODO test other axis
+    if (relative_point[0] < half_size[0] and relative_point[0] > -half_size[0]) {
+        result = true;
+    }
+
+    return result;
 }
 
 ///
@@ -498,14 +534,14 @@ fn penetration_on_axis(
     ab_center_line: zm.Vec,
 ) f32 {
     const a_projection: f32 =
-        box_a.half_size[0] * @abs(zm.dot3(axis, box_a.getXAxis())[0]) +
-        box_a.half_size[1] * @abs(zm.dot3(axis, box_a.getYAxis())[0]) +
-        box_a.half_size[2] * @abs(zm.dot3(axis, box_a.getZAxis())[0]);
+        box_a.half_size[0] * @abs(zm.dot3(box_a.getXAxis(), axis)[0]) +
+        box_a.half_size[1] * @abs(zm.dot3(box_a.getYAxis(), axis)[0]) +
+        box_a.half_size[2] * @abs(zm.dot3(box_a.getZAxis(), axis)[0]);
 
     const b_projection: f32 =
-        box_b.half_size[0] * @abs(zm.dot3(axis, box_b.getXAxis())[0]) +
-        box_b.half_size[1] * @abs(zm.dot3(axis, box_b.getYAxis())[0]) +
-        box_b.half_size[2] * @abs(zm.dot3(axis, box_b.getZAxis())[0]);
+        box_b.half_size[0] * @abs(zm.dot3(box_b.getXAxis(), axis)[0]) +
+        box_b.half_size[1] * @abs(zm.dot3(box_b.getYAxis(), axis)[0]) +
+        box_b.half_size[2] * @abs(zm.dot3(box_b.getZAxis(), axis)[0]);
 
     const distance: f32 = @abs(zm.dot3(axis, ab_center_line)[0]);
 

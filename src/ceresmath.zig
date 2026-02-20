@@ -60,3 +60,32 @@ pub fn projectV(a: zm.Vec, b: zm.Vec) zm.Vec {
 ///// Inverse for inertia tensors
 //pub fn inverse_mat3(m: Mat3) Mat3 {
 //}
+
+pub fn matFromQuat(q: zm.Quat) zm.Mat {
+    return .{
+        .{
+            2 * (q[0] * q[0] + q[1] * q[1]) - 1,
+            2 * (q[1] * q[2] - q[0] * q[3]),
+            2 * (q[1] * q[3] + q[0] * q[2]),
+            0.0,
+        },
+        .{
+            2 * (q[1] * q[2] + q[0] * q[3]),
+            2 * (q[0] * q[0] + q[2] * q[2]) - 1,
+            2 * (q[2] * q[3] - q[0] * q[1]),
+            0.0,
+        },
+        .{
+            2 * (q[1] * q[3] - q[0] * q[2]),
+            2 * (q[2] * q[3] + q[0] * q[1]),
+            2 * (q[0] * q[0] + q[3] * q[3]) - 1,
+            0.0,
+        },
+        .{
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        },
+    };
+}

@@ -20,10 +20,17 @@ pub const InputState = packed struct {
     shift: bool = false,
     control: bool = false,
     mouse_capture: bool = true,
+    p: bool = false, // edit mode
+    equal: bool = false, // cycle print modes
+    minus: bool = false, // cycle object select
+    tab: bool = false, // cycle edit index
+    i: bool = false, // property increment
+    o: bool = false, // property decrement
     left_click: bool = false,
     right_click: bool = false,
     mouse_dx: f64 = 0.0,
     mouse_dy: f64 = 0.0,
+    scroll_dy: f64 = 0.0,
 };
 
 pub const ClientState = struct {
@@ -35,6 +42,7 @@ pub const ClientState = struct {
     camera_pos: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
     /// For use once OBB system is finished
     camera_direction: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
+    selected_object: i32 = -1, // -1 represents none selected
 
     pub fn look(self: *const ClientState) zm.Quat {
         const result = cm.qnormalize(@Vector(4, f32){
@@ -68,11 +76,18 @@ pub const ClientState = struct {
     }
 };
 
-const Type = enum {
+pub const Type = enum {
     voxel_space,
     particle,
     player,
+    line,
     other,
+};
+
+pub const CollisionType = enum {
+    NONE,
+    PARTICLE,
+    PLAYER_SELECT,
 };
 
 pub const Object = struct {
@@ -100,7 +115,7 @@ pub const Object = struct {
     ///Make sure to only ever put in half the length of each dimension of the collision box
     half_size: zm.Vec,
 
-    colliding: bool = false,
+    colliding: CollisionType = CollisionType.NONE,
 
     body_type: Type,
     particle_time: u32 = 0,
@@ -127,6 +142,13 @@ pub const Object = struct {
             @as(f32, @floatCast(self.position[2])),
             0.0,
         });
+        //const scale = zm.matFromArr(.{
+        //    self.half_size[0] * 2.0, 0.0, 0.0, 0.0, //
+        //    0.0, self.half_size[1] * 2.0, 0.0, 0.0, //
+        //    0.0, 0.0, self.half_size[2] * 2.0, 0.0, //
+        //    0.0, 0.0, 0.0, 1.0, //
+        //});
+        //result = zm.mul(result, scale);
         result = zm.mul(result, half_offset);
         result = zm.mul(result, zm.matFromQuat(self.orientation));
         result = zm.mul(result, world_pos);
@@ -144,10 +166,10 @@ pub const Object = struct {
             0.0,
         });
         const scale = zm.matFromArr(.{
-            self.half_size[0] * 2.0, 0.0, 0.0, 0.0, //
-            0.0, self.half_size[1] * 2.0, 0.0, 0.0, //
-            0.0, 0.0, self.half_size[2] * 2.0, 0.0, //
-            0.0, 0.0, 0.0, 1.0, //
+            self.half_size[0], 0.0, 0.0, 0.0, //
+            0.0, self.half_size[1], 0.0, 0.0, //
+            0.0, 0.0, self.half_size[2], 0.0, //
+            0.0, 0.0, 0.0, 0.5, //
         });
         result = zm.mul(result, scale);
         result = zm.mul(result, half_offset);
@@ -187,21 +209,33 @@ pub const Object = struct {
 
     /// Returns the X axis given the body's current transform
     pub fn getXAxis(self: *const Object) zm.Vec {
-        return zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 });
+        const transform_matrix = self.transform();
+        return .{
+            transform_matrix[0][0], transform_matrix[0][1], transform_matrix[0][2], 0.0,
+            //transform_matrix[0][0], transform_matrix[1][0], transform_matrix[2][0], 0.0,
+        }; //zm.normalize3(zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 }));
     }
 
     /// Returns the Y axis given the body's current transform
     pub fn getYAxis(self: *const Object) zm.Vec {
-        return zm.mul(self.transform(), zm.Vec{ 0.0, 1.0, 0.0, 0.0 });
+        const transform_matrix = self.transform();
+        return .{
+            transform_matrix[1][0], transform_matrix[1][1], transform_matrix[1][2], 0.0,
+        }; //zm.normalize3(zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 }));
+        //return zm.normalize3(zm.mul(self.transform(), zm.Vec{ 0.0, 1.0, 0.0, 0.0 }));
     }
 
     /// Returns the Z axis given the body's current transform
     pub fn getZAxis(self: *const Object) zm.Vec {
-        return zm.mul(self.transform(), zm.Vec{ 0.0, 0.0, 1.0, 0.0 });
+        const transform_matrix = self.transform();
+        return .{
+            transform_matrix[2][0], transform_matrix[2][1], transform_matrix[2][2], 0.0,
+        }; //zm.normalize3(zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 }));
+        //return zm.normalize3(zm.mul(self.transform(), zm.Vec{ 0.0, 0.0, 1.0, 0.0 }));
     }
 
     pub fn getAxis(self: *const Object, i: u32) zm.Vec {
-        switch (i % 3) {
+        switch (i) {
             0 => {
                 return zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 });
             },
@@ -230,8 +264,6 @@ pub const GameState = struct {
     player_index: u32 = undefined,
     sun_index: u32 = undefined,
 };
-
-pub const chicken = struct {};
 
 const ENGINE_NAME = "CeresVoxel";
 
@@ -300,57 +332,29 @@ pub fn main() !void {
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
         .gravity = false,
-        .orientation = .{ 0.0, 0.0, std.math.pi * 0.5, std.math.pi * 0.5 },
-        .angular_velocity = .{ 0.0, 0.0, 0.0, 0.0 }, //std.math.pi * 0.25, 0.0, 0.0, 0.0 },
-        .half_size = .{ 32, 32, 32, 0.0 },
+        .half_size = .{ 16, 16, 16, 0.0 },
         .body_type = .voxel_space,
-        .size = .{ 2, 2, 2 },
+        .size = .{ 1, 1, 1 },
         .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10), // 10 chunks
         .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
     });
     game_state.sun_index = @intCast(game_state.objects.items.len - 1);
 
-    // Test planet
-    try game_state.objects.append(allocator, .{
-        .position = .{ 0.0, 0.0, 0.0 },
-        .inverse_mass = 1.0 / 500.0,
-        .planet = true,
-        .gravity = false,
-        .torque_accumulation = .{ 0.0, 0.0, 0.0, 0.0 },
-        .half_size = .{ 16, 16, 16, 0.0 },
-        .body_type = .voxel_space,
-        .size = .{ 1, 1, 1 },
-        .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10),
-        .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
-        .orbit_radius = 256.0,
-        .eccliptic_offset = .{
-            0.1,
-            0.3,
-        },
-    });
-
-    try game_state.objects.append(allocator, .{
-        .position = .{ 64.0, 0.0, 0.0 },
-        .inverse_mass = 1.0 / 10000.0,
-        .planet = false,
-        .gravity = false,
-        .orientation = .{ std.math.pi * 0.25, 0.0, 0.0, std.math.pi * 0.75 },
-        .torque_accumulation = .{ 0.0, 0.0, 0.0, 0.0 },
-        .half_size = .{ 16, 16, 16, 0.0 },
-        .body_type = .voxel_space,
-        .size = .{ 1, 1, 1 },
-        .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10),
-        .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
-        .orbit_radius = 256.0,
-        .eccliptic_offset = .{
-            0.1,
-            0.3,
-        },
-    });
+    for (1..31) |i| {
+        try game_state.objects.append(allocator, .{
+            .position = .{ 32.0 + @as(f32, @floatFromInt(i)) * 2.001 + @as(f32, @floatFromInt(i % 2 + 1)), 0.0, 0.0 },
+            .inverse_mass = 1.0 / 1000.0,
+            .planet = false,
+            .gravity = false,
+            .orientation = .{ 0.0, 0.0, 0.0, 1.0 },
+            .half_size = .{ 0.5, 0.5, 0.5, 0.0 },
+            .body_type = .other,
+        });
+    }
 
     // player
     try game_state.objects.append(allocator, .{
-        .position = .{ 0.0, 1.0, 0.0 },
+        .position = .{ 0.0, 0.0, -20.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
         .body_type = .player,
@@ -428,6 +432,11 @@ pub fn main() !void {
 
     var contact_count: u32 = @intCast(contacts.items.len);
 
+    var print_mode: u32 = 0;
+    var selected_object: u32 = 0;
+    var edit_mode: bool = false;
+    var edit_index: u32 = 0;
+
     // The responsibility of the main thread is to handle input and manage
     // all the other threads
     // This will ensure the lowest input state for the various threads and have slightly
@@ -440,6 +449,73 @@ pub fn main() !void {
         const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0;
 
         c.vulkan.glfwPollEvents();
+
+        game_state.objects.items[selected_object].colliding = CollisionType.NONE;
+
+        if (input_state.equal) {
+            print_mode = (print_mode + 1) % 3;
+            input_state.equal = false;
+        }
+
+        if (input_state.minus) {
+            //print_mode = (print_mode + 2) % 3;
+            selected_object = (selected_object + 1) % @as(u32, @intCast(game_state.objects.items.len));
+            input_state.minus = false;
+        }
+
+        if (input_state.p and print_mode > 0) {
+            if (edit_mode and print_mode == 1) {
+                game_state.objects.items[selected_object].orientation = zm.normalize4(game_state.objects.items[selected_object].orientation);
+            }
+            edit_mode = !edit_mode;
+            input_state.p = false;
+        }
+
+        if (input_state.tab and edit_mode) {
+            var edit_index_max: u32 = 0;
+            if (print_mode == 1) {
+                edit_index_max = 4;
+            }
+            if (print_mode == 2) {
+                edit_index_max = 3;
+            }
+            edit_index = (edit_index + 1) % edit_index_max;
+            input_state.tab = false;
+        }
+
+        if (input_state.i and edit_mode) {
+            switch (print_mode) {
+                1 => {
+                    game_state.objects.items[selected_object].orientation[edit_index] += 0.1;
+                },
+                2 => {
+                    if (edit_index > 3) edit_index = 0;
+                    game_state.objects.items[selected_object].position[edit_index] += 0.1;
+                },
+                else => {},
+            }
+            input_state.i = false;
+        }
+
+        if (input_state.o and edit_mode) {
+            switch (print_mode) {
+                1 => {
+                    game_state.objects.items[selected_object].orientation[edit_index] -= 0.1;
+                    //game_state.objects.items[selected_object].orientation[edit_index] -= std.math.pi * 0.1;
+                    //game_state.objects.items[selected_object].orientation = zm.normalize4(game_state.objects.items[selected_object].orientation);
+                },
+                2 => {
+                    if (edit_index > 3) edit_index = 0;
+                    game_state.objects.items[selected_object].position[edit_index] -= 0.1;
+                },
+                else => {},
+            }
+            input_state.o = false;
+        }
+
+        if (edit_mode) {
+            game_state.objects.items[selected_object].colliding = CollisionType.PLAYER_SELECT;
+        }
 
         if (input_state.control) {
             game_state.client_state.free_cam_speed = 100.0;
@@ -462,6 +538,8 @@ pub fn main() !void {
             }
             input_state.mouse_dy = 0.0;
         }
+
+        input_state.scroll_dy = 0.0;
 
         const look = game_state.client_state.lookV();
         const up = game_state.client_state.up();
@@ -606,23 +684,59 @@ pub fn main() !void {
             }
             average_frame_time /= FTCB_SIZE;
 
-            //std.debug.print("{any}\n", .{contacts.items});
-
             // TODO make the position printed the camera position
-            std.debug.print("mc: {s} #b:{d:3} #c:{d:4} pos:{d:2.1} {d:2.1} {d:2.1} y:{d:3.1} p:{d:3.1} {d:2.3}ms {d:5.1}fps    \r", .{
-                if (input_state.mouse_capture) "on " else "off",
-                render_frame.bodies.len,
-                contact_count,
-                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])),
-                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
-                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
-                render_frame.client_state
-                    .yaw,
-                render_frame.client_state
-                    .pitch,
-                average_frame_time * 1000.0,
-                1.0 / average_frame_time,
-            });
+            switch (print_mode) {
+                0 => {
+                    // General mode
+                    std.debug.print("[G] {d:2.3}ms {d:5.1}fps pos:{d:3.1} {d:3.1} {d:3.1} y:{d:3.1} p:{d:3.1}      \r", .{
+                        average_frame_time * 1000.0,
+                        1.0 / average_frame_time,
+                        @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])),
+                        @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
+                        @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
+                        render_frame.client_state.yaw,
+                        render_frame.client_state.pitch,
+                    });
+                },
+                1 => {
+                    // Rotation mode
+                    var axis: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
+                    var angle: f32 = 0.0;
+                    zm.quatToAxisAngle(render_frame.bodies[selected_object].orientation, &axis, &angle);
+                    std.debug.print("[R] {d:2.3}ms {d:5.1}fps [{s}] s:{} {s}{d:3.3}\x1b[0m {s}{d:3.3}\x1b[0m {s}{d:3.3}\x1b[0m {s}{d:3.3}\x1b[0m                 \r", .{
+                        average_frame_time * 1000.0,
+                        1.0 / average_frame_time,
+                        if (edit_mode) "E" else "-",
+                        selected_object,
+                        if (edit_mode and edit_index == 0) "\x1b[48;5;27m" else "",
+                        axis[0],
+                        if (edit_mode and edit_index == 1) "\x1b[48;5;27m" else "",
+                        axis[1],
+                        if (edit_mode and edit_index == 2) "\x1b[48;5;27m" else "",
+                        axis[2],
+                        if (edit_mode and edit_index == 3) "\x1b[48;5;27m" else "",
+                        angle,
+                    });
+                },
+                2 => {
+                    // Position mode
+                    std.debug.print("[P] {d:2.3}ms {d:5.1}fps [{s}] s:{} x:{s}{d:3.3}\x1b[0m y:{s}{d:3.3}\x1b[0m z:{s}{d:3.3}\x1b[0m #b:{d:3} #c:{d:4}\r", .{
+                        average_frame_time * 1000.0,
+                        1.0 / average_frame_time,
+                        if (edit_mode) "E" else "-",
+                        selected_object,
+                        if (edit_mode and edit_index == 0) "\x1b[48;5;27m" else "",
+                        render_frame.bodies[selected_object].position[0],
+                        if (edit_mode and edit_index == 1) "\x1b[48;5;27m" else "",
+                        render_frame.bodies[selected_object].position[1],
+                        if (edit_mode and edit_index == 2) "\x1b[48;5;27m" else "",
+                        render_frame.bodies[selected_object].position[2],
+                        render_frame.bodies.len,
+                        contact_count,
+                    });
+                },
+                else => {},
+            }
 
             frame_time_cyclic_buffer[frame_time_buffer_index] = @floatCast(delta_time_float);
             if (frame_time_buffer_index < FTCB_SIZE - 1) {
@@ -736,6 +850,54 @@ pub export fn key_callback(
                 }
             }
         },
+        c.vulkan.GLFW_KEY_P => {
+            if (action == c.vulkan.GLFW_PRESS) {
+                input_state.p = true;
+            }
+            if (action == c.vulkan.GLFW_RELEASE) {
+                input_state.p = false;
+            }
+        },
+        c.vulkan.GLFW_KEY_EQUAL => {
+            if (action == c.vulkan.GLFW_PRESS) {
+                input_state.equal = true;
+            }
+            if (action == c.vulkan.GLFW_RELEASE) {
+                input_state.equal = false;
+            }
+        },
+        c.vulkan.GLFW_KEY_MINUS => {
+            if (action == c.vulkan.GLFW_PRESS) {
+                input_state.minus = true;
+            }
+            if (action == c.vulkan.GLFW_RELEASE) {
+                input_state.minus = false;
+            }
+        },
+        c.vulkan.GLFW_KEY_TAB => {
+            if (action == c.vulkan.GLFW_PRESS) {
+                input_state.tab = true;
+            }
+            if (action == c.vulkan.GLFW_RELEASE) {
+                input_state.tab = false;
+            }
+        },
+        c.vulkan.GLFW_KEY_I => {
+            if (action == c.vulkan.GLFW_PRESS) {
+                input_state.i = true;
+            }
+            if (action == c.vulkan.GLFW_RELEASE) {
+                input_state.i = false;
+            }
+        },
+        c.vulkan.GLFW_KEY_O => {
+            if (action == c.vulkan.GLFW_PRESS) {
+                input_state.o = true;
+            }
+            if (action == c.vulkan.GLFW_RELEASE) {
+                input_state.o = false;
+            }
+        },
         else => {},
     }
 }
@@ -787,6 +949,17 @@ pub export fn mouse_button_input_callback(
         },
         else => {},
     }
+}
+
+pub export fn mouse_scroll_input_callback(
+    window: ?*c.vulkan.GLFWwindow,
+    xoffset: f64,
+    yoffset: f64,
+) void {
+    _ = &window;
+    _ = &xoffset;
+
+    input_state.scroll_dy += yoffset;
 }
 
 pub export fn window_resize_callback(

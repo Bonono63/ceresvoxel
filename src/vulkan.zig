@@ -45,6 +45,11 @@ const block_selection_cube: [17]Vertex = .{
     .{ .pos = .{ 1.001, -0.001, 1.001 }, .color = COLOR },
 };
 
+const line_vertices: [2]Vertex = .{
+    .{ .pos = .{ 0.0, 0.0, 0.0 }, .color = COLOR },
+    .{ .pos = .{ 0.0, 0.0, 1.0 }, .color = COLOR },
+};
+
 const CURSOR_SCALE: f32 = 1.0 / 64.0;
 const cursor_vertices: [6]Vertex = .{
     .{ .pos = .{ -CURSOR_SCALE, -CURSOR_SCALE, 0.0 }, .color = .{ 0.0, 0.0, 0.0 } },
@@ -649,7 +654,7 @@ pub const VulkanState = struct {
     pub fn create_descriptor_set_layouts(self: *VulkanState) VkAbstractionError!void {
         // A description of the bindings and their contents
         // Essentially we need one of these per uniform buffer
-        const layout_bindings: [4]c.vulkan.VkDescriptorSetLayoutBinding = .{
+        const layout_bindings: [5]c.vulkan.VkDescriptorSetLayoutBinding = .{
             c.vulkan.VkDescriptorSetLayoutBinding{
                 .binding = 0,
                 .descriptorCount = 1,
@@ -673,6 +678,13 @@ pub const VulkanState = struct {
             },
             c.vulkan.VkDescriptorSetLayoutBinding{
                 .binding = 3,
+                .descriptorCount = 1,
+                .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .stageFlags = c.vulkan.VK_SHADER_STAGE_ALL,
+                .pImmutableSamplers = null,
+            },
+            c.vulkan.VkDescriptorSetLayoutBinding{
+                .binding = 4,
                 .descriptorCount = 1,
                 .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .stageFlags = c.vulkan.VK_SHADER_STAGE_ALL,
@@ -1967,22 +1979,34 @@ pub fn update_outline_ubo(self: *VulkanState, bodies: []main.Object, player_inde
     defer data.deinit(self.allocator.*);
 
     for (bodies) |body| {
-        if (body.colliding) {
-            try data.append(
-                self.allocator.*,
-                ubo_uniform{
-                    .color = .{ 0.0, 1.0, 1.0, 1.0 },
-                    .mat = body.render_transform(bodies[player_index].position),
-                },
-            );
-        } else {
-            try data.append(
-                self.allocator.*,
-                ubo_uniform{
-                    .color = .{ 1.0, 1.0, 1.0, 1.0 },
-                    .mat = body.render_transform(bodies[player_index].position),
-                },
-            );
+        switch (body.colliding) {
+            main.CollisionType.NONE => {
+                try data.append(
+                    self.allocator.*,
+                    ubo_uniform{
+                        .color = .{ 1.0, 1.0, 1.0, 1.0 },
+                        .mat = body.render_transform(bodies[player_index].position),
+                    },
+                );
+            },
+            main.CollisionType.PARTICLE => {
+                try data.append(
+                    self.allocator.*,
+                    ubo_uniform{
+                        .color = .{ 0.0, 1.0, 1.0, 1.0 },
+                        .mat = body.render_transform(bodies[player_index].position),
+                    },
+                );
+            },
+            main.CollisionType.PLAYER_SELECT => {
+                try data.append(
+                    self.allocator.*,
+                    ubo_uniform{
+                        .color = .{ 1.0, 0.0, 0.0, 1.0 },
+                        .mat = body.render_transform(bodies[player_index].position),
+                    },
+                );
+            },
         }
     }
 
@@ -2144,6 +2168,11 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
         @intCast(block_selection_cube.len * @sizeOf(Vertex)),
         @ptrCast(@constCast(&block_selection_cube[0])),
     );
+    _ = try self.create_vertex_buffer(
+        @sizeOf(Vertex),
+        @intCast(line_vertices.len * @sizeOf(Vertex)),
+        @ptrCast(@constCast(&line_vertices[0])),
+    );
 
     // cursor
     try self.render_targets.append(self.allocator.*, .{
@@ -2158,6 +2187,13 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
         .vertex_count = self.vertex_buffers.items[1].vertex_count,
         .instance_count = 0,
     });
+    // line
+    try self.render_targets.append(self.allocator.*, .{
+        .vertex_buffer = self.vertex_buffers.items[2].buffer,
+        .pipeline_index = 1,
+        .vertex_count = self.vertex_buffers.items[2].vertex_count,
+        .instance_count = 0,
+    });
 
     // RENDER INIT
 
@@ -2166,7 +2202,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
         alloc_info: c.vulkan.VmaAllocationCreateInfo,
     };
 
-    const buffer_infos: [2]BufferInfo = .{
+    const buffer_infos: [3]BufferInfo = .{
         .{
             .create_info = .{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -2182,6 +2218,17 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
             .create_info = .{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 .size = 100 * @sizeOf(ChunkRenderData),
+                .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            },
+            .alloc_info = .{
+                .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
+                .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+            },
+        },
+        .{
+            .create_info = .{
+                .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = 1000 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
                 .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             },
             .alloc_info = .{
@@ -2299,7 +2346,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
     }
 
     for (0..self.MAX_CONCURRENT_FRAMES) |i| {
-        const buffers: [2]c.vulkan.VkDescriptorBufferInfo = .{
+        const buffers: [3]c.vulkan.VkDescriptorBufferInfo = .{
             // Particles
             c.vulkan.VkDescriptorBufferInfo{
                 .buffer = self.ubo_buffers.items[0],
@@ -2311,6 +2358,12 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
                 .buffer = self.ubo_buffers.items[1],
                 .offset = 0,
                 .range = 100 * @sizeOf(ChunkRenderData),
+            },
+            // Lines
+            c.vulkan.VkDescriptorBufferInfo{
+                .buffer = self.ubo_buffers.items[2],
+                .offset = 0,
+                .range = 1000 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
             },
         };
 
@@ -2324,7 +2377,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
             .sampler = image_info1.samplers[i],
         } };
 
-        const descriptor_writes: [4]c.vulkan.VkWriteDescriptorSet = .{
+        const descriptor_writes: [5]c.vulkan.VkWriteDescriptorSet = .{
             c.vulkan.VkWriteDescriptorSet{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = self.descriptor_sets[i],
@@ -2366,6 +2419,17 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
                 .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
                 .pBufferInfo = &buffers[1],
+                .pImageInfo = null,
+                .pTexelBufferView = null,
+            },
+            c.vulkan.VkWriteDescriptorSet{
+                .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = self.descriptor_sets[i],
+                .dstBinding = 4,
+                .dstArrayElement = 0,
+                .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &buffers[2],
                 .pImageInfo = null,
                 .pTexelBufferView = null,
             },

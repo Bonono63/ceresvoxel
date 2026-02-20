@@ -51,6 +51,9 @@ pub fn build(b: *std.Build) void {
     const zmath = b.dependency("zmath", .{});
     exe.root_module.addImport("zmath", zmath.module("root"));
 
+    const truetype = b.dependency("TrueType", .{});
+    exe.root_module.addImport("TrueType", truetype.module("TrueType"));
+
     // Should be built against the vulkan system library, building it yourself is
     // not really recomended
     if (target.result.os.tag == .linux)
