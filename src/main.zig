@@ -233,23 +233,6 @@ pub const Object = struct {
         }; //zm.normalize3(zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 }));
         //return zm.normalize3(zm.mul(self.transform(), zm.Vec{ 0.0, 0.0, 1.0, 0.0 }));
     }
-
-    pub fn getAxis(self: *const Object, i: u32) zm.Vec {
-        switch (i) {
-            0 => {
-                return zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 });
-            },
-            1 => {
-                return zm.mul(self.transform(), zm.Vec{ 0.0, 1.0, 0.0, 0.0 });
-            },
-            2 => {
-                return zm.mul(self.transform(), zm.Vec{ 0.0, 0.0, 1.0, 0.0 });
-            },
-            else => {
-                return zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 });
-            },
-        }
-    }
 };
 
 ///Stores arbitrary state of the game
@@ -340,17 +323,15 @@ pub fn main() !void {
     });
     game_state.sun_index = @intCast(game_state.objects.items.len - 1);
 
-    for (1..31) |i| {
-        try game_state.objects.append(allocator, .{
-            .position = .{ 32.0 + @as(f32, @floatFromInt(i)) * 2.001 + @as(f32, @floatFromInt(i % 2 + 1)), 0.0, 0.0 },
-            .inverse_mass = 1.0 / 1000.0,
-            .planet = false,
-            .gravity = false,
-            .orientation = .{ 0.0, 0.0, 0.0, 1.0 },
-            .half_size = .{ 0.5, 0.5, 0.5, 0.0 },
-            .body_type = .other,
-        });
-    }
+    // Test Box
+    try game_state.objects.append(allocator, .{
+        .position = .{ 20.0, 0.0, 0.0 },
+        .inverse_mass = 1.0 / 1000.0,
+        .planet = false,
+        .gravity = false,
+        .half_size = .{ 1, 1, 1, 0.0 },
+        .body_type = .other,
+    });
 
     // player
     try game_state.objects.append(allocator, .{
@@ -450,8 +431,6 @@ pub fn main() !void {
 
         c.vulkan.glfwPollEvents();
 
-        game_state.objects.items[selected_object].colliding = CollisionType.NONE;
-
         if (input_state.equal) {
             print_mode = (print_mode + 1) % 3;
             input_state.equal = false;
@@ -514,7 +493,7 @@ pub fn main() !void {
         }
 
         if (edit_mode) {
-            game_state.objects.items[selected_object].colliding = CollisionType.PLAYER_SELECT;
+            //game_state.objects.items[selected_object].colliding = CollisionType.PLAYER_SELECT;
         }
 
         if (input_state.control) {

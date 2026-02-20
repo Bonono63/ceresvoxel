@@ -318,6 +318,7 @@ fn generate_contacts(
     );
 
     if (are_penetrating) {
+        std.debug.print("collision\n", .{});
         //if (a.body_type == main.Type.particle or b.body_type == main.Type.particle) {
         a.colliding = main.CollisionType.PARTICLE;
         b.colliding = main.CollisionType.PARTICLE;
