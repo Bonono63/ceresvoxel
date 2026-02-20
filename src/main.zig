@@ -233,6 +233,24 @@ pub const Object = struct {
         }; //zm.normalize3(zm.mul(self.transform(), zm.Vec{ 1.0, 0.0, 0.0, 0.0 }));
         //return zm.normalize3(zm.mul(self.transform(), zm.Vec{ 0.0, 0.0, 1.0, 0.0 }));
     }
+
+    pub fn getAxis(self: *const Object, index: u32) zm.Vec {
+        switch (index % 3) {
+            0 => {
+                return self.getXAxis();
+            },
+            1 => {
+                return self.getYAxis();
+            },
+            2 => {
+                return self.getZAxis();
+            },
+            else => {
+                std.debug.print("[Error] Invalid axis requested\n", .{});
+                return .{ 0.0, 0.0, 0.0, 0.0 };
+            },
+        }
+    }
 };
 
 ///Stores arbitrary state of the game

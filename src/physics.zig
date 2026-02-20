@@ -159,8 +159,6 @@ fn generate_contacts(
     b: *main.Object,
     contacts: *std.ArrayList(Contact),
 ) !void {
-    _ = &contacts;
-
     const ab_center_line_f128 = b.*.position - a.*.position;
     // The cast is fine as long as the calculation
     // is between 2 bodies that are close enough to each other
@@ -318,7 +316,7 @@ fn generate_contacts(
     );
 
     if (are_penetrating) {
-        std.debug.print("collision\n", .{});
+        //std.debug.print("collision\n", .{});
         //if (a.body_type == main.Type.particle or b.body_type == main.Type.particle) {
         a.colliding = main.CollisionType.PARTICLE;
         b.colliding = main.CollisionType.PARTICLE;
@@ -326,37 +324,37 @@ fn generate_contacts(
         //std.debug.print("{} {}\n", .{ best_index, best_overlap });
     }
 
-    //if (penetration) {
-    //    if (best_index < 3) {
-    //        try vertex_face_contact(
-    //            contacts,
-    //            a,
-    //            b,
-    //            ab_center_line,
-    //            best_index,
-    //            best_overlap,
-    //        );
-    //    } else if (best_index < 6) {
-    //        try vertex_face_contact(
-    //            contacts,
-    //            a,
-    //            b,
-    //            cm.scale_f32(ab_center_line, -1.0),
-    //            best_index - 3,
-    //            best_overlap,
-    //        );
-    //    } // else {
-    //    //    // TODO complete edge edge contact generation
-    //    //    edge_edge_contact(
-    //    //        contacts,
-    //    //        a,
-    //    //        b,
-    //    //        best_index - 6,
-    //    //        best_overlap,
-    //    //        ab_center_line,
-    //    //    );
-    //    //}
-    //}
+    if (are_penetrating) {
+        if (best_index < 3) {
+            try vertex_face_contact(
+                contacts,
+                a,
+                b,
+                ab_center_line,
+                best_index,
+                best_overlap,
+            );
+        } else if (best_index < 6) {
+            try vertex_face_contact(
+                contacts,
+                a,
+                b,
+                cm.scale_f32(ab_center_line, -1.0),
+                best_index - 3,
+                best_overlap,
+            );
+        } else {
+            // TODO complete edge edge contact generation
+            //edge_edge_contact(
+            //    contacts,
+            //    a,
+            //    b,
+            //    best_index - 6,
+            //    best_overlap,
+            //    ab_center_line,
+            //);
+        }
+    }
 }
 
 fn try_axis(
