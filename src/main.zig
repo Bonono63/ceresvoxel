@@ -86,7 +86,7 @@ pub const Type = enum {
 
 pub const CollisionType = enum {
     NONE,
-    PARTICLE,
+    COLLISION,
     PLAYER_SELECT,
 };
 
@@ -330,7 +330,7 @@ pub fn main() !void {
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
         .gravity = false,
-        .size = .{ 3, 3, 3 },
+        .size = .{ 3, 3, 3 }, // 32 * 3 / 2
         .half_size = .{ 16 * 3, 16 * 3, 16 * 3, 0.0 },
         .body_type = .voxel_space,
         .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10), // 10 chunks
@@ -596,7 +596,7 @@ pub fn main() !void {
                     .velocity = cm.scale_f32(game_state.client_state
                         .lookV(), 1.0 * 32.0) + player_physics_state.*.velocity,
                     //.angular_velocity = .{1.0,0.0,0.0,0.0},
-                    .half_size = .{ 0.5, 0.5, 0.5, 0.0 },
+                    .half_size = .{ 0.125, 0.125, 0.125, 0.0 },
                     .body_type = .particle,
                 });
 
@@ -743,7 +743,7 @@ pub fn main() !void {
             frame_count += 1;
         }
 
-        contacts.clearRetainingCapacity();
+        //contacts.clearRetainingCapacity();
         current_render_targets.clearRetainingCapacity();
     }
 

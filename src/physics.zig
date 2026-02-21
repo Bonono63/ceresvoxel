@@ -9,12 +9,18 @@ pub const GRAVITATIONAL_CONSTANT: f128 = 6.67428e-11;
 pub const AU: f128 = 149.6e9;
 pub const SCALE: f32 = 50.0;
 
+const MAX_CONTACT_LIFETIME: u32 = 4;
+
 pub const Contact = struct {
+    best_index: u8,
+    lifetime: u8,
     penetration: f32,
     restitution: f32, // how close to ellastic vs inellastic
     friction: f32,
     position: zm.Vec,
     normal: zm.Vec,
+    a: *main.Object,
+    b: *main.Object,
 };
 
 /// Integrates all linear forces, torques, angular velocities, linear velocities, positions,
@@ -34,6 +40,24 @@ pub fn physics_tick(
     bodies: []main.Object,
     contacts: *std.ArrayList(Contact),
 ) !void {
+    // Planetary Motion
+    for (0..bodies.len) |index| {
+        if (bodies[index].planet) {
+            // TODO make the orbit have an offset according to the barocenter
+            // TODO Use eccentricity to skew one axis (x or z), the barocenter will have to be adjusted for more accurate
+            // deterministic motion
+            const time = @as(f64, @floatFromInt(std.time.milliTimestamp() - sim_start_time)) / @as(f32, @floatCast(bodies[index].orbit_radius));
+            const x: f128 = bodies[index].orbit_radius * @cos(time / 8.0) + bodies[index].barycenter[0];
+            const z: f128 = bodies[index].orbit_radius * @sin(time / 8.0) + bodies[index].barycenter[1];
+            const y: f128 = bodies[index].eccliptic_offset[0] * x + bodies[index].eccliptic_offset[1] * z;
+
+            bodies[index].position = .{ x, y, z };
+            bodies[index].velocity = zm.normalize3(.{ -@as(f32, @floatCast(z)), @as(f32, @floatCast(y)), @as(f32, @floatCast(x)), 0.0 });
+        }
+    }
+
+    integration(bodies, delta_time);
+
     // Force Accumulation
     // Gravity
     // Bouyancy
@@ -62,30 +86,22 @@ pub fn physics_tick(
     // accurate. But also much harder to implement and require a re understanding
     // of how we apply forces. A decision should probably be made on whether that approach
     // is our ultimate solution or not before we implement too much physics breaking stuff
-    for (contacts.items) |contact| {
+    for (contacts.items, 0..contacts.items.len) |contact, index| {
         _ = &contact;
+        _ = &index;
+
+        // Cull contacts
+        // if (contact.lifetime > MAX_CONTACT_LIFETIME) {
+        //     _ = contacts.;
+        // } else {}
+
+        // contacts.items[index].lifetime += 1;
+
+        contacts.clearRetainingCapacity();
+
         // resolve collisions (apply torques)
         //generate_impulses();
     }
-    // clear contacts
-
-    // Planetary Motion
-    for (0..bodies.len) |index| {
-        if (bodies[index].planet) {
-            // TODO make the orbit have an offset according to the barocenter
-            // TODO Use eccentricity to skew one axis (x or z), the barocenter will have to be adjusted for more accurate
-            // deterministic motion
-            const time = @as(f64, @floatFromInt(std.time.milliTimestamp() - sim_start_time)) / @as(f32, @floatCast(bodies[index].orbit_radius));
-            const x: f128 = bodies[index].orbit_radius * @cos(time / 8.0) + bodies[index].barycenter[0];
-            const z: f128 = bodies[index].orbit_radius * @sin(time / 8.0) + bodies[index].barycenter[1];
-            const y: f128 = bodies[index].eccliptic_offset[0] * x + bodies[index].eccliptic_offset[1] * z;
-
-            bodies[index].position = .{ x, y, z };
-            bodies[index].velocity = zm.normalize3(.{ -@as(f32, @floatCast(z)), @as(f32, @floatCast(y)), @as(f32, @floatCast(x)), 0.0 });
-        }
-    }
-
-    integration(bodies, delta_time);
 }
 
 /// Classical Mechanics (Integrator)
@@ -317,12 +333,8 @@ fn generate_contacts(
     );
 
     if (are_penetrating) {
-        //std.debug.print("collision\n", .{});
-        //if (a.body_type == main.Type.particle or b.body_type == main.Type.particle) {
-        a.colliding = main.CollisionType.PARTICLE;
-        b.colliding = main.CollisionType.PARTICLE;
-        //}
-        //std.debug.print("{} {}\n", .{ best_index, best_overlap });
+        a.colliding = main.CollisionType.COLLISION;
+        b.colliding = main.CollisionType.COLLISION;
     }
 
     if (are_penetrating) {
@@ -346,14 +358,14 @@ fn generate_contacts(
             );
         } else {
             // TODO complete edge edge contact generation
-            //edge_edge_contact(
-            //    contacts,
-            //    a,
-            //    b,
-            //    best_index - 6,
-            //    best_overlap,
-            //    ab_center_line,
-            //);
+            edge_edge_contact(
+                contacts,
+                a,
+                b,
+                best_index - 6,
+                best_overlap,
+                ab_center_line,
+            );
         }
     }
 }
@@ -456,11 +468,15 @@ pub fn vertex_face_contact(
     // TODO add materials for blocks and have the
     // friction and restitution derived from it
     const contact: Contact = .{
+        .best_index = @intCast(best_index),
+        .lifetime = 0,
         .normal = normal,
         .penetration = penetration,
         .position = zm.mul(b.transform(), vertex),
         .restitution = 1.0,
         .friction = 0.1,
+        .a = a,
+        .b = b,
     };
 
     list.appendAssumeCapacity(contact);
@@ -477,8 +493,10 @@ pub fn edge_edge_contact(
 ) void {
     // Edge-Edge contact between box 1 and box 2
 
-    const a_axis = a.getAxis(best_index / 3);
-    const b_axis = b.getAxis(best_index % 3);
+    const a_axis_index: u32 = best_index / 3;
+    const b_axis_index: u32 = best_index % 3;
+    const a_axis = a.getAxis(a_axis_index);
+    const b_axis = b.getAxis(b_axis_index);
 
     var axis = zm.normalize3(zm.cross3(a_axis, b_axis));
 
@@ -486,34 +504,67 @@ pub fn edge_edge_contact(
         axis = cm.scale_f32(axis, -1.0);
     }
 
-    var point_on_edge_one: zm.Vec = a.half_size;
-    var point_on_edge_two: zm.Vec = b.half_size;
+    var point_on_edge_a: zm.Vec = a.half_size;
+    var point_on_edge_b: zm.Vec = b.half_size;
 
     for (0..3) |i| {
-        if (i == best_index / 3) {
-            point_on_edge_one[i] = 0;
+        if (i == a_axis_index) {
+            point_on_edge_a[i] = 0;
         } else if (zm.dot3(a.getAxis(@intCast(i)), axis)[0] > 0) {
-            point_on_edge_one[i] = -point_on_edge_one[i];
+            point_on_edge_a[i] = -point_on_edge_a[i];
         }
 
-        if (i == best_index % 3) {
-            point_on_edge_two[i] = 0;
+        if (i == b_axis_index) {
+            point_on_edge_b[i] = 0;
         } else if (zm.dot3(b.getAxis(@intCast(i)), axis)[0] < 0) {
-            point_on_edge_two[i] = -point_on_edge_two[i];
+            point_on_edge_b[i] = -point_on_edge_b[i];
         }
     }
 
-    point_on_edge_one = zm.mul(a.transform(), point_on_edge_one);
-    point_on_edge_two = zm.mul(b.transform(), point_on_edge_two);
+    point_on_edge_a = zm.mul(a.transform(), point_on_edge_a);
+    point_on_edge_b = zm.mul(b.transform(), point_on_edge_b);
 
-    const vertex: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
+    // ref: contactPoint()
+    var vertex: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
+
+    const use_a_axis: bool = best_index > 2;
+
+    const square_magnitude_a: f32 = zm.lengthSq3(a_axis)[0];
+    const square_magnitude_b: f32 = zm.lengthSq3(b_axis)[0];
+    const dot_product_ab: f32 = zm.dot3(a_axis, b_axis)[0];
+
+    const to_St: zm.Vec = point_on_edge_a - point_on_edge_b;
+    const dot_product_Sta_a: f32 = zm.dot3(a_axis, to_St)[0];
+    const dot_product_Sta_b: f32 = zm.dot3(b_axis, to_St)[0];
+
+    const denominator: f32 = square_magnitude_a * square_magnitude_b - dot_product_ab * dot_product_ab;
+
+    if (@abs(denominator) < 0.0001) {
+        if (use_a_axis) vertex = point_on_edge_a else vertex = point_on_edge_b;
+    }
+
+    const mua = (dot_product_ab * dot_product_Sta_b - square_magnitude_b * dot_product_Sta_a) / denominator;
+    const mub = (square_magnitude_a * dot_product_Sta_b - dot_product_ab * dot_product_Sta_a) / denominator;
+
+    if (mua > a.half_size[a_axis_index] or mua < -a.half_size[a_axis_index] or mub > b.half_size[b_axis_index] or mub < -b.half_size[b_axis_index]) {
+        if (use_a_axis) vertex = point_on_edge_a else vertex = point_on_edge_b;
+    } else {
+        const contact_a = point_on_edge_a + cm.scale_f32(a_axis, mua);
+        const contact_b = point_on_edge_b + cm.scale_f32(b_axis, mub);
+
+        vertex = cm.scale_f32(contact_a, 0.5) + cm.scale_f32(contact_b, 0.5);
+    }
 
     const contact: Contact = .{
+        .best_index = @intCast(best_index),
+        .lifetime = 0,
         .normal = axis,
         .penetration = penetration,
         .position = vertex,
         .restitution = 1.0,
         .friction = 0.1,
+        .a = a,
+        .b = b,
     };
 
     list.appendAssumeCapacity(contact);
@@ -547,7 +598,58 @@ fn penetration_on_axis(
     return a_projection + b_projection - distance;
 }
 
-// TODO decide whether to switch to Jacobian based forces (super difficult)
+/// Produces a Orthonormal basis to the provided normal vector
+/// This does not work well with friction though
+fn orthonormal_basis(contact_vec: zm.Vec) zm.Mat {
+    var result: zm.Mat = zm.identity();
+
+    if (@abs(contact_vec[0]) > @abs(contact_vec[1])) {
+        const scale_factor = 1.0 / @sqrt(contact_vec[0] * contact_vec[0] + contact_vec[2] * contact_vec[2]);
+        const y_vec: zm.Vec = .{
+            contact_vec[2] / scale_factor,
+            0.0,
+            contact_vec[0] / scale_factor,
+            0.0,
+        };
+
+        const z_vec: zm.Vec = .{
+            contact_vec[1] * y_vec[0],
+            contact_vec[2] * y_vec[0] - contact_vec[0] * y_vec[2],
+            -contact_vec[1] * y_vec[0],
+            0.0,
+        };
+        result = .{
+            contact_vec[0], y_vec[0], z_vec[0], 0.0,
+            contact_vec[1], y_vec[1], z_vec[1], 0.0,
+            contact_vec[2], y_vec[2], z_vec[2], 0.0,
+            0.0,            0.0,      0.0,      0.0,
+        };
+    } else {
+        const scale_factor = 1.0 / @sqrt(contact_vec[0] * contact_vec[0] + contact_vec[1] * contact_vec[1]);
+        const y_vec: zm.Vec = .{
+            contact_vec[2] / scale_factor,
+            0.0,
+            contact_vec[0] / scale_factor,
+            0.0,
+        };
+
+        const z_vec: zm.Vec = .{
+            contact_vec[1] * y_vec[0],
+            contact_vec[2] * y_vec[0] - contact_vec[0] * y_vec[2],
+            -contact_vec[1] * y_vec[0],
+            0.0,
+        };
+        result = .{
+            contact_vec[0], y_vec[0], z_vec[0], 0.0,
+            contact_vec[1], y_vec[1], z_vec[1], 0.0,
+            contact_vec[2], y_vec[2], z_vec[2], 0.0,
+            0.0,            0.0,      0.0,      0.0,
+        };
+    }
+    return result;
+}
+
+// TODO decide whether to switch to Jacobian based forces
 //fn generate_impulses(contacts: std.ArrayListUnmanaged(Contact)) void {
 //for (contacts) |contact| {
 //if (@abs(contact.normal[0]) > @abs(contact.normal[1])) {

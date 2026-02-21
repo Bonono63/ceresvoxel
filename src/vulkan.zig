@@ -1989,7 +1989,7 @@ pub fn update_outline_ubo(self: *VulkanState, bodies: []main.Object, player_inde
                     },
                 );
             },
-            main.CollisionType.PARTICLE => {
+            main.CollisionType.COLLISION => {
                 try data.append(
                     self.allocator.*,
                     ubo_uniform{
