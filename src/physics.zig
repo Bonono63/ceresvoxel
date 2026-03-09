@@ -6,7 +6,6 @@ const zm = @import("zmath");
 const cm = @import("ceresmath.zig");
 const chunk = @import("chunk.zig");
 const main = @import("main.zig");
-const gGS = @import("gGS.zig");
 
 pub const GRAVITATIONAL_CONSTANT: f128 = 6.67428e-11;
 pub const AU: f128 = 149.6e9;
@@ -119,7 +118,7 @@ pub fn physics_tick(
     }
 }
 
-// TODO replace with RK4
+// TODO replace with RK4?
 /// Classical Mechanics: Basic Euler Integrator
 pub fn integration(objects: []main.Object, delta_time: f64) void {
     for (0..objects.len) |index| {
@@ -193,8 +192,8 @@ fn generate_contacts(
     contacts: *std.ArrayList(Contact),
 ) !void {
     const ab_center_line_f128 = b.*.position - a.*.position;
-    // The cast is fine as long as the calculation
-    // is between 2 bodies that are close enough to each other
+    // Cast should be ok as long as objects being compared are within
+    // the f32 range. All internal calculations should be relative but they aren't...
     const ab_center_line: zm.Vec = .{
         @as(f32, @floatCast(ab_center_line_f128[0])),
         @as(f32, @floatCast(ab_center_line_f128[1])),
@@ -207,7 +206,7 @@ fn generate_contacts(
 
     var are_penetrating: bool = false;
 
-    // TODO make all of these switch statements
+    // TODO optimize this a little more?
     // Box A axis'
     are_penetrating = try_axis(
         0,
@@ -498,7 +497,7 @@ pub fn vertex_face_contact(
         vertex[2] = -vertex[2];
     }
 
-    // TODO add materials for blocks and have the
+    // TODO add materials for bocks and have the
     // friction and restitution derived from it
     //std.debug.print("generated penetration: {}\n", .{penetration});
     const contact: Contact = .{
@@ -525,8 +524,6 @@ pub fn edge_edge_contact(
     penetration: f32,
     center_line: zm.Vec,
 ) void {
-    // Edge-Edge contact between box 1 and box 2
-
     const a_axis_index: u32 = best_index / 3;
     const b_axis_index: u32 = best_index % 3;
     const a_axis = a.getAxis(a_axis_index);
@@ -698,7 +695,6 @@ fn prepare_contact(
     const relative_contact_position_b: zm.Vec = contact.position - b_cast_pos;
     contact.relative_contact_position = .{ relative_contact_position_a, relative_contact_position_b };
 
-    // Do we need the contact velocity saved for later?
     contact.velocity = calculate_local_velocity(contact, contact.bodies[0], relative_contact_position_a, delta_time);
     contact.velocity -= calculate_local_velocity(contact, contact.bodies[1], relative_contact_position_b, delta_time);
 

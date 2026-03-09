@@ -4,15 +4,10 @@ A Voxel Engine
 TODO:
 
     HIGH PRIORITY:
-    Finish Iterative physics solver (Maybe Jacobian later???)
-    XPBD physics solver?
-    Prune and Sweep algorithm
-    RK4 Integration
-    Localized physics (planet faces are simplified into planes)
-    Make the collision detection and resolution completely precision agnostic from position
-    Procedural world generation
-    Chunk LOD system
-    Chunk culling algorithm
+    Finish Iterative physics solver
+    Make physics relative: Make the collision detection and resolution completely precision agnostic from position
+    Localized physics: each planet should have its own physics world like Super Mario Galaxy. Different worlds can be thrown into different threads to improve parallelism. This should also improve stability since math for entities on a planet's surface can be simplified to the faces of a non-moving cube.
+    Procedural world/biome generation
     block editing (placing and destroying)
     UI system
     HP and Hunger system
@@ -20,19 +15,14 @@ TODO:
 
     LOW PRIORITY:
     Free cam mode toggle (c key)
-
-Technical details:
-
-zmath is used for math,
-glfw for window events and input,
-vulkan for graphics,
-AMD's vma is used for device memory allocation,
+    Prune and Sweep algorithm
+    RK4 Integration
+    XPBD physics solver?
+    Chunk culling algorithm
+    Chunk LOD system (goal is to make it so we can see full planets regardless of distance even if they are simplified to just a textured cube)
+    More accurate orbital mechanics for planets
+    Material system for physics that provide restitution
 
 ## Compilation
 
 run ``zig build --release=fast`` in the root directory of the project to build the release executable.
-
-VMA and stb_image are compiled seperately into a binary library that is then statically linked because
-VMA uses cpp so it can not be included traditionally into the project and stb_image doesn't completely
-respect pointer alignment and so the translated header results in compilation errors, both of which
-can be avoided by side stepping the zig compilers checks...
