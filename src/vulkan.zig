@@ -6,6 +6,7 @@ const cm = @import("ceresmath.zig");
 const main = @import("main.zig");
 const chunk = @import("chunk.zig");
 const mesh_generation = @import("mesh_generation.zig");
+const physics = @import("physics.zig");
 
 // TODO There has got to be a better way than this, so much smell...
 const chunk_vert_source = @as([]align(4) u8, @ptrCast(@alignCast(@constCast(@embedFile("shaders/simple.vert.spv")))));
@@ -184,6 +185,7 @@ pub const RenderInfo = struct {
     vertex_buffer_offset: c.vulkan.VkDeviceSize = 0,
     vertex_render_offset: u32 = 0,
     instance_count: u32 = 1,
+    first_instance: u32 = 0,
     push_constant_index: u32 = 0,
 };
 
@@ -192,6 +194,7 @@ pub const RenderInfo = struct {
 pub const RenderFrame = struct {
     render_targets: []RenderInfo,
     bodies: []main.Object,
+    contact_renders: []physics.RenderContact,
     particle_count: u32 = 0,
     player_index: u32,
     /// ONLY EVER READ FROM THE CAMERA STATE NEVER WRITE ANY DATA EVER
@@ -1054,7 +1057,7 @@ pub const VulkanState = struct {
                 target.vertex_count,
                 target.instance_count,
                 0,
-                0,
+                target.first_instance,
             );
         }
 
@@ -1969,15 +1972,17 @@ pub fn update_chunk_ubo(self: *VulkanState, objects: []main.Object, player_index
 /// Generates the unique data sent to the GPU for particles
 ///
 /// returns the number of particles sent to the GPU (used for instance rendering)
-pub fn update_outline_ubo(self: *VulkanState, bodies: []main.Object, player_index: u32, ubo_index: u32) VkAbstractionError!void {
+pub fn update_outline_ubo(self: *VulkanState, bodies: []main.Object, contacts: []physics.RenderContact, player_index: u32, ubo_index: u32) VkAbstractionError!void {
     const ubo_uniform = struct {
         mat: zm.Mat = zm.identity(),
         color: @Vector(4, f32) = .{ 0.0, 0.0, 0.0, 0.0 },
     };
 
-    var data = try std.ArrayList(ubo_uniform).initCapacity(self.allocator.*, 64);
+    var data = try std.ArrayList(ubo_uniform).initCapacity(self.allocator.*, 1000);
     defer data.deinit(self.allocator.*);
 
+    // TODO switch append to appendAssumeCapacity
+    // Boxes
     for (bodies) |body| {
         switch (body.colliding) {
             main.CollisionType.NONE => {
@@ -2008,6 +2013,29 @@ pub fn update_outline_ubo(self: *VulkanState, bodies: []main.Object, player_inde
                 );
             },
         }
+    }
+
+    // Contact Lines + Boxes
+    for (contacts) |contact| { // Boxes
+        try data.append(
+            self.allocator.*,
+            ubo_uniform{
+                .color = .{ 1.0, 0.0, 0.0, 1.0 },
+                .mat = zm.translationV(contact.position),
+            },
+        );
+    }
+    for (contacts) |contact| { // Lines
+        try data.append(
+            self.allocator.*,
+            ubo_uniform{
+                .color = .{ 0.0, 1.0, 0.2, 1.0 },
+                .mat = zm.mul(
+                    zm.translationV(contact.position),
+                    zm.matFromQuat(zm.quatFromAxisAngle(contact.normal, 0.0)),
+                ),
+            },
+        );
     }
 
     if (data.items.len > 0) {
@@ -2202,7 +2230,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
         alloc_info: c.vulkan.VmaAllocationCreateInfo,
     };
 
-    const buffer_infos: [3]BufferInfo = .{
+    const buffer_infos: [2]BufferInfo = .{
         .{
             .create_info = .{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -2225,17 +2253,17 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
                 .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
             },
         },
-        .{
-            .create_info = .{
-                .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = 1000 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
-                .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            },
-            .alloc_info = .{
-                .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
-                .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-            },
-        },
+        //.{
+        //    .create_info = .{
+        //        .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        //        .size = 1000 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
+        //        .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        //    },
+        //    .alloc_info = .{
+        //        .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
+        //        .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+        //    },
+        //},
     };
 
     for (buffer_infos) |buffer| {
@@ -2346,7 +2374,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
     }
 
     for (0..self.MAX_CONCURRENT_FRAMES) |i| {
-        const buffers: [3]c.vulkan.VkDescriptorBufferInfo = .{
+        const buffers: [2]c.vulkan.VkDescriptorBufferInfo = .{
             // Particles
             c.vulkan.VkDescriptorBufferInfo{
                 .buffer = self.ubo_buffers.items[0],
@@ -2360,11 +2388,11 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
                 .range = 100 * @sizeOf(ChunkRenderData),
             },
             // Lines
-            c.vulkan.VkDescriptorBufferInfo{
-                .buffer = self.ubo_buffers.items[2],
-                .offset = 0,
-                .range = 1000 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
-            },
+            //c.vulkan.VkDescriptorBufferInfo{
+            //    .buffer = self.ubo_buffers.items[2],
+            //    .offset = 0,
+            //    .range = 1000 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
+            //},
         };
 
         const images: [2]c.vulkan.VkDescriptorImageInfo = .{ c.vulkan.VkDescriptorImageInfo{
@@ -2377,7 +2405,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
             .sampler = image_info1.samplers[i],
         } };
 
-        const descriptor_writes: [5]c.vulkan.VkWriteDescriptorSet = .{
+        const descriptor_writes: [4]c.vulkan.VkWriteDescriptorSet = .{
             c.vulkan.VkWriteDescriptorSet{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = self.descriptor_sets[i],
@@ -2422,17 +2450,17 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
                 .pImageInfo = null,
                 .pTexelBufferView = null,
             },
-            c.vulkan.VkWriteDescriptorSet{
-                .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = self.descriptor_sets[i],
-                .dstBinding = 4,
-                .dstArrayElement = 0,
-                .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .pBufferInfo = &buffers[2],
-                .pImageInfo = null,
-                .pTexelBufferView = null,
-            },
+            //c.vulkan.VkWriteDescriptorSet{
+            //    .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            //    .dstSet = self.descriptor_sets[i],
+            //    .dstBinding = 4,
+            //    .dstArrayElement = 0,
+            //    .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            //    .descriptorCount = 1,
+            //    .pBufferInfo = &buffers[2],
+            //    .pImageInfo = null,
+            //    .pTexelBufferView = null,
+            //},
         };
 
         c.vulkan.vkUpdateDescriptorSets(self.device, descriptor_writes.len, &descriptor_writes, 0, null);

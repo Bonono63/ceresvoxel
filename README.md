@@ -1,5 +1,6 @@
 # CeresVoxel
-A Voxel Engine
+
+
 
 TODO:
 
@@ -25,4 +26,4 @@ TODO:
 
 ## Compilation
 
-run ``zig build --release=fast`` in the root directory of the project to build the release executable.
+Using zig 0.15.x run ``zig build --release=fast`` in the root directory of the project to build the release executable.

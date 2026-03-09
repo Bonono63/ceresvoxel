@@ -451,6 +451,10 @@ pub fn main() !void {
     var edit_mode: bool = false;
     var edit_index: u32 = 0;
 
+    var contact_renders = try std.ArrayList(physics.RenderContact).initCapacity(allocator, 1000);
+
+    var physics_tick_computed: bool = false;
+
     //const test_mat: zm.Mat = .{
     //    .{ 1.0, 1.0, 0.0, 0.0 },
     //    .{ 0.0, 1.0, 2.0, 0.0 },
@@ -656,8 +660,21 @@ pub fn main() !void {
                 &contacts,
             );
 
+            // Get contact render info
+            for (contacts.items) |contact| {
+                contact_renders.appendAssumeCapacity(.{
+                    .normal = contact.normal,
+                    .position = contact.position,
+                });
+            }
+
             previous_physics_tick_time = std.time.milliTimestamp();
             contact_count = @intCast(contacts.items.len);
+            contacts.clearRetainingCapacity();
+
+            physics_tick_computed = true;
+        } else {
+            physics_tick_computed = false;
         }
 
         //_ = &MINIMUM_RENDER_TICK_TIME;
@@ -678,6 +695,7 @@ pub fn main() !void {
             const render_frame = vulkan.RenderFrame{
                 .render_targets = current_render_targets.items,
                 .bodies = updated_objects,
+                .contact_renders = contact_renders.items,
                 .particle_count = game_state.particle_count,
                 .player_index = game_state.player_index,
                 .client_state = &game_state.client_state,
@@ -702,15 +720,23 @@ pub fn main() !void {
                 1,
             );
 
-            // TODO make it so outlines can be enabled or disabled per object
+            // TODO make it so outlines can be enabled or disabled
             try vulkan.update_outline_ubo(
                 &vulkan_state,
                 render_frame.bodies,
+                render_frame.contact_renders,
                 render_frame.player_index,
                 0,
             );
 
-            vulkan_state.render_targets.items[1].instance_count = @intCast(render_frame.bodies.len);
+            if (!physics_tick_computed) {
+                contact_renders.clearRetainingCapacity();
+            }
+
+            const box_count: usize = render_frame.bodies.len + render_frame.contact_renders.len;
+            vulkan_state.render_targets.items[1].instance_count = @intCast(box_count);
+            vulkan_state.render_targets.items[2].instance_count = @intCast(render_frame.contact_renders.len);
+            vulkan_state.render_targets.items[2].first_instance = @intCast(box_count);
 
             // DRAW
             try vulkan_state.draw_frame(current_frame_index, &current_render_targets.items);

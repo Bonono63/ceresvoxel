@@ -28,6 +28,12 @@ pub const Contact = struct {
     relative_contact_position: [2]zm.Vec,
     velocity: zm.Vec, // contactVelocity
     lifetime: u8,
+    id: u32, // Unique Identifier for each contact
+};
+
+pub const RenderContact = struct {
+    position: zm.Vec,
+    normal: zm.Vec,
 };
 
 /// Integrates all linear forces, torques, angular velocities, linear velocities, positions,
@@ -111,7 +117,7 @@ pub fn physics_tick(
 
         // contacts.items[index].lifetime += 1;
 
-        contacts.clearRetainingCapacity();
+        //contacts.clearRetainingCapacity();
 
         // resolve collisions (apply torques)
         //generate_impulses();
@@ -510,6 +516,7 @@ pub fn vertex_face_contact(
         .bodies = .{ a, b },
         .relative_contact_position = .{ .{ 0.0, 0.0, 0.0, 0.0 }, .{ 0.0, 0.0, 0.0, 0.0 } },
         .velocity = .{ 0.0, 0.0, 0.0, 0.0 },
+        .id = 0,
     };
 
     list.appendAssumeCapacity(contact);
@@ -595,6 +602,7 @@ pub fn edge_edge_contact(
         .bodies = .{ a, b },
         .relative_contact_position = .{ .{ 0.0, 0.0, 0.0, 0.0 }, .{ 0.0, 0.0, 0.0, 0.0 } },
         .velocity = .{ 0.0, 0.0, 0.0, 0.0 },
+        .id = 0,
     };
 
     list.appendAssumeCapacity(contact);
