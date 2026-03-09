@@ -1,21 +1,11 @@
 const std = @import("std");
 
-// Although this function looks imperative, note that its job is to
-// declaratively construct a build graph that will be executed by an external
-// runner.
 pub fn build(b: *std.Build) void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
     const target = b.standardTargetOptions(.{});
 
-    // Standard optimization options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
-    // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const exe = b.addExecutable(.{
+    const ceres_voxel = b.addExecutable(.{
         .name = "Engine",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
@@ -25,53 +15,60 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    // This declares intent for the executable to be installed into the
-    // standard location when the user invokes the "install" step (the default
-    // step when running `zig build`).
+    const vma_flags = [_][]const u8{
+        "-c",
+        "-fPIC",
+    };
 
-    exe.addIncludePath(b.path("vma_lib"));
+    ceres_voxel.root_module.addCSourceFile(.{ .file = .{ .cwd_relative = "vma_lib/vma.cpp" }, .flags = &vma_flags });
+    ceres_voxel.addIncludePath(.{ .cwd_relative = "VulkanMemoryAllocator-3.2.1/include/" });
+    ceres_voxel.addIncludePath(.{ .cwd_relative = "vma_lib/" });
+    ceres_voxel.linkLibCpp();
+    //ceres_voxel.addLibraryPath("");
+
+    //ceres_voxel.addIncludePath(b.path("vma_lib"));
 
     // Hackery to get a cpp header only library to work with zig
-    exe.addIncludePath(b.path("VulkanMemoryAllocator-3.2.1/include"));
-    exe.addLibraryPath(b.path("vma_lib"));
-    exe.linkSystemLibrary("vma");
+    //ceres_voxel.addIncludePath(b.path("VulkanMemoryAllocator-3.2.1/include"));
+    //ceres_voxel.addLibraryPath(b.path("vma_lib"));
+    //ceres_voxel.linkSystemLibrary("vma");
 
-    exe.addIncludePath(b.path("glfw-3.4/include"));
-    exe.addLibraryPath(b.path("glfw-3.4/build/src"));
+    ceres_voxel.addIncludePath(b.path("glfw-3.4/include"));
+    ceres_voxel.addLibraryPath(b.path("glfw-3.4/build/src"));
 
     if (target.result.os.tag == .windows) {
-        exe.linkSystemLibrary("glfw3");
+        ceres_voxel.linkSystemLibrary("glfw3");
     }
     // Make sure to build glfw as a dll because it doesn't like to
     // work otherwise
     if (target.result.os.tag == .linux) {
-        exe.linkSystemLibrary("glfw");
+        ceres_voxel.linkSystemLibrary("glfw");
     }
 
     const zmath = b.dependency("zmath", .{});
-    exe.root_module.addImport("zmath", zmath.module("root"));
+    ceres_voxel.root_module.addImport("zmath", zmath.module("root"));
 
     const truetype = b.dependency("TrueType", .{});
-    exe.root_module.addImport("TrueType", truetype.module("TrueType"));
+    ceres_voxel.root_module.addImport("TrueType", truetype.module("TrueType"));
 
     // Should be built against the vulkan system library, building it yourself is
     // not really recomended
     if (target.result.os.tag == .linux)
-        exe.linkSystemLibrary("vulkan");
+        ceres_voxel.linkSystemLibrary("vulkan");
     if (target.result.os.tag == .windows) {
         // Absolute paths are nono for zig, but we can cheese it with
         // a directory link so here you go
-        exe.addIncludePath(b.path("vulkan_include"));
-        exe.addLibraryPath(b.path("vulkan_lib"));
-        exe.linkSystemLibrary("vulkan-1");
+        ceres_voxel.addIncludePath(b.path("vulkan_include"));
+        ceres_voxel.addLibraryPath(b.path("vulkan_lib"));
+        ceres_voxel.linkSystemLibrary("vulkan-1");
     }
 
-    b.installArtifact(exe);
+    b.installArtifact(ceres_voxel);
 
-    // This *creates* a Run step in the build graph, to be executed when another
+    // This *creates* a Run step in the build graph, to be ceres_voxelcuted when another
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
-    const run_cmd = b.addRunArtifact(exe);
+    const run_cmd = b.addRunArtifact(ceres_voxel);
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.

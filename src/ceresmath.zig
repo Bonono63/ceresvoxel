@@ -89,3 +89,36 @@ pub fn matFromQuat(q: zm.Quat) zm.Mat {
         },
     };
 }
+
+/// Technically inverting a cuboid tensor does not change anything so we don't
+/// need to do any additional work than calculating the cuboid tensor
+pub fn calculate_cuboid_inertia_tensor(
+    inverse_mass: f32,
+    half_size: @Vector(3, f32),
+) zm.Mat {
+    const mass = 1.0 / inverse_mass;
+    const x = half_size[0] * 2;
+    const y = half_size[1] * 2;
+    const z = half_size[2] * 2;
+    const scale_factor: f32 = 1.0 / 12.0;
+
+    return .{
+        .{ scale_factor * mass * (y * y + z * z), 0.0, 0.0, 0.0 },
+        .{ 0.0, scale_factor * mass * (x * x + z * z), 0.0, 0.0 },
+        .{ 0.0, 0.0, scale_factor * mass * (x * x + y * y), 0.0 },
+        .{ 0.0, 0.0, 0.0, 0.0 },
+    };
+}
+
+pub fn vector_product(a: zm.Vec, b: zm.Vec) zm.Vec {
+    return .{
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+        0.0,
+    };
+}
+
+pub fn scalar_product(a: zm.Vec, b: zm.Vec) f32 {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}

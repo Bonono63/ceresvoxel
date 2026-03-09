@@ -4,18 +4,24 @@ A Voxel Engine
 TODO:
 
     HIGH PRIORITY:
-    basic planet world generation (like 2-3 layers for terrestrial planets, nothing serious, cuboid)
-    basic OBB physics system, for simple entities (player + animals) and inter-chunk
-    basic inv ui
-    basic items
-    block placing
-    Make ages outline with content
+    Finish Iterative physics solver (Maybe Jacobian later???)
+    XPBD physics solver?
+    Prune and Sweep algorithm
+    RK4 Integration
+    Localized physics (planet faces are simplified into planes)
+    Make the collision detection and resolution completely precision agnostic from position
+    Procedural world generation
+    Chunk LOD system
+    Chunk culling algorithm
+    block editing (placing and destroying)
+    UI system
+    HP and Hunger system
+    early game
 
     LOW PRIORITY:
     Free cam mode toggle (c key)
 
 Technical details:
-The engine is written in the Zig programming language, utilizes the Vulkan graphics API, and GLFW for interfacing with the Operating System.
 
 zmath is used for math,
 glfw for window events and input,
@@ -23,6 +29,8 @@ vulkan for graphics,
 AMD's vma is used for device memory allocation,
 
 ## Compilation
+
+run ``zig build --release=fast`` in the root directory of the project to build the release executable.
 
 VMA and stb_image are compiled seperately into a binary library that is then statically linked because
 VMA uses cpp so it can not be included traditionally into the project and stb_image doesn't completely

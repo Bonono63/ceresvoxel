@@ -96,6 +96,7 @@ pub const Object = struct {
     ///There is phyicsally no reason to be able to go above a speed
     ///or acceleration of 2.4 billion meters a second
     velocity: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 }, // meters per second
+    acceleration: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
     // TODO decide whether a f32 is sufficient precision for mass calculations
     inverse_mass: f32,
     ///Sum accelerations of the forces acting on the particle
@@ -114,6 +115,7 @@ pub const Object = struct {
     ///Collisions are only possible with boxes (other shapes can be added, but I can't be bothered)
     ///Make sure to only ever put in half the length of each dimension of the collision box
     half_size: zm.Vec,
+    last_frame_acceleration: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
 
     colliding: CollisionType = CollisionType.NONE,
 
@@ -131,6 +133,28 @@ pub const Object = struct {
     chunks: std.ArrayList(chunk.Chunk) = undefined, // 32768 * chunk count
     chunk_occupancy: std.ArrayList(u32) = undefined,
 
+    // TODO add a planet function init
+    pub fn init(
+        self: *const Object,
+        _position: @Vector(3, f128),
+        _velocity: zm.Vec,
+        _inverse_mass: f32,
+        _orientation: zm.Vec,
+        _angular_velocity: zm.Vec,
+        _half_size: zm.vec,
+        _body_type: Type,
+    ) void {
+        self.position = _position;
+        self.velocity = _velocity;
+        self.inverse_mass = _inverse_mass;
+        self.orientation = _orientation;
+        self.angular_velocity = _angular_velocity;
+        self.half_size = _half_size;
+        self.body_type = _body_type;
+
+        self.inverse_inertia_tensor = cm.calculate_cuboid_inertia_tensor(self.inverse_mass, self.half_size);
+    }
+
     /// Returns the object's transform (for rendering or physics)
     /// for safety reasons should only be called on objects within f32's range.
     pub fn transform(self: *const Object) zm.Mat {
@@ -142,13 +166,6 @@ pub const Object = struct {
             @as(f32, @floatCast(self.position[2])),
             0.0,
         });
-        //const scale = zm.matFromArr(.{
-        //    self.half_size[0] * 2.0, 0.0, 0.0, 0.0, //
-        //    0.0, self.half_size[1] * 2.0, 0.0, 0.0, //
-        //    0.0, 0.0, self.half_size[2] * 2.0, 0.0, //
-        //    0.0, 0.0, 0.0, 1.0, //
-        //});
-        //result = zm.mul(result, scale);
         result = zm.mul(result, half_offset);
         result = zm.mul(result, zm.matFromQuat(self.orientation));
         result = zm.mul(result, world_pos);
@@ -327,7 +344,7 @@ pub fn main() !void {
     // "Sun"
     try game_state.objects.append(allocator, .{
         .position = .{ 0.0, 0.0, 0.0 },
-        .inverse_mass = 1.0 / 1000.0,
+        .inverse_mass = 1.0 / 10000000.0,
         .planet = false,
         .gravity = false,
         .size = .{ 3, 3, 3 }, // 32 * 3 / 2
@@ -337,11 +354,12 @@ pub fn main() !void {
         .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
     });
     game_state.sun_index = @intCast(game_state.objects.items.len - 1);
+    std.debug.print("sun weight: {}\n", .{1.0 / game_state.objects.getLast().inverse_mass});
 
     // Test Box
     try game_state.objects.append(allocator, .{
         .position = .{ 128.0, 0.0, 0.0 },
-        .inverse_mass = 1.0 / 1000.0,
+        .inverse_mass = 1.0 / 100000.0,
         .planet = false,
         .gravity = false,
         .half_size = .{ 1, 1, 1, 0.0 },
@@ -350,7 +368,7 @@ pub fn main() !void {
 
     // player
     try game_state.objects.append(allocator, .{
-        .position = .{ 0.0, 0.0, -20.0 },
+        .position = .{ 0.0, 0.0, -128.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
         .body_type = .player,
@@ -393,7 +411,7 @@ pub fn main() !void {
 
     // Game Loop and additional prerequisites
     var vomit_cooldown_previous_time: i64 = std.time.milliTimestamp();
-    const VOMIT_COOLDOWN: i64 = 20;
+    const VOMIT_COOLDOWN: i64 = 60;
 
     var prev_tick_time: i64 = 0;
     var prev_time: i64 = 0;
@@ -432,6 +450,26 @@ pub fn main() !void {
     var selected_object: u32 = 0;
     var edit_mode: bool = false;
     var edit_index: u32 = 0;
+
+    //const test_mat: zm.Mat = .{
+    //    .{ 1.0, 1.0, 0.0, 0.0 },
+    //    .{ 0.0, 1.0, 2.0, 0.0 },
+    //    .{ 0.0, 1.0, 1.0, 0.0 },
+    //    .{ 0.0, 0.0, 0.0, 0.0 },
+    //};
+
+    //const inverse_test_mat = zm.transpose(test_mat);
+
+    //std.debug.print("test_mat: \n{}\n{}\n{}\n{}\n\ninverse:\n{}\n{}\n{}\n{}\n\n", .{
+    //    test_mat[0],
+    //    test_mat[1],
+    //    test_mat[2],
+    //    test_mat[3],
+    //    inverse_test_mat[0],
+    //    inverse_test_mat[1],
+    //    inverse_test_mat[2],
+    //    inverse_test_mat[3],
+    //});
 
     // The responsibility of the main thread is to handle input and manage
     // all the other threads
@@ -588,13 +626,18 @@ pub fn main() !void {
             }
 
             if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
+                const client_look_dir = game_state.client_state.lookV();
+                const particle_start_pos: @Vector(3, f128) = .{
+                    player_physics_state.*.position[0] + (client_look_dir[0] * 2.0),
+                    player_physics_state.*.position[1] + (client_look_dir[1] * 2.0),
+                    player_physics_state.*.position[2] + (client_look_dir[2] * 2.0),
+                };
                 try game_state.objects.append(allocator, .{
-                    .position = player_physics_state.*.position,
-                    .inverse_mass = 1.0 / 32.0,
+                    .position = particle_start_pos,
+                    .inverse_mass = 1.0 / 0.5,
                     .orientation = game_state.client_state
                         .look(),
-                    .velocity = cm.scale_f32(game_state.client_state
-                        .lookV(), 1.0 * 32.0) + player_physics_state.*.velocity,
+                    .velocity = cm.scale_f32(client_look_dir, 1.0 * 32.0) + player_physics_state.*.velocity,
                     //.angular_velocity = .{1.0,0.0,0.0,0.0},
                     .half_size = .{ 0.125, 0.125, 0.125, 0.0 },
                     .body_type = .particle,
