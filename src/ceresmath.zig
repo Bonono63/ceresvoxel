@@ -122,3 +122,23 @@ pub fn vector_product(a: zm.Vec, b: zm.Vec) zm.Vec {
 pub fn scalar_product(a: zm.Vec, b: zm.Vec) f32 {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
+
+pub fn matrix_component(x: zm.Vec, y: zm.Vec, z: zm.Vec) zm.Mat {
+    return zm.matFromArr(.{
+        x[0], y[0], z[0], 0.0,
+        x[1], y[1], z[1], 0.0,
+        x[2], y[2], z[2], 0.0,
+        0.0,  0.0,  0.0,  0.0,
+    });
+}
+
+/// casts from f128 vector to f32 vector **UNSAFE**
+pub fn cast_position(pos: @Vector(3, f128)) zm.Vec {
+    // TODO this function shouldn't have to exist, but we'll see how this turns out
+    return .{
+        @as(f32, @floatCast(pos[0])),
+        @as(f32, @floatCast(pos[1])),
+        @as(f32, @floatCast(pos[2])),
+        0.0,
+    };
+}

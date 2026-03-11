@@ -22,6 +22,9 @@ TODO:
     Chunk culling algorithm
     Chunk LOD system (goal is to make it so we can see full planets regardless of distance even if they are simplified to just a textured cube)
     More accurate orbital mechanics for planets
+    drag and heat from orbital re-entrance
+    contact explosions based on velocity
+    player damage based on objects hitting them
     Material system for physics that provide restitution
 
 ## Compilation

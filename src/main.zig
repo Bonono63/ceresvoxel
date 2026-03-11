@@ -347,8 +347,8 @@ pub fn main() !void {
         .inverse_mass = 1.0 / 10000000.0,
         .planet = false,
         .gravity = false,
-        .size = .{ 3, 3, 3 }, // 32 * 3 / 2
-        .half_size = .{ 16 * 3, 16 * 3, 16 * 3, 0.0 },
+        .size = .{ 1, 1, 1 }, // 32 * 3 / 2
+        .half_size = .{ 16, 16, 16, 0.0 },
         .body_type = .voxel_space,
         .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator, 10), // 10 chunks
         .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator, 32), // binary field of which chunks are to be loaded which ones not to.
@@ -453,7 +453,7 @@ pub fn main() !void {
 
     var contact_renders = try std.ArrayList(physics.RenderContact).initCapacity(allocator, 1000);
 
-    var physics_tick_computed: bool = false;
+    //var pause_physics: bool = false;
 
     //const test_mat: zm.Mat = .{
     //    .{ 1.0, 1.0, 0.0, 0.0 },
@@ -660,21 +660,24 @@ pub fn main() !void {
                 &contacts,
             );
 
+            contact_renders.clearRetainingCapacity();
             // Get contact render info
             for (contacts.items) |contact| {
+                const cast_body_pos: zm.Vec = .{
+                    @as(f32, @floatCast(contact.bodies[1].position[0] - player_physics_state.position[0])),
+                    @as(f32, @floatCast(contact.bodies[1].position[1] - player_physics_state.position[1])),
+                    @as(f32, @floatCast(contact.bodies[1].position[2] - player_physics_state.position[2])),
+                    0.0,
+                };
                 contact_renders.appendAssumeCapacity(.{
                     .normal = contact.normal,
-                    .position = contact.position,
+                    .position = cast_body_pos + contact.position,
                 });
             }
 
             previous_physics_tick_time = std.time.milliTimestamp();
             contact_count = @intCast(contacts.items.len);
             contacts.clearRetainingCapacity();
-
-            physics_tick_computed = true;
-        } else {
-            physics_tick_computed = false;
         }
 
         //_ = &MINIMUM_RENDER_TICK_TIME;
@@ -690,7 +693,7 @@ pub fn main() !void {
             @memcpy(updated_objects, game_state.objects.items);
             // Lower the percieved latency on player input
             updated_objects[game_state.player_index].velocity = input_vec;
-            physics.integration(updated_objects, physics_delta_time);
+            physics.euler_integration(updated_objects, physics_delta_time);
 
             const render_frame = vulkan.RenderFrame{
                 .render_targets = current_render_targets.items,
@@ -728,10 +731,6 @@ pub fn main() !void {
                 render_frame.player_index,
                 0,
             );
-
-            if (!physics_tick_computed) {
-                contact_renders.clearRetainingCapacity();
-            }
 
             const box_count: usize = render_frame.bodies.len + render_frame.contact_renders.len;
             vulkan_state.render_targets.items[1].instance_count = @intCast(box_count);

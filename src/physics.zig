@@ -27,6 +27,7 @@ pub const Contact = struct {
     /// stored this way for easier comparisons during resolution
     relative_contact_position: [2]zm.Vec,
     velocity: zm.Vec, // contactVelocity
+    total_lambda: f32 = 0.0,
     lifetime: u8,
     id: u32, // Unique Identifier for each contact
 };
@@ -69,7 +70,8 @@ pub fn physics_tick(
         }
     }
 
-    integration(bodies, delta_time);
+    // do a different order for integration
+    euler_integration(bodies, delta_time);
 
     // Force Accumulation
     // Gravity
@@ -96,11 +98,15 @@ pub fn physics_tick(
         }
     }
 
+    //for (0..contacts.items.len) |contact_index| {
+    //    prepare_contact(&contacts.items[contact_index], delta_time);
+    //}
+
     for (0..contacts.items.len) |contact_index| {
-        prepare_contact(&contacts.items[contact_index], delta_time);
+        contacts.items[contact_index].total_lambda = 0.0;
     }
 
-    //gGS_resolve_collisions(contacts.items, delta_time);
+    pGS_contact_solver(contacts.items, delta_time);
 
     // TODO use simultaneuos collision resolution eventually since it will be more
     // accurate. But also much harder to implement and require a re understanding
@@ -126,7 +132,7 @@ pub fn physics_tick(
 
 // TODO replace with RK4?
 /// Classical Mechanics: Basic Euler Integrator
-pub fn integration(objects: []main.Object, delta_time: f64) void {
+pub fn euler_integration(objects: []main.Object, delta_time: f64) void {
     for (0..objects.len) |index| {
         if (objects[index].inverse_mass > 0.0) {
             objects[index].last_frame_acceleration = objects[index].acceleration;
@@ -681,357 +687,94 @@ fn orthonormal_basis(contact_vec: zm.Vec) zm.Mat {
     return result;
 }
 
-/// Compute various necessary values to be used throughout collision resolution
-fn prepare_contact(
-    contact: *Contact,
-    delta_time: f64,
-) void {
-    contact.basis = orthonormal_basis(contact.normal);
-    const a_cast_pos: zm.Vec = .{
-        @as(f32, @floatCast(contact.bodies[0].position[0])),
-        @as(f32, @floatCast(contact.bodies[0].position[1])),
-        @as(f32, @floatCast(contact.bodies[0].position[2])),
-        0.0,
-    };
-    const b_cast_pos: zm.Vec = .{
-        @as(f32, @floatCast(contact.bodies[1].position[0])),
-        @as(f32, @floatCast(contact.bodies[1].position[1])),
-        @as(f32, @floatCast(contact.bodies[1].position[2])),
-        0.0,
-    };
-    const relative_contact_position_a: zm.Vec = contact.position - a_cast_pos;
-    const relative_contact_position_b: zm.Vec = contact.position - b_cast_pos;
-    contact.relative_contact_position = .{ relative_contact_position_a, relative_contact_position_b };
-
-    contact.velocity = calculate_local_velocity(contact, contact.bodies[0], relative_contact_position_a, delta_time);
-    contact.velocity -= calculate_local_velocity(contact, contact.bodies[1], relative_contact_position_b, delta_time);
-
-    contact.desired_velocity = calculate_desired_velocity(contact, contact.velocity, delta_time);
-}
-
-/// Top level implementation of an iterative physics solver
-fn cyclone_resolve_collisions(
-    contacts: *std.ArrayListUnmanaged(Contact),
-    delta_time: f64,
-) void {
-    adjust_body_position(contacts.items, delta_time);
-    adjust_velocities(contacts.items, delta_time);
-}
-
-/// Calculates the velocity change of the given body according to the contact
-/// provided
-fn calculate_local_velocity(
-    contact: *Contact,
-    object: *main.Object,
-    contact_relative_position: zm.Vec,
-    delta_time: f64,
-) zm.Vec {
-    const ctwt = contact_to_world_transpose(contact);
-
-    var velocity: zm.Vec = zm.cross3(object.orientation, contact_relative_position);
-    velocity += object.velocity;
-
-    var contact_velocity = zm.mul(ctwt, velocity);
-
-    var acceleration_velocity = cm.scale_f32(object.last_frame_acceleration, @as(f32, @floatCast(delta_time)));
-    acceleration_velocity = zm.mul(ctwt, acceleration_velocity);
-    acceleration_velocity[0] = 0.0; // ignore acceleration in the x direction since that is the normal direction
-
-    contact_velocity += acceleration_velocity;
-
-    return contact_velocity;
-}
-
-/// Produced the dresired velocity of the collision along the collision normal of the Contact
-fn calculate_desired_velocity(
-    contact: *Contact,
-    contact_velocity: zm.Vec,
-    delta_time: f64,
-) f32 {
-    var result: f32 = 0.0;
-
-    var velocity_from_acceleration: f32 = 0.0;
-
-    velocity_from_acceleration += zm.dot3(contact.bodies[0].last_frame_acceleration, contact.normal)[0] * @as(f32, @floatCast(delta_time));
-    velocity_from_acceleration += zm.dot3(contact.bodies[1].last_frame_acceleration, contact.normal)[0] * @as(f32, @floatCast(delta_time));
-
-    var restitution: f32 = contact.restitution;
-    if (@abs(contact_velocity[0]) < MAX_VELOCITY_PER_FRAME) { // This is really MAX VELOCITY PER STEP, but whatever
-        restitution = 0.0;
-    }
-
-    result = -contact_velocity[0] - restitution * (contact_velocity[0] - velocity_from_acceleration);
-
-    return result;
-}
-
-fn adjust_body_position(
-    contacts: []Contact,
-    delta_time: f64,
-) void {
-    _ = &delta_time;
-    const MAX_ADJUSTMENT_ITERATIONS = 200;
-
-    var iteration_count: usize = 0;
-    while (iteration_count < MAX_ADJUSTMENT_ITERATIONS) {
-        // Sort through all contacts to find the largest penetration
-        var max: f32 = 0.1;
-        var max_index: usize = contacts.len;
-        for (contacts, 0..contacts.len) |_contact, contact_index| {
-            if (_contact.penetration > max) {
-                max = _contact.penetration;
-                max_index = contact_index;
-            }
-        }
-        if (max_index == contacts.len) {
-            break;
-        }
-        std.debug.print("{}\n", .{max});
-
-        // something something awake state...
-
-        // resolve the penetration
-        var linear_change: [2]zm.Vec = .{ .{ 0.0, 0.0, 0.0, 0.0 }, .{ 0.0, 0.0, 0.0, 0.0 } };
-        var angular_change: [2]zm.Vec = .{ .{ 0.0, 0.0, 0.0, 0.0 }, .{ 0.0, 0.0, 0.0, 0.0 } };
-        apply_position_change(
-            &contacts[max_index],
-            &linear_change,
-            &angular_change,
-            max,
-        );
-
-        //std.debug.print("{} {} {} {}\n", .{ angular_change[0], linear_change[0], angular_change[1], linear_change[1] });
-
-        //Update the penetration of each body involved in the contact
-        for (0..contacts.len) |contact_index| {
-            for (0..2) |a| {
-                for (0..2) |b| {
-                    if (contacts[contact_index].bodies[a] == contacts[max_index].bodies[b]) {
-                        const delta_position: zm.Vec = linear_change[b] + cm.vector_product(
-                            angular_change[b],
-                            contacts[contact_index].relative_contact_position[a],
-                        );
-
-                        contacts[contact_index].penetration += cm.scalar_product(delta_position, contacts[contact_index].normal) * @as(f32, if (a == 0) 1.0 else -1.0);
-                    }
-                }
-            }
-        }
-        iteration_count += 1;
-    }
-}
-
-/// Linear Projection
-fn apply_position_change(
-    contact: *Contact,
-    linear_change: *[2]zm.Vec,
-    angular_change: *[2]zm.Vec,
-    penetration: f32,
-) void {
-    const angular_rotation_limit: f32 = 0.2;
-
-    var total_inertia: f32 = 0.0;
-    var linear_inertia: [2]f32 = .{ 0.0, 0.0 };
-    var angular_inertia: [2]f32 = .{ 0.0, 0.0 };
-
-    // Find Inertia in contact normal direction
-    for (0..2) |body_index| {
-        const body: *main.Object = contact.bodies[body_index];
-        const inverse_inertia_tensor: zm.Mat = body.inverse_inertia_tensor; // TODO maybe make this a pointer?
-
-        var angular_inertia_world: zm.Vec = zm.cross3(contact.relative_contact_position[body_index], contact.normal);
-        angular_inertia_world = zm.mul(inverse_inertia_tensor, angular_inertia_world);
-        angular_inertia_world = zm.cross3(angular_inertia_world, contact.relative_contact_position[body_index]);
-
-        angular_inertia[body_index] = zm.dot3(angular_inertia_world, contact.normal)[0];
-
-        linear_inertia[body_index] = body.inverse_mass;
-
-        total_inertia += linear_inertia[body_index] + angular_inertia[body_index];
-    }
-
-    // calculate and apply changes
-
-    for (0..2) |body_index| {
-        const sign: f32 = if (body_index == 0) 1.0 else -1.0;
-        var angular_move: f32 = sign * penetration * (angular_inertia[body_index] / total_inertia);
-        var linear_move: f32 = sign * penetration * (linear_inertia[body_index] / total_inertia);
-
-        // Limit angular rotations
-        var projection: zm.Vec = contact.relative_contact_position[body_index];
-        // scalar product (not dot product)
-        const scalar: f32 = -cm.scalar_product(contact.relative_contact_position[body_index], contact.normal);
-        projection += cm.scale_f32(contact.normal, scalar);
-
-        const max_magnitude: f32 = angular_rotation_limit * zm.length3(projection)[0];
-
-        const total_move = angular_move + linear_move;
-
-        if (angular_move < -max_magnitude) {
-            angular_move = -max_magnitude;
-        } else if (angular_move > max_magnitude) {
-            angular_move = max_magnitude;
-        }
-
-        linear_move = total_move - angular_move;
-
-        if (angular_move == 0) // is this even possible???
-        {
-            angular_change[body_index] = .{ 0.0, 0.0, 0.0, 0.0 };
-        } else {
-            const target_angular_direction: zm.Vec = cm.vector_product(contact.relative_contact_position[body_index], contact.normal);
-            angular_change[body_index] = cm.scale_f32(zm.mul(target_angular_direction, contact.bodies[body_index].inverse_inertia_tensor), (angular_move / angular_inertia[body_index]));
-        }
-
-        linear_change[body_index] = -cm.scale_f32(contact.normal, linear_move);
-
-        //apply linear change
-        const pos_change: @Vector(3, f128) = .{
-            @as(f128, @floatCast(contact.normal[0] * linear_move)),
-            @as(f128, @floatCast(contact.normal[1] * linear_move)),
-            @as(f128, @floatCast(contact.normal[2] * linear_move)),
-        };
-        // std.debug.print("current pos: {}\n", .{contact.bodies[body_index].position});
-        // std.debug.print("penetration for collision: {}\n", .{penetration});
-        // std.debug.print("linear move for collision: {}\n", .{linear_move});
-        // std.debug.print("pos change from collision: {}\n", .{pos_change});
-        contact.bodies[body_index].position += pos_change;
-
-        //apply angular change
-        contact.bodies[body_index].orientation -= angular_change[body_index];
-    }
-}
-
-fn adjust_velocities(
-    contacts: []Contact,
-    delta_time: f64,
-) void {
-    const MAX_VELOCITY_ITERATIONS_PER_FRAME = 100;
-    var velocity_iterations: usize = 0;
-    while (velocity_iterations < MAX_VELOCITY_ITERATIONS_PER_FRAME) {
-        var velocity_change: [2]zm.Vec = .{ .{ 0.0, 0.0, 0.0, 0.0 }, .{ 0.0, 0.0, 0.0, 0.0 } };
-        var rotation_change: [2]zm.Vec = .{ .{ 0.0, 0.0, 0.0, 0.0 }, .{ 0.0, 0.0, 0.0, 0.0 } };
-
-        const VELOCITY_EPSILON: f32 = 0.1;
-        var max: f32 = VELOCITY_EPSILON;
-        var max_index: usize = 0;
-        for (contacts, 0..contacts.len) |contact, contact_index| {
-            if (contact.desired_velocity > max) {
-                max = contact.desired_velocity;
-                max_index = contact_index;
-            }
-        }
-        if (max_index == contacts.len) {
-            break;
-        }
-
-        apply_velocity_change(&contacts[max_index], &velocity_change, &rotation_change);
-
-        // Update the velocity of the bodies associated with the contact for the next iteration
-        for (0..contacts.len) |contact_index| {
-            for (0..2) |a| {
-                for (0..2) |b| {
-                    if (contacts[contact_index].bodies[a] == contacts[max_index].bodies[b]) {
-                        const delta_velocity = velocity_change[b] + cm.vector_product(
-                            rotation_change[b],
-                            contacts[contact_index].relative_contact_position[a],
-                        );
-
-                        const transformed_delta_velocity: zm.Vec = zm.mul(zm.mul(zm.translationV(contacts[contact_index].position), delta_velocity), zm.transpose(contacts[contact_index].basis));
-                        contacts[contact_index].velocity += cm.scale_f32(transformed_delta_velocity, if (a == 0) -1.0 else 1.0);
-                        contacts[contact_index].desired_velocity = calculate_desired_velocity(&contacts[contact_index], contacts[contact_index].velocity, delta_time);
-                    }
-                }
-            }
-        }
-        velocity_iterations += 1;
-    }
-    //std.debug.print("adjust velocity iterations: {}\n", .{velocity_iterations});
-}
-
-fn apply_velocity_change(
-    contact: *Contact,
-    velocity_change: *[2]zm.Vec,
-    rotation_change: *[2]zm.Vec,
-) void {
-    const impulse_contact: zm.Vec = calculate_frictionless_impulse(
-        contact,
-        .{
-            contact.bodies[0].inverse_inertia_tensor,
-            contact.bodies[1].inverse_inertia_tensor,
-        },
-    );
-
-    //std.debug.print("impulse contact{} \n", .{impulse_contact});
-
-    const impulse: zm.Vec = zm.mul(contact_to_world(contact), impulse_contact);
-
-    const impulse_torque_a: zm.Vec = zm.cross3(contact.relative_contact_position[0], impulse);
-    rotation_change[0] = zm.mul(contact.bodies[0].inverse_inertia_tensor, impulse_torque_a);
-    velocity_change[0] = cm.scale_f32(impulse, contact.bodies[0].inverse_mass);
-
-    // contact.bodies[0].velocity += velocity_change[0];
-    // contact.bodies[0].orientation += rotation_change[0];
-
-    const impulse_torque_b: zm.Vec = zm.cross3(impulse, contact.relative_contact_position[1]);
-    rotation_change[1] = zm.mul(contact.bodies[1].inverse_inertia_tensor, impulse_torque_b);
-    velocity_change[1] = cm.scale_f32(impulse, -contact.bodies[1].inverse_mass);
-
-    // contact.bodies[1].velocity += velocity_change[1];
-    // contact.bodies[1].orientation += rotation_change[1];
-    //std.debug.print("velocity change: {} {} \n", .{ velocity_change[0], velocity_change[1] });
-}
-
-fn calculate_frictionless_impulse(
-    contact: *Contact,
-    inverse_inertia_tensor: [2]zm.Mat,
-) zm.Vec {
-    var impulse_contact: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
-
-    var delta_velocity_world: zm.Vec = zm.cross3(contact.relative_contact_position[0], contact.normal);
-    delta_velocity_world = zm.mul(inverse_inertia_tensor[0], delta_velocity_world);
-    delta_velocity_world = zm.cross3(delta_velocity_world, contact.relative_contact_position[0]);
-
-    var delta_velocity: f32 = zm.dot3(delta_velocity_world, contact.normal)[0];
-    delta_velocity += contact.bodies[0].inverse_mass;
-
-    delta_velocity_world = zm.cross3(contact.relative_contact_position[1], contact.normal);
-    delta_velocity_world = zm.mul(inverse_inertia_tensor[1], delta_velocity_world);
-    delta_velocity_world = zm.cross3(delta_velocity_world, contact.relative_contact_position[1]);
-
-    delta_velocity += zm.dot3(delta_velocity_world, contact.normal)[0];
-
-    delta_velocity += contact.bodies[1].inverse_mass;
-
-    impulse_contact[0] = contact.desired_velocity / delta_velocity;
-    impulse_contact[1] = 0.0;
-    impulse_contact[2] = 0.0;
-
-    return impulse_contact;
-}
-
-fn contact_to_world(contact: *Contact) zm.Mat {
-    var result: zm.Mat = zm.identity();
-
-    result = zm.translationV(contact.position);
-    result = zm.mul(result, contact.basis);
-
-    return result;
-}
-
-fn contact_to_world_transpose(contact: *Contact) zm.Mat {
-    var result: zm.Mat = zm.identity();
-
-    result = zm.translationV(contact.position);
-    result = zm.mul(result, zm.transpose(contact.basis));
-
-    return result;
-}
+// I'm trapped in this body and I must scream
 
 /// Projected Gauss-Seidel Solver
-fn pGS_solve(contacts: []Contact, delta_time: f64) void {
-    _ = &contacts;
+/// Solve contact constraints via velocity
+fn pGS_contact_solver(contacts: []Contact, delta_time: f64) void {
     _ = &delta_time;
+
+    //const updated_velocity = struct {
+    //    body_index: usize,
+    //    delta_velocity: zm.Vec,
+    //};
+
+    //var velocities = std.ArrayList(updated_velocity).initCapacity(contacts.len * 2);
+
+    // Calculate velocity changes for all collision constraints
+    var violate: bool = true;
+    var iteration: u32 = 0;
+    //while (iteration < 3 or !violate) {
+    for (contacts, 0..contacts.len) |contact, contact_index| {
+        _ = &contact_index;
+        // Essentially we are solving for lambda
+        // To do this we use GS to solve lambda = -J V_i * (J M^-1 J^T)^-1
+        // In order for the constraint to become resoved JV + b >= 0 must be true
+        //const V: zm.Mat = .{
+        //    contact.bodies[0].velocity, //Va initial
+        //    contact.bodies[0].angular_velocity, // Wa initial
+        //    contact.bodies[1].velocity, //Vb initial
+        //    contact.bodies[1].angular_velocity, // Wb initial
+        //};
+
+        const ra = contact.position - cm.cast_position(contact.bodies[0].position);
+        const rb = contact.position - cm.cast_position(contact.bodies[1].position);
+        const m_ra = cm.scale_f32(ra, 1.0 / contact.bodies[0].inverse_mass);
+        const m_rb = cm.scale_f32(rb, 1.0 / contact.bodies[1].inverse_mass);
+
+        const j_Va = -contact.normal;
+        const j_Wa = -zm.cross3(m_ra, contact.normal);
+        const j_Vb = contact.normal;
+        const j_Wb = zm.cross3(m_rb, contact.normal);
+        //const jv_i = ;//Initial velocity
+        //var jv_k = ;
+
+        const effective_mass: f32 = // Mass term
+            1.0 / (contact.bodies[0].inverse_mass +
+                zm.dot3(j_Wa, zm.mul(contact.bodies[0].inverse_inertia_tensor, j_Wa))[0] +
+                contact.bodies[1].inverse_mass +
+                zm.dot3(j_Wb, zm.mul(contact.bodies[1].inverse_inertia_tensor, j_Wb))[0]);
+
+        const jv: f32 =
+            zm.dot3(j_Va, contact.bodies[0].velocity)[0] +
+            zm.dot3(j_Wa, contact.bodies[0].angular_velocity)[0] +
+            zm.dot3(j_Vb, contact.bodies[1].velocity)[0] +
+            zm.dot3(j_Wb, contact.bodies[1].angular_velocity)[0];
+
+        const b: f32 = 0;
+
+        // Ax + b = 0 : (Gauss-Seidel solves for A) A = D -L -U
+        // GS is used to solve for A, x is the impulse, b is the initial velocity/bias term
+        // A = J M^-1 J^T, b = J Vi
+        // x = A^-1 * -b
+
+        var lambda: f32 = effective_mass * -(jv + b);
+        const old_total_lambda = contact.total_lambda;
+        contacts[contact_index].total_lambda = @max(0.0, contact.total_lambda + lambda);
+        lambda = contact.total_lambda - old_total_lambda;
+
+        contact.bodies[0].velocity += cm.scale_f32(j_Va, contact.bodies[0].inverse_mass * lambda);
+        contact.bodies[0].angular_velocity += cm.scale_f32(zm.mul(j_Wa, contact.bodies[0].inverse_inertia_tensor), lambda);
+        contact.bodies[1].velocity += cm.scale_f32(j_Vb, contact.bodies[1].inverse_mass * lambda);
+        contact.bodies[1].angular_velocity += cm.scale_f32(zm.mul(j_Wb, contact.bodies[1].inverse_inertia_tensor), lambda);
+
+        // if constraints converge
+        // Velocity convergence can be defined by (-Va - (Wz X ra) + Vb + (Wb X rb)) . contact_normal >= 0
+        // Position convergence can be defined by (Pb - Pa) . contact_normal >= 0 or by (Centerb + rb - Centera - ra) . contact_normal >= 0
+        // Position constraints can be done with baumgart stabilization, but might not be necessary with
+        // the particular paper we are following
+        iteration += 1;
+        _ = &violate;
+    }
+
+    //for (contacts, 0..contacts.len) |contact, contact_index| {
+    //    _ = &velocities;
+    //    _ = &contact;
+    //    _ = &solve_iteration;
+    //    _ = &contact_index;
+    //}
+
+    // Update the velocities of all bodies involved in the constraints
 }
 
 /// Temporal Gauss-Seidel Solver
@@ -1045,3 +788,5 @@ fn XPBD_solve(contacts: []Contact, delta_time: f64) void {
     _ = &contacts;
     _ = &delta_time;
 }
+
+fn gauss_seidel() void {}

@@ -2015,25 +2015,39 @@ pub fn update_outline_ubo(self: *VulkanState, bodies: []main.Object, contacts: [
         }
     }
 
+    const box_scale: zm.Mat = zm.matFromArr(.{
+        0.125, 0.0,   0.0,   0.0,
+        0.0,   0.125, 0.0,   0.0,
+        0.0,   0.0,   0.125, 0.0,
+        0.0,   0.0,   0.0,   1.0,
+    });
+    const line_scale: zm.Mat = zm.matFromArr(.{
+        0.5, 0.0, 0.0, 0.0,
+        0.0, 0.5, 0.0, 0.0,
+        0.0, 0.0, 0.5, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    });
     // Contact Lines + Boxes
     for (contacts) |contact| { // Boxes
+        var transform: zm.Mat = zm.mul(box_scale, zm.translationV(.{ -0.0625, -0.0625, -0.0625, 0.0 }));
+        transform = zm.mul(transform, zm.translationV(contact.position));
         try data.append(
             self.allocator.*,
             ubo_uniform{
                 .color = .{ 1.0, 0.0, 0.0, 1.0 },
-                .mat = zm.translationV(contact.position),
+                .mat = transform,
             },
         );
     }
     for (contacts) |contact| { // Lines
+        const line_dir: zm.Mat = zm.matFromNormAxisAngle(contact.normal, std.math.pi);
+        var transform: zm.Mat = zm.mul(line_scale, line_dir);
+        transform = zm.mul(transform, zm.translationV(contact.position));
         try data.append(
             self.allocator.*,
             ubo_uniform{
                 .color = .{ 0.0, 1.0, 0.2, 1.0 },
-                .mat = zm.mul(
-                    zm.translationV(contact.position),
-                    zm.matFromQuat(zm.quatFromAxisAngle(contact.normal, 0.0)),
-                ),
+                .mat = transform,
             },
         );
     }
