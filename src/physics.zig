@@ -721,6 +721,7 @@ fn pGS_contact_solver(contacts: []Contact, delta_time: f64) void {
         const rb = contact.position - cm.cast_position(contact.bodies[1].position);
         const m_ra = cm.scale_f32(ra, 1.0 / contact.bodies[0].inverse_mass);
         const m_rb = cm.scale_f32(rb, 1.0 / contact.bodies[1].inverse_mass);
+        //std.debug.print("{} {} {} {}\n", .{ ra, rb, m_ra, m_rb });
 
         const j_Va = -contact.normal;
         const j_Wa = -zm.cross3(m_ra, contact.normal);
@@ -741,7 +742,11 @@ fn pGS_contact_solver(contacts: []Contact, delta_time: f64) void {
             zm.dot3(j_Vb, contact.bodies[1].velocity)[0] +
             zm.dot3(j_Wb, contact.bodies[1].angular_velocity)[0];
 
-        const b: f32 = 0;
+        const beta: f32 = 0.7;
+        // restitution is the product of the 2 material resititutions, but we don't have a system for that rn
+        const relative_velocity = -contact.bodies[0].velocity - zm.cross3(contact.bodies[0].angular_velocity, m_ra) + contact.bodies[1].velocity + zm.cross3(contact.bodies[1].angular_velocity, m_rb);
+        const closing_velocity = zm.dot3(relative_velocity, contact.normal)[0];
+        const b: f32 = (beta / @as(f32, @floatCast(delta_time))) * (contact.penetration + contact.restitution) * closing_velocity;
 
         // Ax + b = 0 : (Gauss-Seidel solves for A) A = D -L -U
         // GS is used to solve for A, x is the impulse, b is the initial velocity/bias term
@@ -751,12 +756,17 @@ fn pGS_contact_solver(contacts: []Contact, delta_time: f64) void {
         var lambda: f32 = effective_mass * -(jv + b);
         const old_total_lambda = contact.total_lambda;
         contacts[contact_index].total_lambda = @max(0.0, contact.total_lambda + lambda);
-        lambda = contact.total_lambda - old_total_lambda;
+        std.debug.print("fresh lambda: {} old lambda: {} new lambda: {} {}\n", .{ lambda, old_total_lambda, contacts[contact_index].total_lambda, contact.total_lambda });
+        lambda = contacts[contact_index].total_lambda - old_total_lambda;
+        std.debug.print("jv: {} eM: {} lambda: {}   \n", .{ jv, effective_mass, lambda });
 
-        contact.bodies[0].velocity += cm.scale_f32(j_Va, contact.bodies[0].inverse_mass * lambda);
-        contact.bodies[0].angular_velocity += cm.scale_f32(zm.mul(j_Wa, contact.bodies[0].inverse_inertia_tensor), lambda);
+        const dlva = cm.scale_f32(j_Va, contact.bodies[0].inverse_mass * lambda);
+        const dava = cm.scale_f32(zm.mul(contact.bodies[0].inverse_inertia_tensor, j_Wa), lambda);
+        std.debug.print("{} {}  \n", .{ dlva, dava });
+        contact.bodies[0].velocity += dlva;
+        contact.bodies[0].angular_velocity += dava;
         contact.bodies[1].velocity += cm.scale_f32(j_Vb, contact.bodies[1].inverse_mass * lambda);
-        contact.bodies[1].angular_velocity += cm.scale_f32(zm.mul(j_Wb, contact.bodies[1].inverse_inertia_tensor), lambda);
+        contact.bodies[1].angular_velocity += cm.scale_f32(zm.mul(contact.bodies[1].inverse_inertia_tensor, j_Wb), lambda);
 
         // if constraints converge
         // Velocity convergence can be defined by (-Va - (Wz X ra) + Vb + (Wb X rb)) . contact_normal >= 0
