@@ -764,9 +764,9 @@ fn pGS_contact_solver(contacts: []Contact, delta_time: f64) void {
         const dava = cm.scale_f32(zm.mul(contact.bodies[0].inverse_inertia_tensor, j_Wa), lambda);
         std.debug.print("{} {}  \n", .{ dlva, dava });
         contact.bodies[0].velocity += dlva;
-        contact.bodies[0].angular_velocity += dava;
+        //contact.bodies[0].angular_velocity += dava;
         contact.bodies[1].velocity += cm.scale_f32(j_Vb, contact.bodies[1].inverse_mass * lambda);
-        contact.bodies[1].angular_velocity += cm.scale_f32(zm.mul(contact.bodies[1].inverse_inertia_tensor, j_Wb), lambda);
+        //contact.bodies[1].angular_velocity += cm.scale_f32(zm.mul(contact.bodies[1].inverse_inertia_tensor, j_Wb), lambda);
 
         // if constraints converge
         // Velocity convergence can be defined by (-Va - (Wz X ra) + Vb + (Wb X rb)) . contact_normal >= 0
