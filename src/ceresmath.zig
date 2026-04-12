@@ -142,3 +142,12 @@ pub fn cast_position(pos: @Vector(3, f128)) zm.Vec {
         0.0,
     };
 }
+
+pub fn scale_matrix(half_size: zm.Vec) zm.Mat {
+    return .{
+        .{ half_size[0], 0.0, 0.0, 0.0 },
+        .{ 0.0, half_size[1], 0.0, 0.0 },
+        .{ 0.0, 0.0, half_size[2], 0.0 },
+        .{ 0.0, 0.0, 0.0, 0.5 },
+    };
+}

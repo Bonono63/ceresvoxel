@@ -1,6 +1,52 @@
 //! Physics simulation runtime and data structures
-//! Most of this code is derived from Cyclone Engine by Ian Millington
-//! licensed under the MIT license.
+//! This physics code is derived from the Cyclone Engine by Ian Millington
+//! As well as Allen Chou's unity-physics-constraints tutorials.
+//! As such this file is permissable under the MIT license
+
+//MIT License
+//
+//Copyright (c) 2021 Ming-Lun "Allen" Chou
+//
+//Permission is hereby granted, free of charge, to any person obtaining a copy
+//of this software and associated documentation files (the "Software"), to deal
+//in the Software without restriction, including without limitation the rights
+//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//copies of the Software, and to permit persons to whom the Software is
+//furnished to do so, subject to the following conditions:
+//
+//The above copyright notice and this permission notice shall be included in all
+//copies or substantial portions of the Software.
+//
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+//SOFTWARE.
+
+//The MIT License
+//
+//Copyright (c) 2003-2009 Ian Millington
+//
+//Permission is hereby granted, free of charge, to any person obtaining a copy
+//of this software and associated documentation files (the "Software"), to deal
+//in the Software without restriction, including without limitation the rights
+//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//copies of the Software, and to permit persons to whom the Software is
+//furnished to do so, subject to the following conditions:
+//
+//The above copyright notice and this permission notice shall be included in
+//all copies or substantial portions of the Software.
+//
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+//THE SOFTWARE.
+
 const std = @import("std");
 const zm = @import("zmath");
 const cm = @import("ceresmath.zig");
@@ -14,23 +60,35 @@ pub const SCALE: f32 = 50.0;
 const MAX_CONTACT_LIFETIME: u32 = 4;
 const MAX_VELOCITY_PER_FRAME: f32 = 0.25;
 
+// TODO add friction
 pub const Contact = struct {
-    bodies: [2]*main.Object,
+    A: *main.Object,
+    B: *main.Object,
+    pA: zm.Vec,
+    pB: zm.Vec,
     penetration: f32,
-    restitution: f32, // how close to ellastic vs inellastic
-    friction: f32,
-    position: zm.Vec, // this needs to be @Vector(3, f128)
     normal: zm.Vec,
-    basis: zm.Mat = zm.identity(),
-    transform: zm.Mat = zm.identity(),
-    desired_velocity: f32 = 0.0,
-    /// stored this way for easier comparisons during resolution
-    relative_contact_position: [2]zm.Vec,
-    velocity: zm.Vec, // contactVelocity
-    total_lambda: f32 = 0.0,
+    rA: zm.Vec, // center of a to contact position
+    rB: zm.Vec, // center of b to contact position
+
+    jN: Jacobian, // Normal used for separation
+    jT: Jacobian, // Tangent used for friction
+    jB: Jacobian, // BiTangent used for friction
+
     lifetime: u8,
     id: u32, // Unique Identifier for each contact
 };
+
+const Jacobian = struct {
+    // Omega to Quaternion instead from axis angle?
+    Va: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 }, // Linear Velocity A
+    Wa: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 }, // Angular Velocity A
+    Vb: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 }, // Linear Velocity B
+    Wb: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 }, // Angular Velocity B
+    b: f32 = 0.0, // bias
+    effective_mass: f32 = 0.0,
+    total_lambda: f32 = 0.0,
+}; // TODO type field????
 
 pub const RenderContact = struct {
     position: zm.Vec,
@@ -80,6 +138,7 @@ pub fn physics_tick(
 
     // Contact Generation
 
+    // TODO remove collision type
     for (0..bodies.len) |i| {
         bodies[i].colliding = main.CollisionType.NONE;
     }
@@ -103,7 +162,8 @@ pub fn physics_tick(
     //}
 
     for (0..contacts.items.len) |contact_index| {
-        contacts.items[contact_index].total_lambda = 0.0;
+        const j = &contacts.items[contact_index].jN;
+        init_jacobian(j, &contacts.items[contact_index], @as(f32, @floatCast(delta_time)));
     }
 
     pGS_contact_solver(contacts.items, delta_time);
@@ -170,27 +230,34 @@ pub fn euler_integration(objects: []main.Object, delta_time: f64) void {
                 objects[index].angular_damping,
             );
 
-            // velocity integration
-            objects[index].position += .{
-                objects[index].velocity[0] * delta_time,
-                objects[index].velocity[1] * delta_time,
-                objects[index].velocity[2] * delta_time,
-            };
+            if (!objects[index].lock_pos) {
+                // velocity integration
+                objects[index].position += .{
+                    objects[index].velocity[0] * delta_time,
+                    objects[index].velocity[1] * delta_time,
+                    objects[index].velocity[2] * delta_time,
+                };
+            }
 
-            // angular velocity integration
-            cm.q_add_vector(
-                &objects[index].orientation,
-                .{
-                    objects[index].angular_velocity[0] * @as(f32, @floatCast(delta_time)),
-                    objects[index].angular_velocity[1] * @as(f32, @floatCast(delta_time)),
-                    objects[index].angular_velocity[2] * @as(f32, @floatCast(delta_time)),
-                    0,
-                },
-            );
+            //const angular_velocity_normalized: zm.Vec = zm.normalize3(objects[index].angular_velocity);
+            //const angular_velocity_length: f32 = zm.length3(objects[index].angular_velocity)[0];
+            //// angular velocity integration
 
-            objects[index].orientation = cm.qnormalize(objects[index].orientation);
+            if (!objects[index].lock_rot) {
+                cm.q_add_vector(
+                    &objects[index].orientation,
+                    .{
+                        objects[index].angular_velocity[0] * @as(f32, @floatCast(delta_time)),
+                        objects[index].angular_velocity[1] * @as(f32, @floatCast(delta_time)),
+                        objects[index].angular_velocity[2] * @as(f32, @floatCast(delta_time)),
+                        0,
+                    },
+                );
 
-            // reset forces
+                objects[index].orientation = cm.qnormalize(objects[index].orientation);
+            }
+
+            // reset forces // TODO is this correct?
             objects[index].force_accumulation = .{ 0.0, 0.0, 0.0, 0.0 };
             objects[index].torque_accumulation = .{ 0.0, 0.0, 0.0, 0.0 };
         }
@@ -206,12 +273,7 @@ fn generate_contacts(
     const ab_center_line_f128 = b.*.position - a.*.position;
     // Cast should be ok as long as objects being compared are within
     // the f32 range. All internal calculations should be relative but they aren't...
-    const ab_center_line: zm.Vec = .{
-        @as(f32, @floatCast(ab_center_line_f128[0])),
-        @as(f32, @floatCast(ab_center_line_f128[1])),
-        @as(f32, @floatCast(ab_center_line_f128[2])),
-        0.0,
-    };
+    const ab_center_line: zm.Vec = cm.cast_position(ab_center_line_f128);
 
     var best_index: u32 = 100;
     var best_overlap: f32 = 10000.0;
@@ -365,7 +427,10 @@ fn generate_contacts(
         b.colliding = main.CollisionType.COLLISION;
     }
 
+    // std.debug.print("{}\n", .{best_overlap});
+
     if (are_penetrating) {
+        // std.debug.print("penetrating", .{});
         if (best_index < 3) {
             try vertex_face_contact(
                 contacts,
@@ -497,31 +562,49 @@ pub fn vertex_face_contact(
         normal = cm.scale_f32(normal, -1.0);
     }
 
-    var vertex: zm.Vec = b.half_size;
+    var vertexB: zm.Vec = b.half_size;
     // vertex of box 1 and face of box 2
     if (zm.dot3(b.getXAxis(), normal)[0] < 0.0) {
-        vertex[0] = -vertex[0];
+        vertexB[0] = -vertexB[0];
     }
     if (zm.dot3(b.getYAxis(), normal)[0] < 0.0) {
-        vertex[1] = -vertex[1];
+        vertexB[1] = -vertexB[1];
     }
     if (zm.dot3(b.getZAxis(), normal)[0] < 0.0) {
-        vertex[2] = -vertex[2];
+        vertexB[2] = -vertexB[2];
     }
+
+    var vertexA: zm.Vec = b.half_size;
+    // vertex of box 1 and face of box 2
+    if (zm.dot3(a.getXAxis(), normal)[0] < 0.0) {
+        vertexA[0] = -vertexA[0];
+    }
+    if (zm.dot3(a.getYAxis(), normal)[0] < 0.0) {
+        vertexA[1] = -vertexA[1];
+    }
+    if (zm.dot3(a.getZAxis(), normal)[0] < 0.0) {
+        vertexA[2] = -vertexA[2];
+    }
+
+    vertexA = zm.mul(a.transform(), vertexA);
+    vertexB = zm.mul(b.transform(), vertexB);
 
     // TODO add materials for bocks and have the
     // friction and restitution derived from it
     //std.debug.print("generated penetration: {}\n", .{penetration});
     const contact: Contact = .{
         .lifetime = 0,
-        .normal = normal,
+        .normal = -normal,
         .penetration = penetration,
-        .position = zm.mul(b.transform(), vertex),
-        .restitution = 0.2,
-        .friction = 0.1,
-        .bodies = .{ a, b },
-        .relative_contact_position = .{ .{ 0.0, 0.0, 0.0, 0.0 }, .{ 0.0, 0.0, 0.0, 0.0 } },
-        .velocity = .{ 0.0, 0.0, 0.0, 0.0 },
+        .jN = Jacobian{},
+        .jB = Jacobian{},
+        .jT = Jacobian{},
+        .A = a,
+        .B = b,
+        .pA = vertexA,
+        .pB = vertexB, // Use this one IG
+        .rA = vertexA - cm.cast_position(a.position),
+        .rB = vertexB - cm.cast_position(b.position),
         .id = 0,
     };
 
@@ -598,16 +681,23 @@ pub fn edge_edge_contact(
         vertex = cm.scale_f32(contact_a, 0.5) + cm.scale_f32(contact_b, 0.5);
     }
 
+    const vertexA = zm.mul(a.transform(), vertex); // TODO make sure this is correct (it isn't)
+    const vertexB = zm.mul(b.transform(), vertex); // TODO make sure this is correct (it isn't)
+
     const contact: Contact = .{
         .lifetime = 0,
-        .normal = axis,
+        .normal = -axis,
         .penetration = penetration,
-        .position = vertex,
-        .restitution = 0.2,
-        .friction = 0.1,
-        .bodies = .{ a, b },
-        .relative_contact_position = .{ .{ 0.0, 0.0, 0.0, 0.0 }, .{ 0.0, 0.0, 0.0, 0.0 } },
-        .velocity = .{ 0.0, 0.0, 0.0, 0.0 },
+        //.positionA = zm.mul(b.transform(), vertex),
+        .jN = Jacobian{},
+        .jB = Jacobian{},
+        .jT = Jacobian{},
+        .A = a,
+        .B = b,
+        .pA = zm.mul(a.transform(), vertex), // TODO make sure this is correct (it isn't)
+        .pB = zm.mul(b.transform(), vertex), // Use this one IG
+        .rA = vertexA - cm.cast_position(a.position),
+        .rB = vertexB - cm.cast_position(b.position),
         .id = 0,
     };
 
@@ -687,6 +777,36 @@ fn orthonormal_basis(contact_vec: zm.Vec) zm.Mat {
     return result;
 }
 
+/// All numbers associated with the jacobian that can be computed once are done here
+fn init_jacobian(j: *Jacobian, contact: *Contact, delta_time: f32) void {
+    j.Va = -contact.normal;
+    j.Wa = -zm.cross3(contact.rA, contact.normal);
+    j.Vb = contact.normal;
+    j.Wb = zm.cross3(contact.rB, contact.normal);
+
+    const transformA: zm.Mat = zm.mul(cm.scale_matrix(contact.A.half_size), zm.matFromQuat(contact.A.orientation));
+    const transform_iitA = zm.mul(zm.mul(zm.transpose(transformA), contact.A.inverse_inertia_tensor), transformA);
+
+    const transformB: zm.Mat = zm.mul(cm.scale_matrix(contact.B.half_size), zm.matFromQuat(contact.B.orientation));
+    const transform_iitB = zm.mul(zm.mul(zm.transpose(transformB), contact.B.inverse_inertia_tensor), transformB);
+
+    j.effective_mass = 1.0 / (contact.A.inverse_mass +
+        zm.dot3(j.Wa, zm.mul(transform_iitA, j.Wa))[0] +
+        contact.B.inverse_mass +
+        zm.dot3(j.Wb, zm.mul(transform_iitB, j.Wb))[0]);
+
+    const beta: f32 = 0.7 * 0.7;
+    // restitution is the product of the 2 material resititutions, but we don't have a system for that rn
+    const relative_velocity = -contact.A.velocity - zm.cross3(contact.A.angular_velocity, contact.rA) + contact.B.velocity + zm.cross3(contact.B.angular_velocity, contact.rB);
+    //const relative_velocity = -contact.A.velocity + contact.B.velocity;
+    const closing_velocity = zm.dot3(relative_velocity, contact.normal)[0];
+    const restitution = contact.A.restitution * contact.B.restitution;
+    j.b = -(beta / delta_time) * contact.penetration + (restitution * closing_velocity);
+    // j.b = 0;
+
+    j.total_lambda = 0.0;
+}
+
 // I'm trapped in this body and I must scream
 
 /// Projected Gauss-Seidel Solver
@@ -704,78 +824,64 @@ fn pGS_contact_solver(contacts: []Contact, delta_time: f64) void {
     // Calculate velocity changes for all collision constraints
     var violate: bool = true;
     var iteration: u32 = 0;
-    //while (iteration < 3 or !violate) {
+    // while (iteration < 2) {
     for (contacts, 0..contacts.len) |contact, contact_index| {
         _ = &contact_index;
         // Essentially we are solving for lambda
         // To do this we use GS to solve lambda = -J V_i * (J M^-1 J^T)^-1
         // In order for the constraint to become resoved JV + b >= 0 must be true
-        //const V: zm.Mat = .{
-        //    contact.bodies[0].velocity, //Va initial
-        //    contact.bodies[0].angular_velocity, // Wa initial
-        //    contact.bodies[1].velocity, //Vb initial
-        //    contact.bodies[1].angular_velocity, // Wb initial
-        //};
 
-        const ra = contact.position - cm.cast_position(contact.bodies[0].position);
-        const rb = contact.position - cm.cast_position(contact.bodies[1].position);
-        const m_ra = cm.scale_f32(ra, 1.0 / contact.bodies[0].inverse_mass);
-        const m_rb = cm.scale_f32(rb, 1.0 / contact.bodies[1].inverse_mass);
+        //const m_ra = contact.position - cm.cast_position(contact.bodies[0].position);
+        //const m_rb = contact.position - cm.cast_position(contact.bodies[1].position);
         //std.debug.print("{} {} {} {}\n", .{ ra, rb, m_ra, m_rb });
 
-        const j_Va = -contact.normal;
-        const j_Wa = -zm.cross3(m_ra, contact.normal);
-        const j_Vb = contact.normal;
-        const j_Wb = zm.cross3(m_rb, contact.normal);
         //const jv_i = ;//Initial velocity
         //var jv_k = ;
 
-        const effective_mass: f32 = // Mass term
-            1.0 / (contact.bodies[0].inverse_mass +
-                zm.dot3(j_Wa, zm.mul(contact.bodies[0].inverse_inertia_tensor, j_Wa))[0] +
-                contact.bodies[1].inverse_mass +
-                zm.dot3(j_Wb, zm.mul(contact.bodies[1].inverse_inertia_tensor, j_Wb))[0]);
+        for (0..10) |i| {
+            _ = &i;
+            const j = &contact.jN;
 
-        const jv: f32 =
-            zm.dot3(j_Va, contact.bodies[0].velocity)[0] +
-            zm.dot3(j_Wa, contact.bodies[0].angular_velocity)[0] +
-            zm.dot3(j_Vb, contact.bodies[1].velocity)[0] +
-            zm.dot3(j_Wb, contact.bodies[1].angular_velocity)[0];
+            const jv: f32 =
+                zm.dot3(j.Va, contact.A.velocity)[0] +
+                zm.dot3(j.Wa, contact.A.angular_velocity)[0] +
+                zm.dot3(j.Vb, contact.B.velocity)[0] +
+                zm.dot3(j.Wb, contact.B.angular_velocity)[0];
 
-        const beta: f32 = 0.7;
-        // restitution is the product of the 2 material resititutions, but we don't have a system for that rn
-        const relative_velocity = -contact.bodies[0].velocity - zm.cross3(contact.bodies[0].angular_velocity, m_ra) + contact.bodies[1].velocity + zm.cross3(contact.bodies[1].angular_velocity, m_rb);
-        const closing_velocity = zm.dot3(relative_velocity, contact.normal)[0];
-        const b: f32 = (beta / @as(f32, @floatCast(delta_time))) * (contact.penetration + contact.restitution) * closing_velocity;
+            // Ax + b = 0 : (Gauss-Seidel solves for A) A = D -L -U
+            // GS is used to solve for A, x is the impulse, b is the initial velocity/bias term
+            // A = J M^-1 J^T, b = J Vi
+            // x = A^-1 * -b
 
-        // Ax + b = 0 : (Gauss-Seidel solves for A) A = D -L -U
-        // GS is used to solve for A, x is the impulse, b is the initial velocity/bias term
-        // A = J M^-1 J^T, b = J Vi
-        // x = A^-1 * -b
+            var lambda: f32 = j.effective_mass * -(jv + j.b);
+            const old_total_lambda = j.total_lambda;
+            contacts[contact_index].jN.total_lambda = @max(0.0, j.total_lambda + lambda);
+            // std.debug.print("fresh lambda: {} old lambda: {} new lambda: {} {}\n", .{ lambda, old_total_lambda, contacts[contact_index].jN.total_lambda, j.total_lambda });
+            lambda = contacts[contact_index].jN.total_lambda - old_total_lambda;
+            // std.debug.print("jv: {} eM: {} lambda: {}   \n", .{ jv, contact.jN.effective_mass, lambda });
 
-        var lambda: f32 = effective_mass * -(jv + b);
-        const old_total_lambda = contact.total_lambda;
-        contacts[contact_index].total_lambda = @max(0.0, contact.total_lambda + lambda);
-        std.debug.print("fresh lambda: {} old lambda: {} new lambda: {} {}\n", .{ lambda, old_total_lambda, contacts[contact_index].total_lambda, contact.total_lambda });
-        lambda = contacts[contact_index].total_lambda - old_total_lambda;
-        std.debug.print("jv: {} eM: {} lambda: {}   \n", .{ jv, effective_mass, lambda });
+            // const transformA: zm.Mat = zm.mul(cm.scale_matrix(contact.A.half_size), zm.matFromQuat(contact.A.orientation));
+            // const transform_iitA = zm.mul(zm.mul(zm.transpose(transformA), contact.A.inverse_inertia_tensor), transformA);
 
-        const dlva = cm.scale_f32(j_Va, contact.bodies[0].inverse_mass * lambda);
-        const dava = cm.scale_f32(zm.mul(contact.bodies[0].inverse_inertia_tensor, j_Wa), lambda);
-        std.debug.print("{} {}  \n", .{ dlva, dava });
-        contact.bodies[0].velocity += dlva;
-        //contact.bodies[0].angular_velocity += dava;
-        contact.bodies[1].velocity += cm.scale_f32(j_Vb, contact.bodies[1].inverse_mass * lambda);
-        //contact.bodies[1].angular_velocity += cm.scale_f32(zm.mul(contact.bodies[1].inverse_inertia_tensor, j_Wb), lambda);
+            // const transformB: zm.Mat = zm.mul(cm.scale_matrix(contact.B.half_size), zm.matFromQuat(contact.B.orientation));
+            // const transform_iitB = zm.mul(zm.mul(zm.transpose(transformB), contact.B.inverse_inertia_tensor), transformB);
 
-        // if constraints converge
-        // Velocity convergence can be defined by (-Va - (Wz X ra) + Vb + (Wb X rb)) . contact_normal >= 0
-        // Position convergence can be defined by (Pb - Pa) . contact_normal >= 0 or by (Centerb + rb - Centera - ra) . contact_normal >= 0
-        // Position constraints can be done with baumgart stabilization, but might not be necessary with
-        // the particular paper we are following
-        iteration += 1;
-        _ = &violate;
+            // TODO fix delta angular velocity
+            contact.A.velocity += cm.scale_f32(j.Va, contact.A.inverse_mass * lambda);
+            // contact.A.angular_velocity += cm.scale_f32(zm.mul(transform_iitA, j.Wa), lambda);
+            contact.B.velocity += cm.scale_f32(j.Vb, contact.B.inverse_mass * lambda);
+            // contact.B.angular_velocity += cm.scale_f32(zm.mul(transform_iitB, j.Wb), lambda);
+
+            // if constraints converge
+            // Velocity convergence can be defined by (-Va - (Wz X ra) + Vb + (Wb X rb)) . contact_normal >= 0
+            // Position convergence can be defined by (Pb - Pa) . contact_normal >= 0 or by (Centerb + rb - Centera - ra) . contact_normal >= 0
+            // Position constraints can be done with baumgart stabilization, but might not be necessary with
+            // the particular paper we are following
+            iteration += 1;
+            _ = &violate;
+        }
     }
+    // }
 
     //for (contacts, 0..contacts.len) |contact, contact_index| {
     //    _ = &velocities;
@@ -785,6 +891,11 @@ fn pGS_contact_solver(contacts: []Contact, delta_time: f64) void {
     //}
 
     // Update the velocities of all bodies involved in the constraints
+}
+
+fn GR_solve(contacts: []Contact, delta_time: f64) void {
+    _ = &contacts;
+    _ = &delta_time;
 }
 
 /// Temporal Gauss-Seidel Solver
@@ -798,5 +909,3 @@ fn XPBD_solve(contacts: []Contact, delta_time: f64) void {
     _ = &contacts;
     _ = &delta_time;
 }
-
-fn gauss_seidel() void {}
