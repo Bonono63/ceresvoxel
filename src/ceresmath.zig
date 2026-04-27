@@ -151,3 +151,7 @@ pub fn scale_matrix(half_size: zm.Vec) zm.Mat {
         .{ 0.0, 0.0, 0.0, 0.5 },
     };
 }
+
+pub fn is_zero(f: f32) bool {
+    return @abs(f) < 0.0001;
+}

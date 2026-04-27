@@ -1966,7 +1966,9 @@ pub fn update_chunk_ubo(self: *VulkanState, objects: []main.Object, player_index
 
     //std.debug.print("chunk ubos: {any}\n", .{data.items});
 
-    try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
+    if (data.items.len > 0) {
+        try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
+    }
 }
 
 /// Generates the unique data sent to the GPU for particles

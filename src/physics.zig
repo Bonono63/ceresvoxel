@@ -280,11 +280,8 @@ fn generate_contacts(
 
     var are_penetrating: bool = false;
 
-    // TODO optimize this a little more?
-    // Box A axis'
     are_penetrating = try_axis(
         0,
-        zm.normalize3(a.getXAxis()),
         a,
         b,
         ab_center_line,
@@ -293,7 +290,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         1,
-        zm.normalize3(a.getYAxis()),
         a,
         b,
         ab_center_line,
@@ -302,7 +298,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         2,
-        zm.normalize3(a.getZAxis()),
         a,
         b,
         ab_center_line,
@@ -313,7 +308,6 @@ fn generate_contacts(
     // Box B axis'
     are_penetrating = are_penetrating and try_axis(
         3,
-        zm.normalize3(b.getXAxis()),
         a,
         b,
         ab_center_line,
@@ -322,7 +316,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         4,
-        zm.normalize3(b.getYAxis()),
         a,
         b,
         ab_center_line,
@@ -331,7 +324,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         5,
-        zm.normalize3(b.getZAxis()),
         a,
         b,
         ab_center_line,
@@ -342,7 +334,6 @@ fn generate_contacts(
     // MISC axis'
     are_penetrating = are_penetrating and try_axis(
         6,
-        zm.normalize3(zm.cross3(a.getXAxis(), b.getXAxis())),
         a,
         b,
         ab_center_line,
@@ -351,7 +342,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         7,
-        zm.normalize3(zm.cross3(a.getXAxis(), b.getYAxis())),
         a,
         b,
         ab_center_line,
@@ -360,7 +350,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         8,
-        zm.normalize3(zm.cross3(a.getXAxis(), b.getZAxis())),
         a,
         b,
         ab_center_line,
@@ -369,7 +358,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         9,
-        zm.normalize3(zm.cross3(a.getYAxis(), b.getXAxis())),
         a,
         b,
         ab_center_line,
@@ -378,7 +366,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         10,
-        zm.normalize3(zm.cross3(a.getYAxis(), b.getYAxis())),
         a,
         b,
         ab_center_line,
@@ -387,7 +374,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         11,
-        zm.normalize3(zm.cross3(a.getYAxis(), b.getZAxis())),
         a,
         b,
         ab_center_line,
@@ -396,7 +382,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         12,
-        zm.normalize3(zm.cross3(a.getZAxis(), b.getXAxis())),
         a,
         b,
         ab_center_line,
@@ -405,7 +390,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         13,
-        zm.normalize3(zm.cross3(a.getZAxis(), b.getYAxis())),
         a,
         b,
         ab_center_line,
@@ -414,7 +398,6 @@ fn generate_contacts(
     );
     are_penetrating = are_penetrating and try_axis(
         14,
-        zm.normalize3(zm.cross3(a.getZAxis(), b.getZAxis())),
         a,
         b,
         ab_center_line,
@@ -430,7 +413,6 @@ fn generate_contacts(
     // std.debug.print("{}\n", .{best_overlap});
 
     if (are_penetrating) {
-        // std.debug.print("penetrating", .{});
         if (best_index < 3) {
             try vertex_face_contact(
                 contacts,
@@ -464,13 +446,14 @@ fn generate_contacts(
 
 fn try_axis(
     index: u32,
-    axis: zm.Vec,
+    // axis: zm.Vec,
     a: *main.Object,
     b: *main.Object,
     center_line: zm.Vec,
     best_overlap: *f32,
     best_index: *u32,
 ) bool {
+    const axis = get_axis(a, b, index);
     if (zm.lengthSq3(axis)[0] < 0.0001) {
         return true;
     }
@@ -492,6 +475,61 @@ fn try_axis(
     }
 
     return true;
+}
+
+fn get_axis(a: *main.Object, b: *main.Object, index: u32) zm.Vec {
+    var result: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
+    switch (index) {
+        0 => {
+            result = zm.normalize3(a.getXAxis());
+        },
+        1 => {
+            result = zm.normalize3(a.getYAxis());
+        },
+        2 => {
+            result = zm.normalize3(a.getZAxis());
+        },
+        3 => {
+            result = zm.normalize3(b.getXAxis());
+        },
+        4 => {
+            result = zm.normalize3(b.getYAxis());
+        },
+        5 => {
+            result = zm.normalize3(b.getZAxis());
+        },
+        6 => {
+            result = zm.normalize3(zm.cross3(a.getXAxis(), b.getXAxis()));
+        },
+        7 => {
+            result = zm.normalize3(zm.cross3(a.getXAxis(), b.getYAxis()));
+        },
+        8 => {
+            result = zm.normalize3(zm.cross3(a.getXAxis(), b.getZAxis()));
+        },
+        9 => {
+            result = zm.normalize3(zm.cross3(a.getYAxis(), b.getXAxis()));
+        },
+        10 => {
+            result = zm.normalize3(zm.cross3(a.getYAxis(), b.getYAxis()));
+        },
+        11 => {
+            result = zm.normalize3(zm.cross3(a.getYAxis(), b.getZAxis()));
+        },
+        12 => {
+            result = zm.normalize3(zm.cross3(a.getZAxis(), b.getXAxis()));
+        },
+        13 => {
+            result = zm.normalize3(zm.cross3(a.getZAxis(), b.getYAxis()));
+        },
+        14 => {
+            result = zm.normalize3(zm.cross3(a.getZAxis(), b.getZAxis()));
+        },
+        else => {
+            result = zm.normalize3(a.getXAxis());
+        },
+    }
+    return result;
 }
 
 /// Overlap of 2 spheres with a radius of the largest dimension of each box's half_size.
@@ -589,7 +627,7 @@ pub fn vertex_face_contact(
     vertexA = zm.mul(a.transform(), vertexA);
     vertexB = zm.mul(b.transform(), vertexB);
 
-    // TODO add materials for bocks and have the
+    // TODO add materials for blocks and have the
     // friction and restitution derived from it
     //std.debug.print("generated penetration: {}\n", .{penetration});
     const contact: Contact = .{
@@ -795,7 +833,7 @@ fn init_jacobian(j: *Jacobian, contact: *Contact, delta_time: f32) void {
         contact.B.inverse_mass +
         zm.dot3(j.Wb, zm.mul(transform_iitB, j.Wb))[0]);
 
-    const beta: f32 = 0.7 * 0.7;
+    const beta: f32 = 0.8;
     // restitution is the product of the 2 material resititutions, but we don't have a system for that rn
     const relative_velocity = -contact.A.velocity - zm.cross3(contact.A.angular_velocity, contact.rA) + contact.B.velocity + zm.cross3(contact.B.angular_velocity, contact.rB);
     //const relative_velocity = -contact.A.velocity + contact.B.velocity;
@@ -838,7 +876,7 @@ fn pGS_contact_solver(contacts: []Contact, delta_time: f64) void {
         //const jv_i = ;//Initial velocity
         //var jv_k = ;
 
-        for (0..10) |i| {
+        for (0..1) |i| {
             _ = &i;
             const j = &contact.jN;
 
