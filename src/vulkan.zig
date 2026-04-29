@@ -22,28 +22,52 @@ const cursor_source = @embedFile("fortnite.jpg");
 const blocks_source = @embedFile("blocks.png");
 
 const COLOR: @Vector(3, f32) = .{ 32.0 / 256.0, 252.0 / 256.0, 164.0 / 256.0 };
+// const block_selection_cube: [17]Vertex = .{
+//     //front
+//     .{ .pos = .{ -0.001, -0.001, -0.001 }, .color = COLOR },
+//     .{ .pos = .{ 1.001, -0.001, -0.001 }, .color = COLOR },
+//     .{ .pos = .{ 1.001, 1.001, -0.001 }, .color = COLOR },
+//     .{ .pos = .{ -0.001, 1.001, -0.001 }, .color = COLOR },
+//     //left
+//     .{ .pos = .{ -0.001, -0.001, -0.001 }, .color = COLOR },
+//     .{ .pos = .{ -0.001, -0.001, 1.001 }, .color = COLOR },
+//     .{ .pos = .{ -0.001, 1.001, 1.001 }, .color = COLOR },
+//     .{ .pos = .{ -0.001, 1.001, -0.001 }, .color = COLOR },
+//     .{ .pos = .{ -0.001, -0.001, -0.001 }, .color = COLOR },
+//     //right
+//     .{ .pos = .{ 1.001, -0.001, -0.001 }, .color = COLOR },
+//     .{ .pos = .{ 1.001, -0.001, 1.001 }, .color = COLOR },
+//     .{ .pos = .{ 1.001, 1.001, 1.001 }, .color = COLOR },
+//     .{ .pos = .{ 1.001, 1.001, -0.001 }, .color = COLOR },
+//     //back
+//     .{ .pos = .{ 1.001, 1.001, 1.001 }, .color = COLOR },
+//     .{ .pos = .{ -0.001, 1.001, 1.001 }, .color = COLOR },
+//     .{ .pos = .{ -0.001, -0.001, 1.001 }, .color = COLOR },
+//     .{ .pos = .{ 1.001, -0.001, 1.001 }, .color = COLOR },
+// };
+
 const block_selection_cube: [17]Vertex = .{
     //front
-    .{ .pos = .{ -0.001, -0.001, -0.001 }, .color = COLOR },
-    .{ .pos = .{ 1.001, -0.001, -0.001 }, .color = COLOR },
-    .{ .pos = .{ 1.001, 1.001, -0.001 }, .color = COLOR },
-    .{ .pos = .{ -0.001, 1.001, -0.001 }, .color = COLOR },
+    .{ .pos = .{ 0.0, 0.0, 0.0 }, .color = COLOR },
+    .{ .pos = .{ 1.0, 0.0, 0.0 }, .color = COLOR },
+    .{ .pos = .{ 1.0, 1.0, 0.0 }, .color = COLOR },
+    .{ .pos = .{ 0.0, 1.0, 0.0 }, .color = COLOR },
     //left
-    .{ .pos = .{ -0.001, -0.001, -0.001 }, .color = COLOR },
-    .{ .pos = .{ -0.001, -0.001, 1.001 }, .color = COLOR },
-    .{ .pos = .{ -0.001, 1.001, 1.001 }, .color = COLOR },
-    .{ .pos = .{ -0.001, 1.001, -0.001 }, .color = COLOR },
-    .{ .pos = .{ -0.001, -0.001, -0.001 }, .color = COLOR },
+    .{ .pos = .{ 0.0, 0.0, 0.0 }, .color = COLOR },
+    .{ .pos = .{ 0.0, 0.0, 1.0 }, .color = COLOR },
+    .{ .pos = .{ 0.0, 1.0, 1.0 }, .color = COLOR },
+    .{ .pos = .{ 0.0, 1.0, 0.0 }, .color = COLOR },
+    .{ .pos = .{ 0.0, 0.0, 0.0 }, .color = COLOR },
     //right
-    .{ .pos = .{ 1.001, -0.001, -0.001 }, .color = COLOR },
-    .{ .pos = .{ 1.001, -0.001, 1.001 }, .color = COLOR },
-    .{ .pos = .{ 1.001, 1.001, 1.001 }, .color = COLOR },
-    .{ .pos = .{ 1.001, 1.001, -0.001 }, .color = COLOR },
+    .{ .pos = .{ 1.0, 0.0, 0.0 }, .color = COLOR },
+    .{ .pos = .{ 1.0, 0.0, 1.0 }, .color = COLOR },
+    .{ .pos = .{ 1.0, 1.0, 1.0 }, .color = COLOR },
+    .{ .pos = .{ 1.0, 1.0, 0.0 }, .color = COLOR },
     //back
-    .{ .pos = .{ 1.001, 1.001, 1.001 }, .color = COLOR },
-    .{ .pos = .{ -0.001, 1.001, 1.001 }, .color = COLOR },
-    .{ .pos = .{ -0.001, -0.001, 1.001 }, .color = COLOR },
-    .{ .pos = .{ 1.001, -0.001, 1.001 }, .color = COLOR },
+    .{ .pos = .{ 1.0, 1.0, 1.0 }, .color = COLOR },
+    .{ .pos = .{ 0.0, 1.0, 1.0 }, .color = COLOR },
+    .{ .pos = .{ 0.0, 0.0, 1.0 }, .color = COLOR },
+    .{ .pos = .{ 1.0, 0.0, 1.0 }, .color = COLOR },
 };
 
 const line_vertices: [2]Vertex = .{
@@ -2296,84 +2320,84 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
         try self.ubo_allocs.append(self.allocator.*, alloc);
     }
 
-    var image_info0 = ImageInfo{
-        .depth = 1,
-        .subresource_range = .{
-            .aspectMask = c.vulkan.VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-        .views = try self.allocator.*.alloc(c.vulkan.VkImageView, self.MAX_CONCURRENT_FRAMES),
-        .samplers = try self.allocator.*.alloc(c.vulkan.VkSampler, self.MAX_CONCURRENT_FRAMES),
-    };
-    //defer self.allocator.*.free(image_info0.views);
-    //defer self.allocator.*.free(image_info0.samplers);
+    // var image_info0 = ImageInfo{
+    //     .depth = 1,
+    //     .subresource_range = .{
+    //         .aspectMask = c.vulkan.VK_IMAGE_ASPECT_COLOR_BIT,
+    //         .baseMipLevel = 0,
+    //         .levelCount = 1,
+    //         .baseArrayLayer = 0,
+    //         .layerCount = 1,
+    //     },
+    //     .views = try self.allocator.*.alloc(c.vulkan.VkImageView, self.MAX_CONCURRENT_FRAMES),
+    //     .samplers = try self.allocator.*.alloc(c.vulkan.VkSampler, self.MAX_CONCURRENT_FRAMES),
+    // };
+    // //defer self.allocator.*.free(image_info0.views);
+    // //defer self.allocator.*.free(image_info0.samplers);
 
-    //const image_data0 = c.stb.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.stb.STBI_rgb_alpha);
-    const image_data0 = c.stb.stbi_load_from_memory(
-        &cursor_source[0],
-        cursor_source.len,
-        &image_info0.width,
-        &image_info0.height,
-        &image_info0.channels,
-        c.stb.STBI_rgb_alpha,
-    );
-    if (image_data0 == null) {
-        std.debug.print("Unable to find image file \n", .{});
-        return;
-    } else {
-        image_info0.data = image_data0;
-    }
+    // //const image_data0 = c.stb.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.stb.STBI_rgb_alpha);
+    // const image_data0 = c.stb.stbi_load_from_memory(
+    //     &cursor_source[0],
+    //     cursor_source.len,
+    //     &image_info0.width,
+    //     &image_info0.height,
+    //     &image_info0.channels,
+    //     c.stb.STBI_rgb_alpha,
+    // );
+    // if (image_data0 == null) {
+    //     std.debug.print("Unable to find image file \n", .{});
+    //     return;
+    // } else {
+    //     image_info0.data = image_data0;
+    // }
 
-    try create_2d_texture(self, &image_info0);
-    c.stb.stbi_image_free(image_info0.data);
+    // try create_2d_texture(self, &image_info0);
+    // c.stb.stbi_image_free(image_info0.data);
 
-    try create_image_view(self.device, &image_info0);
-    try create_samplers(
-        self,
-        &image_info0,
-        c.vulkan.VK_FILTER_LINEAR,
-        c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        true,
-    );
+    // try create_image_view(self.device, &image_info0);
+    // try create_samplers(
+    //     self,
+    //     &image_info0,
+    //     c.vulkan.VK_FILTER_LINEAR,
+    //     c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+    //     true,
+    // );
 
-    var image_info1 = ImageInfo{
-        .depth = 1,
-        .subresource_range = .{
-            .aspectMask = c.vulkan.VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-        .views = try self.allocator.*.alloc(c.vulkan.VkImageView, self.MAX_CONCURRENT_FRAMES),
-        .samplers = try self.allocator.*.alloc(c.vulkan.VkSampler, self.MAX_CONCURRENT_FRAMES),
-    };
-    //defer self.allocator.*.free(image_info1.views);
-    //defer self.allocator.*.free(image_info1.samplers);
+    // var image_info1 = ImageInfo{
+    //     .depth = 1,
+    //     .subresource_range = .{
+    //         .aspectMask = c.vulkan.VK_IMAGE_ASPECT_COLOR_BIT,
+    //         .baseMipLevel = 0,
+    //         .levelCount = 1,
+    //         .baseArrayLayer = 0,
+    //         .layerCount = 1,
+    //     },
+    //     .views = try self.allocator.*.alloc(c.vulkan.VkImageView, self.MAX_CONCURRENT_FRAMES),
+    //     .samplers = try self.allocator.*.alloc(c.vulkan.VkSampler, self.MAX_CONCURRENT_FRAMES),
+    // };
+    // //defer self.allocator.*.free(image_info1.views);
+    // //defer self.allocator.*.free(image_info1.samplers);
 
-    const image_data1 = c.stb.stbi_load_from_memory(
-        &blocks_source[0],
-        blocks_source.len,
-        &image_info1.width,
-        &image_info1.height,
-        &image_info1.channels,
-        c.stb.STBI_rgb_alpha,
-    );
-    if (image_data1 == null) {
-        std.debug.print("Unable to find image file \n", .{});
-        return;
-    } else {
-        image_info1.data = image_data1;
-    }
+    // const image_data1 = c.stb.stbi_load_from_memory(
+    //     &blocks_source[0],
+    //     blocks_source.len,
+    //     &image_info1.width,
+    //     &image_info1.height,
+    //     &image_info1.channels,
+    //     c.stb.STBI_rgb_alpha,
+    // );
+    // if (image_data1 == null) {
+    //     std.debug.print("Unable to find image file \n", .{});
+    //     return;
+    // } else {
+    //     image_info1.data = image_data1;
+    // }
 
-    try create_2d_texture(self, &image_info1);
-    c.stb.stbi_image_free(image_info1.data);
+    // try create_2d_texture(self, &image_info1);
+    // c.stb.stbi_image_free(image_info1.data);
 
-    try create_image_view(self.device, &image_info1);
-    try create_samplers(self, &image_info1, c.vulkan.VK_FILTER_NEAREST, c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
+    // try create_image_view(self.device, &image_info1);
+    // try create_samplers(self, &image_info1, c.vulkan.VK_FILTER_NEAREST, c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
 
     // Descriptor Sets
 
@@ -2411,17 +2435,17 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
             //},
         };
 
-        const images: [2]c.vulkan.VkDescriptorImageInfo = .{ c.vulkan.VkDescriptorImageInfo{
-            .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .imageView = image_info0.views[i],
-            .sampler = image_info0.samplers[i],
-        }, c.vulkan.VkDescriptorImageInfo{
-            .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .imageView = image_info1.views[i],
-            .sampler = image_info1.samplers[i],
-        } };
+        // const images: [2]c.vulkan.VkDescriptorImageInfo = .{ c.vulkan.VkDescriptorImageInfo{
+        //     .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        //     .imageView = image_info0.views[i],
+        //     .sampler = image_info0.samplers[i],
+        // }, c.vulkan.VkDescriptorImageInfo{
+        //     .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        //     .imageView = image_info1.views[i],
+        //     .sampler = image_info1.samplers[i],
+        // } };
 
-        const descriptor_writes: [4]c.vulkan.VkWriteDescriptorSet = .{
+        const descriptor_writes: [2]c.vulkan.VkWriteDescriptorSet = .{
             c.vulkan.VkWriteDescriptorSet{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = self.descriptor_sets[i],
@@ -2433,28 +2457,28 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
                 .pImageInfo = null,
                 .pTexelBufferView = null,
             },
-            c.vulkan.VkWriteDescriptorSet{
-                .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = self.descriptor_sets[i],
-                .dstBinding = 1,
-                .dstArrayElement = 0,
-                .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .pBufferInfo = null,
-                .pImageInfo = &images[0],
-                .pTexelBufferView = null,
-            },
-            c.vulkan.VkWriteDescriptorSet{
-                .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = self.descriptor_sets[i],
-                .dstBinding = 2,
-                .dstArrayElement = 0,
-                .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .pBufferInfo = null,
-                .pImageInfo = &images[1],
-                .pTexelBufferView = null,
-            },
+            // c.vulkan.VkWriteDescriptorSet{
+            //     .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            //     .dstSet = self.descriptor_sets[i],
+            //     .dstBinding = 1,
+            //     .dstArrayElement = 0,
+            //     .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            //     .descriptorCount = 1,
+            //     .pBufferInfo = null,
+            //     .pImageInfo = &images[0],
+            //     .pTexelBufferView = null,
+            // },
+            // c.vulkan.VkWriteDescriptorSet{
+            //     .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            //     .dstSet = self.descriptor_sets[i],
+            //     .dstBinding = 2,
+            //     .dstArrayElement = 0,
+            //     .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            //     .descriptorCount = 1,
+            //     .pBufferInfo = null,
+            //     .pImageInfo = &images[1],
+            //     .pTexelBufferView = null,
+            // },
             c.vulkan.VkWriteDescriptorSet{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = self.descriptor_sets[i],

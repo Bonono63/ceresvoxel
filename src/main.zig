@@ -141,8 +141,8 @@ pub const Object = struct {
 
     // voxel space data
     size: @Vector(3, u32) = .{ 0, 0, 0 },
-    chunks: std.ArrayList(chunk.Chunk) = undefined, // 32768 * chunk count
-    chunk_occupancy: std.ArrayList(u32) = undefined,
+    chunks: std.ArrayList(chunk.Chunk) = undefined, //
+    // chunk_occupancy: std.ArrayList(u32) = undefined,
 
     // TODO add a planet function init
     pub fn init(
@@ -348,41 +348,31 @@ pub fn main() !void {
 
     // game and physics INIT
 
-    var sandbox_game_state = GameState{
+    var world_state = GameState{
         .client_state = ClientState{},
         .allocator = &allocator,
         .sim_start_time = std.time.milliTimestamp(),
         .objects = try std.ArrayList(Object).initCapacity(allocator, 100),
         .contacts = try std.ArrayList(physics.Contact).initCapacity(allocator, 2000),
     };
-    try sandbox_state_init(&sandbox_game_state, &allocator);
-    defer sandbox_game_state.objects.deinit(allocator);
-    defer sandbox_game_state.contacts.deinit(allocator);
-
-    var test_game_state = GameState{
-        .client_state = ClientState{},
-        .allocator = &allocator,
-        .sim_start_time = std.time.milliTimestamp(),
-        .objects = try std.ArrayList(Object).initCapacity(allocator, 100),
-        .contacts = try std.ArrayList(physics.Contact).initCapacity(allocator, 2000),
-    };
-    defer test_game_state.objects.deinit(allocator);
-    defer test_game_state.contacts.deinit(allocator);
+    try sandbox_state_init(&world_state, &allocator);
+    defer world_state.objects.deinit(allocator);
+    defer world_state.contacts.deinit(allocator);
 
     var engine_state = EngineState{
         .allocator = &allocator,
-        .world_state = &sandbox_game_state,
+        .world_state = &world_state,
         .vulkan_state = &vulkan_state,
     };
 
-    try load_game_state(&engine_state, &sandbox_game_state);
+    try load_game_state(&engine_state, &world_state);
 
     // Game Loop and additional prerequisites
 
     var prev_time: i64 = 0;
     var prev_time_micro: i64 = 0;
     const MINIMUM_PHYSICS_TICK_TIME: i64 = 10;
-    // const MINIMUM_RENDER_TICK_TIME: i64 = 0;
+    const MINIMUM_RENDER_TICK_TIME: i64 = 0; // microseconds
 
     var frame_count: u64 = 0;
     var current_frame_index: u32 = 0;
@@ -400,14 +390,17 @@ pub fn main() !void {
     std.debug.print("fps limit: {}\n", .{fps_limit});
 
     var current_render_targets = try std.ArrayList(vulkan.RenderInfo).initCapacity(allocator, 200);
+    defer current_render_targets.deinit(allocator);
     var prev_physics_tick_time: i64 = std.time.milliTimestamp();
 
     var contact_renders = try std.ArrayList(physics.RenderContact).initCapacity(allocator, 1000);
+    defer contact_renders.deinit(allocator);
     // var running_physics_tests: bool = false;
 
     var frame_objects: std.ArrayList(Object) = try std.ArrayList(Object).initCapacity(allocator, 2000);
+    defer frame_objects.deinit(allocator);
 
-    const pause_physics: bool = false;
+    // const pause_physics: bool = false;
 
     // The responsibility of the main thread is to handle input and manage
     // all the other threads
@@ -426,97 +419,40 @@ pub fn main() !void {
 
         const client_state: *ClientState = &engine_state.world_state.client_state;
         const game_state: *GameState = engine_state.world_state;
-        // if (input_state.equal) {
-        //     print_mode = (print_mode + 1) % 3;
-        //     input_state.equal = false;
-        // }
-
-        // if (input_state.minus) {
-        //     //print_mode = (print_mode + 2) % 3;
-        //     selected_object = (selected_object + 1) % @as(u32, @intCast(game_state.objects.items.len));
-        //     input_state.minus = false;
-        // }
-
-        // if (input_state.p and print_mode > 0) {
-        //     if (edit_mode and print_mode == 1) {
-        //         game_state.objects.items[selected_object].orientation = zm.normalize4(game_state.objects.items[selected_object].orientation);
-        //     }
-        //     edit_mode = !edit_mode;
-        //     input_state.p = false;
-        // }
-
-        // if (input_state.tab and edit_mode) {
-        //     var edit_index_max: u32 = 0;
-        //     if (print_mode == 1) {
-        //         edit_index_max = 4;
-        //     }
-        //     if (print_mode == 2) {
-        //         edit_index_max = 3;
-        //     }
-        //     edit_index = (edit_index + 1) % edit_index_max;
-        //     input_state.tab = false;
-        // }
-
-        // if (input_state.i and edit_mode) {
-        //     switch (print_mode) {
-        //         1 => {
-        //             game_state.objects.items[selected_object].orientation[edit_index] += 0.1;
-        //         },
-        //         2 => {
-        //             if (edit_index > 3) edit_index = 0;
-        //             game_state.objects.items[selected_object].position[edit_index] += 0.1;
-        //         },
-        //         else => {},
-        //     }
-        //     input_state.i = false;
-        // }
-
-        // if (input_state.o and edit_mode) {
-        //     switch (print_mode) {
-        //         1 => {
-        //             game_state.objects.items[selected_object].orientation[edit_index] -= 0.1;
-        //             //game_state.objects / 1000.items[selected_object].orientation[edit_index] -= std.math.pi * 0.1;
-        //             //game_state.objects.items[selected_object].orientation = zm.normalize4(game_state.objects.items[selected_object].orientation);
-        //         },
-        //         2 => {
-        //             if (edit_index > 3) edit_index = 0;
-        //             game_state.objects.items[selected_object].position[edit_index] -= 0.1;
-        //         },
-        //         else => {},
-        //     }
-        //     input_state.o = false;
-        // }
-
-        // if (edit_mode) {
-        //     //game_state.objects.items[selected_object].colliding = CollisionType.PLAYER_SELECT;
-        // }
 
         if (input_state.one) {
-            try load_game_state(&engine_state, &sandbox_game_state);
+            unload_game_state(&engine_state);
+            engine_state.world_state.objects.clearRetainingCapacity();
+            try sandbox_state_init(engine_state.world_state, &allocator);
+            try load_game_state(&engine_state, engine_state.world_state);
             input_state.one = false;
         }
         if (input_state.two) {
-            test_game_state.objects.clearRetainingCapacity();
-            try physics_test1_game_state(&test_game_state, &allocator);
-            try load_game_state(&engine_state, &test_game_state);
+            unload_game_state(&engine_state);
+            engine_state.world_state.objects.clearRetainingCapacity();
+            try physics_test6_game_state(engine_state.world_state, &allocator);
+            try load_game_state(&engine_state, engine_state.world_state);
             input_state.two = false;
         }
         if (input_state.three) {
-            test_game_state.objects.clearRetainingCapacity();
-            try physics_test2_game_state(&test_game_state, &allocator);
-            try load_game_state(&engine_state, &test_game_state);
+            unload_game_state(&engine_state);
+            engine_state.world_state.objects.clearRetainingCapacity();
+            try physics_test7_game_state(engine_state.world_state, &allocator);
+            try load_game_state(&engine_state, engine_state.world_state);
             input_state.three = false;
         }
         if (input_state.four) {
-            test_game_state.objects.clearRetainingCapacity();
-            try physics_test5_game_state(&test_game_state, &allocator);
-            try load_game_state(&engine_state, &test_game_state);
+            unload_game_state(&engine_state);
+            engine_state.world_state.objects.clearRetainingCapacity();
+            try physics_test5_game_state(engine_state.world_state, &allocator);
+            try load_game_state(&engine_state, engine_state.world_state);
             input_state.four = false;
         }
         if (input_state.five) {
-            test_game_state.objects.clearRetainingCapacity();
-            try physics_test4_game_state(&test_game_state, &allocator);
-            try load_game_state(&engine_state, &test_game_state);
+            unload_game_state(&engine_state);
+            engine_state.world_state.objects.clearRetainingCapacity();
+            try physics_test4_game_state(engine_state.world_state, &allocator);
+            try load_game_state(&engine_state, engine_state.world_state);
             input_state.five = false;
         }
 
@@ -582,9 +518,9 @@ pub fn main() !void {
         //     pause_physics = !pause_physics;
         //     input_state.g = false;
         //     // engine_state.world_state = &test_state;
-        // }
+        // }objects = try std.ArrayList(Object).initCapacity(allocator, 100)
 
-        if (delta_time_physics > MINIMUM_PHYSICS_TICK_TIME and !pause_physics) {
+        if (delta_time_physics > MINIMUM_PHYSICS_TICK_TIME) {
             // PHYSICS AND LOGIC SECTION
 
             prev_physics_tick_time = current_time;
@@ -593,43 +529,6 @@ pub fn main() !void {
 
             // TODO need to add some way for this to be done in the logic loop
             player_physics_state.*.velocity = input_vec;
-
-            // TODO this should be in the logic loop as well
-            // for (game_state.objects.items, 0..game_state.objects.items.len) |body, index| {
-            //     if (body.body_type == .particle) {
-            //         const MAX_PARTICLE_TIME: u32 = 200;
-            //         if (body.particle_time < MAX_PARTICLE_TIME) {
-            //             game_state.objects.items[index].particle_time += 1;
-            //         } else {
-            //             _ = game_state.objects.orderedRemove(index);
-            //             game_state.particle_count -= 1;
-            //         }
-            //     }
-            // }
-
-            // TODO this should be in the logic loop not in the physics loop
-            // if (input_state.e and current_time - vomit_cooldown_previous_time > VOMIT_COOLDOWN) {
-            //     const client_look_dir = game_state.client_state.lookV();
-            //     const particle_start_pos: @Vector(3, f128) = .{
-            //         player_physics_state.*.position[0] + (client_look_dir[0] * 2.0),
-            //         player_physics_state.*.position[1] + (client_look_dir[1] * 2.0),
-            //         player_physics_state.*.position[2] + (client_look_dir[2] * 2.0),
-            //     };
-            //     try game_state.objects.append(allocator, .{
-            //         .position = particle_start_pos,
-            //         .inverse_mass = 1.0 / 5.0,
-            //         .orientation = game_state.client_state
-            //             .look(),
-            //         .velocity = cm.scale_f32(client_look_dir, 1.0 * 32.0) + player_physics_state.*.velocity,
-            //         //.angular_velocity = .{1.0,0.0,0.0,0.0},
-            //         .half_size = .{ 0.125, 0.125, 0.125, 0.0 },
-            //         .body_type = .particle,
-            //     });
-
-            //     game_state.particle_count += 1;
-
-            //     vomit_cooldown_previous_time = current_time;
-            // }
 
             // TODO throw this into a different thread and join when the tick is done
             try physics.physics_tick(
@@ -653,101 +552,101 @@ pub fn main() !void {
                     .position = cast_body_pos + contact.pB,
                 });
             }
+
             // contact_count = @intCast(contacts.items.len);
-            game_state.contacts.clearRetainingCapacity();
+            game_state.contacts.clearRetainingCapacity(); // should keep previous frame contacts for optimization purposes
         }
 
-        //_ = &MINIMUM_RENDER_TICK_TIME;
-        // if (delta_time > MINIMUM_RENDER_TICK_TIME) {
-        prev_time = current_time;
-        prev_time_micro = current_time_micro;
-        try frame_objects.appendSliceBounded(game_state.objects.items);
-        // @memcpy(frame_objects[0..game_state.objects.items.len], game_state.objects.items);
-        // _ = &frame_objects;
+        if (delta_time_micro > MINIMUM_RENDER_TICK_TIME) {
+            prev_time = current_time;
+            prev_time_micro = current_time_micro;
+            try frame_objects.appendSliceBounded(game_state.objects.items);
+            // @memcpy(frame_objects[0..game_state.objects.items.len], game_state.objects.items);
+            // _ = &frame_objects;
 
-        const chunk_render_targets = try generate_chunk_render_targets(&allocator, game_state.objects.items);
-        current_render_targets.appendSliceAssumeCapacity(vulkan_state.render_targets.items);
-        current_render_targets.appendSliceAssumeCapacity(chunk_render_targets);
+            const chunk_render_targets = try generate_chunk_render_targets(&allocator, game_state.objects.items);
+            defer allocator.free(chunk_render_targets);
+            current_render_targets.appendSliceAssumeCapacity(vulkan_state.render_targets.items);
+            current_render_targets.appendSliceAssumeCapacity(chunk_render_targets);
 
-        // TODO make the integrator slightly more predicitvie some how?
-        // updated_objects = try allocator.realloc(updated_objects, game_state.objects.items.len);
-        // @memcpy(updated_objects, game_state.objects.items);
+            // TODO make the integrator slightly more predicitvie some how?
+            // updated_objects = try allocator.realloc(updated_objects, game_state.objects.items.len);
+            // @memcpy(updated_objects, game_state.objects.items);
 
-        // Lower the percieved latency on player input
-        // updated_objects[game_state.player_index].velocity = input_vec;
-        // physics.euler_integration(frame_objects, physics_delta_time);
+            // Lower the percieved latency on player input
+            // updated_objects[game_state.player_index].velocity = input_vec;
+            // physics.euler_integration(frame_objects, physics_delta_time);
 
-        var render_frame = vulkan.RenderFrame{
-            .render_targets = current_render_targets.items,
-            .bodies = frame_objects.items,
-            .contact_renders = contact_renders.items,
-            .particle_count = game_state.particle_count,
-            .player_index = game_state.player_index,
-            .client_state = &game_state.client_state,
-        };
+            var render_frame = vulkan.RenderFrame{
+                .render_targets = current_render_targets.items,
+                .bodies = frame_objects.items,
+                .contact_renders = contact_renders.items,
+                .particle_count = game_state.particle_count,
+                .player_index = game_state.player_index,
+                .client_state = &game_state.client_state,
+            };
 
-        c.vulkan.glfwGetWindowSize(vulkan_state.window, &window_width, &window_height);
-        const aspect_ratio: f32 = @as(f32, @floatFromInt(window_width)) / @as(f32, @floatFromInt(window_height));
+            c.vulkan.glfwGetWindowSize(vulkan_state.window, &window_width, &window_height);
+            const aspect_ratio: f32 = @as(f32, @floatFromInt(window_width)) / @as(f32, @floatFromInt(window_height));
 
-        const player_pos: zm.Vec = .{ 0.0, -0.45, 0.0, 0.0 };
-        const view: zm.Mat = zm.lookToLh(player_pos, look, up);
-        const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
-        const view_proj: zm.Mat = zm.mul(view, projection);
+            const player_pos: zm.Vec = .{ 0.0, -0.45, 0.0, 0.0 };
+            const view: zm.Mat = zm.lookToLh(player_pos, look, up);
+            const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
+            const view_proj: zm.Mat = zm.mul(view, projection);
 
-        @memcpy(vulkan_state.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
-        @memcpy(vulkan_state.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
-        @memset(vulkan_state.push_constant_data[(@sizeOf(zm.Mat) + 4)..(@sizeOf(zm.Mat) + 4 + 4)], 0);
+            @memcpy(vulkan_state.push_constant_data[0..64], @as([]u8, @ptrCast(@constCast(&view_proj)))[0..64]);
+            @memcpy(vulkan_state.push_constant_data[@sizeOf(zm.Mat)..(@sizeOf(zm.Mat) + 4)], @as([*]u8, @ptrCast(@constCast(&aspect_ratio)))[0..4]);
+            @memset(vulkan_state.push_constant_data[(@sizeOf(zm.Mat) + 4)..(@sizeOf(zm.Mat) + 4 + 4)], 0);
 
-        try vulkan.update_chunk_ubo(
-            &vulkan_state,
-            render_frame.bodies,
-            render_frame.player_index,
-            1,
-        );
+            try vulkan.update_chunk_ubo(
+                &vulkan_state,
+                render_frame.bodies,
+                render_frame.player_index,
+                1,
+            );
 
-        // TODO make it so outlines can be enabled or disabled
-        try vulkan.update_outline_ubo(
-            &vulkan_state,
-            render_frame.bodies,
-            render_frame.contact_renders,
-            render_frame.player_index,
-            0,
-        );
+            // TODO make it so outlines can be enabled or disabled
+            try vulkan.update_outline_ubo(
+                &vulkan_state,
+                render_frame.bodies,
+                render_frame.contact_renders,
+                render_frame.player_index,
+                0,
+            );
 
-        const box_count: usize = render_frame.bodies.len + render_frame.contact_renders.len;
-        vulkan_state.render_targets.items[1].instance_count = @intCast(box_count);
-        vulkan_state.render_targets.items[2].instance_count = @intCast(render_frame.contact_renders.len);
-        vulkan_state.render_targets.items[2].first_instance = @intCast(box_count);
+            const box_count: usize = render_frame.bodies.len + render_frame.contact_renders.len;
+            vulkan_state.render_targets.items[1].instance_count = @intCast(box_count);
+            vulkan_state.render_targets.items[2].instance_count = @intCast(render_frame.contact_renders.len);
+            vulkan_state.render_targets.items[2].first_instance = @intCast(box_count);
 
-        // DRAW
-        try vulkan_state.draw_frame(current_frame_index, &render_frame.render_targets);
+            // DRAW
+            try vulkan_state.draw_frame(current_frame_index, &render_frame.render_targets);
 
-        // TODO make the position printed the camera position
-        std.debug.print("[G] {d:5.3}ms {d:4.1}fps pos:{d:3.1} {d:3.1} {d:3.1} y:{d:3.1} p:{d:3.1}   [{s}]   \r", .{
-            average_frame_dt,
-            1.0 / average_frame_dt * 1000.0,
-            client_state.camera_pos[0], // @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])),
-            client_state.camera_pos[1], // @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
-            client_state.camera_pos[2], // @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
-            render_frame.client_state.yaw,
-            render_frame.client_state.pitch,
-            if (pause_physics) "P" else ">",
-        });
+            // TODO make the position printed the camera position
+            std.debug.print("[G] {d:5.3}ms {d:4.1}fps pos:{d:3.1} {d:3.1} {d:3.1} y:{d:3.1} p:{d:3.1}   \r", .{
+                average_frame_dt,
+                1.0 / average_frame_dt * 1000.0,
+                client_state.camera_pos[0], // @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])),
+                client_state.camera_pos[1], // @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
+                client_state.camera_pos[2], // @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
+                render_frame.client_state.yaw,
+                render_frame.client_state.pitch,
+            });
 
-        // EMA fps and delta_time
-        const alpha: f32 = 0.5;
-        average_frame_dt = alpha * @as(f32, @floatFromInt(delta_time_micro)) / 1000.0 + (1 - alpha) * average_frame_dt;
-        // fps_average = @as(f32, @floatCast(alpha * delta_time_float)) + (1 - alpha) * fps_average;
+            // EMA fps and delta_time
+            const alpha: f32 = 0.5;
+            average_frame_dt = alpha * @as(f32, @floatFromInt(delta_time_micro)) / 1000.0 + (1 - alpha) * average_frame_dt;
+            // fps_average = @as(f32, @floatCast(alpha * delta_time_float)) + (1 - alpha) * fps_average;
 
-        current_frame_index = (current_frame_index + 1) % vulkan_state.MAX_CONCURRENT_FRAMES;
-        frame_count += 1;
-        // }
+            current_frame_index = (current_frame_index + 1) % vulkan_state.MAX_CONCURRENT_FRAMES;
+            frame_count += 1;
+        }
 
-        //contacts.clearRetainingCapacity();
         current_render_targets.clearRetainingCapacity();
         frame_objects.clearRetainingCapacity();
     }
 
+    unload_game_state(&engine_state);
     frame_objects.clearAndFree(allocator);
     _ = c.vulkan.vkDeviceWaitIdle(vulkan_state.device);
     vulkan_state.cleanup();
@@ -1084,7 +983,7 @@ fn sandbox_state_init(game_state: *GameState, allocator: *std.mem.Allocator) !vo
         .half_size = .{ 16, 16, 16, 0.0 },
         .body_type = .voxel_space,
         .chunks = try std.ArrayList(chunk.Chunk).initCapacity(allocator.*, 10), // 10 chunks
-        .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator.*, 32), // binary field of which chunks are to be loaded which ones not to.
+        // .chunk_occupancy = try std.ArrayList(u32).initCapacity(allocator.*, 32), // binary field of which chunks are to be loaded which ones not to.
         .lock_rot = true,
     });
     game_state.sun_index = @intCast(game_state.objects.items.len - 1);
@@ -1285,15 +1184,92 @@ fn physics_test5_game_state(game_state: *GameState, allocator: *std.mem.Allocato
     });
 }
 
+// multi point contact manifold generation test
+fn physics_test6_game_state(game_state: *GameState, allocator: *std.mem.Allocator) !void {
+    // player
+    try game_state.objects.append(allocator.*, .{
+        .position = .{ 0.0, 0.0, -4.0 },
+        .inverse_mass = (1.0 / 100.0),
+        .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
+        .body_type = .player,
+    });
+    game_state.player_index = @intCast(game_state.objects.items.len - 1);
+
+    // Test1 Box
+    try game_state.objects.append(allocator.*, .{
+        .position = .{ 0.0, -0.5, 0.0 },
+        .inverse_mass = 1.0 / 1000.0,
+        .planet = false,
+        .gravity = false,
+        .half_size = .{ 0.5, 0.5, 0.5, 0.0 },
+        .body_type = .other,
+        .lock_pos = true,
+        .lock_rot = true,
+    });
+
+    // Test2 Box
+    try game_state.objects.append(allocator.*, .{
+        .position = .{ 0.0, 0.5, 0.0 },
+        .inverse_mass = 1.0 / 5.0,
+        .velocity = .{ 0.0, 0.0, 0.0, 0.0 },
+        .planet = false,
+        .gravity = false,
+        .half_size = .{ 0.5, 0.5, 0.5, 0.0 },
+        .body_type = .other,
+        .lock_pos = true,
+        .lock_rot = true,
+    });
+}
+
+// multi point contact manifold generation test
+fn physics_test7_game_state(game_state: *GameState, allocator: *std.mem.Allocator) !void {
+    // player
+    try game_state.objects.append(allocator.*, .{
+        .position = .{ 0.0, 0.0, -4.0 },
+        .inverse_mass = (1.0 / 100.0),
+        .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
+        .body_type = .player,
+    });
+    game_state.player_index = @intCast(game_state.objects.items.len - 1);
+
+    // Test1 Box
+    try game_state.objects.append(allocator.*, .{
+        .position = .{ 0.0, -0.5, 0.0 },
+        .inverse_mass = 1.0 / 1000.0,
+        .planet = false,
+        .gravity = false,
+        .half_size = .{ 0.5, 0.5, 0.5, 0.0 },
+        .body_type = .other,
+        .lock_pos = true,
+        .lock_rot = true,
+    });
+
+    // Test2 Box
+    try game_state.objects.append(allocator.*, .{
+        .position = .{ 0.0, 0.5, 0.0 },
+        .inverse_mass = 1.0 / 5.0,
+        .orientation = .{ 0.0, 0.5, 0.0, 0.87 },
+        .velocity = .{ 0.0, 0.0, 0.0, 0.0 },
+        .planet = false,
+        .gravity = false,
+        .half_size = .{ 0.5, 0.5, 0.5, 0.0 },
+        .body_type = .other,
+        .lock_pos = true,
+        .lock_rot = true,
+    });
+}
+
 fn load_game_state(
     engine_state: *EngineState,
-    game_state: *GameState,
+    new_game_state: *GameState,
 ) !void {
     var start_load_time = std.time.milliTimestamp();
 
+    engine_state.world_state = new_game_state;
+
     for (0..engine_state.world_state.*.objects.items.len) |obj_index| {
         if (engine_state.world_state.*.objects.items[obj_index].body_type == .voxel_space) {
-            try load_chunk(game_state.allocator.*, engine_state.world_state, &engine_state.world_state.*.objects.items[obj_index]);
+            try load_chunk(engine_state.allocator.*, engine_state.world_state, &engine_state.world_state.*.objects.items[obj_index]);
         }
     }
     std.debug.print("[Debug] Loading chunks {}ms\n", .{std.time.milliTimestamp() - start_load_time});
@@ -1308,7 +1284,7 @@ fn load_game_state(
 
                 const chunk_mesh = try mesh_generation.CullMesh(
                     &object.chunks.items[chunk_index].blocks,
-                    game_state.allocator,
+                    engine_state.allocator,
                 );
                 object.chunks.items[chunk_index].vertex_buffer = try vulkan.VulkanState.create_vertex_buffer(
                     engine_state.vulkan_state,
@@ -1317,7 +1293,7 @@ fn load_game_state(
                     &chunk_mesh[0],
                 );
                 chunk_count += 1;
-                game_state.allocator.free(chunk_mesh);
+                engine_state.allocator.free(chunk_mesh);
 
                 std.debug.print("chunk_index: {} | chunk mesh time: {}ms | chunk count: {}\n", .{
                     chunk_index,
@@ -1328,17 +1304,15 @@ fn load_game_state(
         }
     }
     std.debug.print("[Debug] Generating chunk meshes {}ms\n", .{std.time.milliTimestamp() - start_load_time});
-
-    engine_state.world_state = game_state;
 }
 
 fn unload_game_state(
     engine_state: *EngineState,
-    game_state: *GameState,
 ) void {
-    for (0..game_state.objects.items.len) |object_index| {
-        if (game_state.objects.items[object_index].body_type == .voxel_space) {
-            game_state.objects.items[object_index].chunks.deinit(engine_state.allocator);
+    for (0..engine_state.world_state.objects.items.len) |object_index| {
+        const object: *Object = &engine_state.world_state.objects.items[object_index];
+        if (object.body_type == .voxel_space) {
+            object.chunks.deinit(engine_state.world_state.allocator.*);
         }
     }
 }

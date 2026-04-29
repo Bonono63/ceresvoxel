@@ -64,10 +64,12 @@ const MAX_VELOCITY_PER_FRAME: f32 = 0.25;
 pub const Contact = struct {
     A: *main.Object,
     B: *main.Object,
+    // positions: zm.Vec,
     pA: zm.Vec,
     pB: zm.Vec,
+    // penetration: [4]f32,
     penetration: f32,
-    normal: zm.Vec,
+    normal: zm.Vec, // normal vector from the reference face
     rA: zm.Vec, // center of a to contact position
     rB: zm.Vec, // center of b to contact position
 
@@ -88,7 +90,7 @@ const Jacobian = struct {
     b: f32 = 0.0, // bias
     effective_mass: f32 = 0.0,
     total_lambda: f32 = 0.0,
-}; // TODO type field????
+};
 
 pub const RenderContact = struct {
     position: zm.Vec,
@@ -269,6 +271,7 @@ fn generate_contacts(
     a: *main.Object,
     b: *main.Object,
     contacts: *std.ArrayList(Contact),
+    // last_frame_contacts: *std.ArrayList(Contact),
 ) !void {
     const ab_center_line_f128 = b.*.position - a.*.position;
     // Cast should be ok as long as objects being compared are within
@@ -431,15 +434,15 @@ fn generate_contacts(
                 best_index - 3,
                 best_overlap,
             );
-        } else if (best_index < 15) {
-            edge_edge_contact(
-                contacts,
-                a,
-                b,
-                best_index - 6,
-                best_overlap,
-                ab_center_line,
-            );
+            // } else if (best_index < 15) {
+            //     edge_edge_contact(
+            //         contacts,
+            //         a,
+            //         b,
+            //         best_index - 6,
+            //         best_overlap,
+            //         ab_center_line,
+            //     );
         }
     }
 }
