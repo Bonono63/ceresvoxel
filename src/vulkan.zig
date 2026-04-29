@@ -1571,7 +1571,9 @@ pub const VulkanState = struct {
 
         self.vertex_buffers.deinit(self.allocator.*);
 
+        std.debug.print("\nImages being cleaned up {}\n\n", .{self.images.items.len});
         for (0..self.images.items.len) |image_index| {
+            std.debug.print("image {} cleaned\n", .{image_index});
             image_cleanup(self, &self.images.items[image_index]);
         }
 
@@ -1689,7 +1691,7 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
 
     const alloc_info = c.vulkan.VmaAllocationCreateInfo{
         .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
-        .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT, //c.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,//, //| ,
+        .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
         .priority = 1.0,
     };
 
@@ -1827,6 +1829,8 @@ pub fn create_2d_texture(self: *VulkanState, image_info: *ImageInfo) VkAbstracti
     c.vulkan.vkFreeCommandBuffers(self.device, self.command_pool, 1, &command_buffer);
 
     c.vulkan.vmaDestroyBuffer(self.vma_allocator, staging_buffer, staging_alloc);
+
+    try self.images.append(self.allocator.*, image_info.*);
 }
 
 /// Required fields are, image, viewType, format, and the subresource_range
@@ -1878,6 +1882,7 @@ pub fn create_samplers(instance: *VulkanState, image_info: *ImageInfo, filter: c
 }
 
 pub fn image_cleanup(self: *VulkanState, info: *ImageInfo) void {
+    std.debug.print("views: {} samplers: {}\n", .{ info.views.len, info.samplers.len });
     for (0..info.views.len) |i| {
         c.vulkan.vkDestroyImageView(self.device, info.views[i], null);
     }
@@ -1887,6 +1892,9 @@ pub fn image_cleanup(self: *VulkanState, info: *ImageInfo) void {
     }
 
     c.vulkan.vmaDestroyImage(self.vma_allocator, info.image, info.alloc);
+
+    self.allocator.free(info.views);
+    self.allocator.free(info.samplers);
 }
 
 /// Creates a 4 byte aligned buffer of any given file, intended for reading SPIR-V binary files
@@ -2274,7 +2282,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
         .{
             .create_info = .{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = 1000 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
+                .size = 100 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
                 .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             },
             .alloc_info = .{
@@ -2293,17 +2301,6 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
                 .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
             },
         },
-        //.{
-        //    .create_info = .{
-        //        .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        //        .size = 1000 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
-        //        .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        //    },
-        //    .alloc_info = .{
-        //        .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
-        //        .flags = c.vulkan.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
-        //    },
-        //},
     };
 
     for (buffer_infos) |buffer| {
@@ -2320,84 +2317,84 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
         try self.ubo_allocs.append(self.allocator.*, alloc);
     }
 
-    // var image_info0 = ImageInfo{
-    //     .depth = 1,
-    //     .subresource_range = .{
-    //         .aspectMask = c.vulkan.VK_IMAGE_ASPECT_COLOR_BIT,
-    //         .baseMipLevel = 0,
-    //         .levelCount = 1,
-    //         .baseArrayLayer = 0,
-    //         .layerCount = 1,
-    //     },
-    //     .views = try self.allocator.*.alloc(c.vulkan.VkImageView, self.MAX_CONCURRENT_FRAMES),
-    //     .samplers = try self.allocator.*.alloc(c.vulkan.VkSampler, self.MAX_CONCURRENT_FRAMES),
-    // };
-    // //defer self.allocator.*.free(image_info0.views);
-    // //defer self.allocator.*.free(image_info0.samplers);
+    var image_info0 = ImageInfo{
+        .depth = 1,
+        .subresource_range = .{
+            .aspectMask = c.vulkan.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .views = try self.allocator.*.alloc(c.vulkan.VkImageView, self.MAX_CONCURRENT_FRAMES),
+        .samplers = try self.allocator.*.alloc(c.vulkan.VkSampler, self.MAX_CONCURRENT_FRAMES),
+    };
+    //defer self.allocator.*.free(image_info0.views);
+    //defer self.allocator.*.free(image_info0.samplers);
 
-    // //const image_data0 = c.stb.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.stb.STBI_rgb_alpha);
-    // const image_data0 = c.stb.stbi_load_from_memory(
-    //     &cursor_source[0],
-    //     cursor_source.len,
-    //     &image_info0.width,
-    //     &image_info0.height,
-    //     &image_info0.channels,
-    //     c.stb.STBI_rgb_alpha,
-    // );
-    // if (image_data0 == null) {
-    //     std.debug.print("Unable to find image file \n", .{});
-    //     return;
-    // } else {
-    //     image_info0.data = image_data0;
-    // }
+    //const image_data0 = c.stb.stbi_load("fortnite.jpg", &image_info0.width, &image_info0.height, &image_info0.channels, c.stb.STBI_rgb_alpha);
+    const image_data0 = c.stb.stbi_load_from_memory(
+        &cursor_source[0],
+        cursor_source.len,
+        &image_info0.width,
+        &image_info0.height,
+        &image_info0.channels,
+        c.stb.STBI_rgb_alpha,
+    );
+    if (image_data0 == null) {
+        std.debug.print("Unable to find image file \n", .{});
+        return;
+    } else {
+        image_info0.data = image_data0;
+    }
 
-    // try create_2d_texture(self, &image_info0);
-    // c.stb.stbi_image_free(image_info0.data);
+    try create_2d_texture(self, &image_info0);
+    c.stb.stbi_image_free(image_info0.data);
 
-    // try create_image_view(self.device, &image_info0);
-    // try create_samplers(
-    //     self,
-    //     &image_info0,
-    //     c.vulkan.VK_FILTER_LINEAR,
-    //     c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT,
-    //     true,
-    // );
+    try create_image_view(self.device, &image_info0);
+    try create_samplers(
+        self,
+        &image_info0,
+        c.vulkan.VK_FILTER_LINEAR,
+        c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        true,
+    );
 
-    // var image_info1 = ImageInfo{
-    //     .depth = 1,
-    //     .subresource_range = .{
-    //         .aspectMask = c.vulkan.VK_IMAGE_ASPECT_COLOR_BIT,
-    //         .baseMipLevel = 0,
-    //         .levelCount = 1,
-    //         .baseArrayLayer = 0,
-    //         .layerCount = 1,
-    //     },
-    //     .views = try self.allocator.*.alloc(c.vulkan.VkImageView, self.MAX_CONCURRENT_FRAMES),
-    //     .samplers = try self.allocator.*.alloc(c.vulkan.VkSampler, self.MAX_CONCURRENT_FRAMES),
-    // };
-    // //defer self.allocator.*.free(image_info1.views);
-    // //defer self.allocator.*.free(image_info1.samplers);
+    var image_info1 = ImageInfo{
+        .depth = 1,
+        .subresource_range = .{
+            .aspectMask = c.vulkan.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .views = try self.allocator.*.alloc(c.vulkan.VkImageView, self.MAX_CONCURRENT_FRAMES),
+        .samplers = try self.allocator.*.alloc(c.vulkan.VkSampler, self.MAX_CONCURRENT_FRAMES),
+    };
+    //defer self.allocator.*.free(image_info1.views);
+    //defer self.allocator.*.free(image_info1.samplers);
 
-    // const image_data1 = c.stb.stbi_load_from_memory(
-    //     &blocks_source[0],
-    //     blocks_source.len,
-    //     &image_info1.width,
-    //     &image_info1.height,
-    //     &image_info1.channels,
-    //     c.stb.STBI_rgb_alpha,
-    // );
-    // if (image_data1 == null) {
-    //     std.debug.print("Unable to find image file \n", .{});
-    //     return;
-    // } else {
-    //     image_info1.data = image_data1;
-    // }
+    const image_data1 = c.stb.stbi_load_from_memory(
+        &blocks_source[0],
+        blocks_source.len,
+        &image_info1.width,
+        &image_info1.height,
+        &image_info1.channels,
+        c.stb.STBI_rgb_alpha,
+    );
+    if (image_data1 == null) {
+        std.debug.print("Unable to find image file \n", .{});
+        return;
+    } else {
+        image_info1.data = image_data1;
+    }
 
-    // try create_2d_texture(self, &image_info1);
-    // c.stb.stbi_image_free(image_info1.data);
+    try create_2d_texture(self, &image_info1);
+    c.stb.stbi_image_free(image_info1.data);
 
-    // try create_image_view(self.device, &image_info1);
-    // try create_samplers(self, &image_info1, c.vulkan.VK_FILTER_NEAREST, c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
+    try create_image_view(self.device, &image_info1);
+    try create_samplers(self, &image_info1, c.vulkan.VK_FILTER_NEAREST, c.vulkan.VK_SAMPLER_ADDRESS_MODE_REPEAT, false);
 
     // Descriptor Sets
 
@@ -2419,7 +2416,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
             c.vulkan.VkDescriptorBufferInfo{
                 .buffer = self.ubo_buffers.items[0],
                 .offset = 0,
-                .range = 1000 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
+                .range = 100 * (@sizeOf(zm.Mat) + @sizeOf(zm.Vec)),
             },
             // Chunks
             c.vulkan.VkDescriptorBufferInfo{
@@ -2435,17 +2432,17 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
             //},
         };
 
-        // const images: [2]c.vulkan.VkDescriptorImageInfo = .{ c.vulkan.VkDescriptorImageInfo{
-        //     .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        //     .imageView = image_info0.views[i],
-        //     .sampler = image_info0.samplers[i],
-        // }, c.vulkan.VkDescriptorImageInfo{
-        //     .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        //     .imageView = image_info1.views[i],
-        //     .sampler = image_info1.samplers[i],
-        // } };
+        const images: [2]c.vulkan.VkDescriptorImageInfo = .{ c.vulkan.VkDescriptorImageInfo{
+            .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = image_info0.views[i],
+            .sampler = image_info0.samplers[i],
+        }, c.vulkan.VkDescriptorImageInfo{
+            .imageLayout = c.vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = image_info1.views[i],
+            .sampler = image_info1.samplers[i],
+        } };
 
-        const descriptor_writes: [2]c.vulkan.VkWriteDescriptorSet = .{
+        const descriptor_writes: [4]c.vulkan.VkWriteDescriptorSet = .{
             c.vulkan.VkWriteDescriptorSet{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = self.descriptor_sets[i],
@@ -2457,28 +2454,28 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
                 .pImageInfo = null,
                 .pTexelBufferView = null,
             },
-            // c.vulkan.VkWriteDescriptorSet{
-            //     .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            //     .dstSet = self.descriptor_sets[i],
-            //     .dstBinding = 1,
-            //     .dstArrayElement = 0,
-            //     .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            //     .descriptorCount = 1,
-            //     .pBufferInfo = null,
-            //     .pImageInfo = &images[0],
-            //     .pTexelBufferView = null,
-            // },
-            // c.vulkan.VkWriteDescriptorSet{
-            //     .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            //     .dstSet = self.descriptor_sets[i],
-            //     .dstBinding = 2,
-            //     .dstArrayElement = 0,
-            //     .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            //     .descriptorCount = 1,
-            //     .pBufferInfo = null,
-            //     .pImageInfo = &images[1],
-            //     .pTexelBufferView = null,
-            // },
+            c.vulkan.VkWriteDescriptorSet{
+                .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = self.descriptor_sets[i],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pBufferInfo = null,
+                .pImageInfo = &images[0],
+                .pTexelBufferView = null,
+            },
+            c.vulkan.VkWriteDescriptorSet{
+                .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = self.descriptor_sets[i],
+                .dstBinding = 2,
+                .dstArrayElement = 0,
+                .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pBufferInfo = null,
+                .pImageInfo = &images[1],
+                .pTexelBufferView = null,
+            },
             c.vulkan.VkWriteDescriptorSet{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 .dstSet = self.descriptor_sets[i],
@@ -2490,17 +2487,6 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
                 .pImageInfo = null,
                 .pTexelBufferView = null,
             },
-            //c.vulkan.VkWriteDescriptorSet{
-            //    .sType = c.vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            //    .dstSet = self.descriptor_sets[i],
-            //    .dstBinding = 4,
-            //    .dstArrayElement = 0,
-            //    .descriptorType = c.vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            //    .descriptorCount = 1,
-            //    .pBufferInfo = &buffers[2],
-            //    .pImageInfo = null,
-            //    .pTexelBufferView = null,
-            //},
         };
 
         c.vulkan.vkUpdateDescriptorSets(self.device, descriptor_writes.len, &descriptor_writes, 0, null);
