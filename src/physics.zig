@@ -77,8 +77,8 @@ pub const Contact = struct {
     jT: Jacobian, // Tangent used for friction
     jB: Jacobian, // BiTangent used for friction
 
-    lifetime: u8,
-    id: u32, // Unique Identifier for each contact
+    // lifetime: u8,
+    // id: u32, // Unique Identifier for each contact
 };
 
 const Jacobian = struct {
@@ -130,13 +130,13 @@ pub fn physics_tick(
         }
     }
 
-    // do a different order for integration
-    euler_integration(bodies, delta_time);
-
     // Force Accumulation
     // Gravity
     // Bouyancy
     // Magnetism
+
+    // do a different order for integration
+    euler_integration(bodies, delta_time);
 
     // Contact Generation
 
@@ -159,37 +159,12 @@ pub fn physics_tick(
         }
     }
 
-    //for (0..contacts.items.len) |contact_index| {
-    //    prepare_contact(&contacts.items[contact_index], delta_time);
-    //}
-
     for (0..contacts.items.len) |contact_index| {
         const j = &contacts.items[contact_index].jN;
         init_jacobian(j, &contacts.items[contact_index], @as(f32, @floatCast(delta_time)));
     }
 
     pGS_contact_solver(contacts.items, delta_time);
-
-    // TODO use simultaneuos collision resolution eventually since it will be more
-    // accurate. But also much harder to implement and require a re understanding
-    // of how we apply forces. A decision should probably be made on whether that approach
-    // is our ultimate solution or not before we implement too much physics breaking stuff
-    for (contacts.items, 0..contacts.items.len) |contact, index| {
-        _ = &contact;
-        _ = &index;
-
-        // Cull contacts
-        // if (contact.lifetime > MAX_CONTACT_LIFETIME) {
-        //     _ = contacts.;
-        // } else {}
-
-        // contacts.items[index].lifetime += 1;
-
-        //contacts.clearRetainingCapacity();
-
-        // resolve collisions (apply torques)
-        //generate_impulses();
-    }
 }
 
 // TODO replace with RK4?
@@ -210,26 +185,10 @@ pub fn euler_integration(objects: []main.Object, delta_time: f64) void {
             // Integrate velocity
             objects[index].velocity += cm.scale_f32(linear_acceleration, @as(f32, @floatCast(delta_time)));
 
-            const resulting_angular_acceleration: zm.Vec = zm.mul(
-                objects[index].inverse_inertia_tensor,
-                objects[index].torque_accumulation,
-            );
-
-            objects[index].angular_velocity += cm.scale_f32(
-                resulting_angular_acceleration,
-                @as(f32, @floatCast(delta_time)),
-            );
-
             // linear damping
             objects[index].velocity = cm.scale_f32(
                 objects[index].velocity,
                 objects[index].linear_damping,
-            );
-
-            // angular damping
-            objects[index].angular_velocity = cm.scale_f32(
-                objects[index].angular_velocity,
-                objects[index].angular_damping,
             );
 
             if (!objects[index].lock_pos) {
@@ -240,6 +199,22 @@ pub fn euler_integration(objects: []main.Object, delta_time: f64) void {
                     objects[index].velocity[2] * delta_time,
                 };
             }
+
+            const resulting_angular_acceleration: zm.Vec = zm.mul(
+                objects[index].inverse_inertia_tensor,
+                objects[index].torque_accumulation,
+            );
+
+            objects[index].angular_velocity += cm.scale_f32(
+                resulting_angular_acceleration,
+                @as(f32, @floatCast(delta_time)),
+            );
+
+            // angular damping
+            objects[index].angular_velocity = cm.scale_f32(
+                objects[index].angular_velocity,
+                objects[index].angular_damping,
+            );
 
             //const angular_velocity_normalized: zm.Vec = zm.normalize3(objects[index].angular_velocity);
             //const angular_velocity_length: f32 = zm.length3(objects[index].angular_velocity)[0];
@@ -634,7 +609,7 @@ pub fn vertex_face_contact(
     // friction and restitution derived from it
     //std.debug.print("generated penetration: {}\n", .{penetration});
     const contact: Contact = .{
-        .lifetime = 0,
+        // .lifetime = 0,
         .normal = -normal,
         .penetration = penetration,
         .jN = Jacobian{},
@@ -646,7 +621,7 @@ pub fn vertex_face_contact(
         .pB = vertexB, // Use this one IG
         .rA = vertexA - cm.cast_position(a.position),
         .rB = vertexB - cm.cast_position(b.position),
-        .id = 0,
+        // .id = 0,
     };
 
     list.appendAssumeCapacity(contact);
@@ -726,7 +701,7 @@ pub fn edge_edge_contact(
     const vertexB = zm.mul(b.transform(), vertex); // TODO make sure this is correct (it isn't)
 
     const contact: Contact = .{
-        .lifetime = 0,
+        // .lifetime = 0,
         .normal = -axis,
         .penetration = penetration,
         //.positionA = zm.mul(b.transform(), vertex),
@@ -739,7 +714,7 @@ pub fn edge_edge_contact(
         .pB = zm.mul(b.transform(), vertex), // Use this one IG
         .rA = vertexA - cm.cast_position(a.position),
         .rB = vertexB - cm.cast_position(b.position),
-        .id = 0,
+        // .id = 0,
     };
 
     list.appendAssumeCapacity(contact);
@@ -879,7 +854,7 @@ fn pGS_contact_solver(contacts: []Contact, delta_time: f64) void {
         //const jv_i = ;//Initial velocity
         //var jv_k = ;
 
-        for (0..1) |i| {
+        for (0..20) |i| {
             _ = &i;
             const j = &contact.jN;
 

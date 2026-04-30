@@ -289,7 +289,8 @@ pub const GameState = struct {
     sim_start_time: i64,
     player_index: u32 = undefined,
     sun_index: u32 = undefined,
-    logic_func: *fn () void = undefined,
+    logic_tick: bool,
+    logic_func: *const fn (self: *GameState, delta_time: i64) void = undefined,
 };
 
 const ENGINE_NAME = "CeresVoxel";
@@ -354,6 +355,7 @@ pub fn main() !void {
         .sim_start_time = std.time.milliTimestamp(),
         .objects = try std.ArrayList(Object).initCapacity(allocator, 100),
         .contacts = try std.ArrayList(physics.Contact).initCapacity(allocator, 2000),
+        .logic_tick = false,
     };
     try sandbox_state_init(&world_state, &allocator);
     defer world_state.objects.deinit(allocator);
@@ -372,6 +374,7 @@ pub fn main() !void {
     var prev_time: i64 = 0;
     var prev_time_micro: i64 = 0;
     const MINIMUM_PHYSICS_TICK_TIME: i64 = 10;
+    const MINIMUM_LOGIC_TICK_TIME: i64 = 10;
     const MINIMUM_RENDER_TICK_TIME: i64 = 0; // microseconds
 
     var frame_count: u64 = 0;
@@ -392,6 +395,7 @@ pub fn main() !void {
     var current_render_targets = try std.ArrayList(vulkan.RenderInfo).initCapacity(allocator, 200);
     defer current_render_targets.deinit(allocator);
     var prev_physics_tick_time: i64 = std.time.milliTimestamp();
+    var prev_logic_tick_time: i64 = std.time.milliTimestamp();
 
     var contact_renders = try std.ArrayList(physics.RenderContact).initCapacity(allocator, 1000);
     defer contact_renders.deinit(allocator);
@@ -414,6 +418,7 @@ pub fn main() !void {
         // const delta_time: i64 = current_time - prev_time;
         // const delta_time_float: f64 = @as(f64, @floatFromInt(delta_time)) / 1000.0; // seconds
         const delta_time_physics: i64 = current_time - prev_physics_tick_time;
+        const delta_time_logic: i64 = current_time - prev_logic_tick_time;
 
         c.vulkan.glfwPollEvents();
 
@@ -511,15 +516,6 @@ pub fn main() !void {
             c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_NORMAL);
         }
 
-        // if (input_state.g) {
-        //     if (pause_physics) {
-        //         prev_physics_tick_time = prev_time;
-        //     }
-        //     pause_physics = !pause_physics;
-        //     input_state.g = false;
-        //     // engine_state.world_state = &test_state;
-        // }objects = try std.ArrayList(Object).initCapacity(allocator, 100)
-
         if (delta_time_physics > MINIMUM_PHYSICS_TICK_TIME) {
             // PHYSICS AND LOGIC SECTION
 
@@ -555,6 +551,15 @@ pub fn main() !void {
 
             // contact_count = @intCast(contacts.items.len);
             game_state.contacts.clearRetainingCapacity(); // should keep previous frame contacts for optimization purposes
+        }
+
+        if (delta_time_logic > MINIMUM_LOGIC_TICK_TIME and engine_state.world_state.logic_tick) {
+            prev_logic_tick_time = current_time;
+
+            game_state.logic_func(
+                game_state,
+                delta_time_logic,
+            );
         }
 
         if (delta_time_micro > MINIMUM_RENDER_TICK_TIME) {
@@ -998,6 +1003,30 @@ fn sandbox_state_init(game_state: *GameState, allocator: *std.mem.Allocator) !vo
         .half_size = .{ 1, 1, 1, 0.0 },
         .body_type = .other,
     });
+
+    game_state.logic_tick = true;
+    game_state.logic_func = &sandbox_tick;
+}
+
+fn sandbox_tick(self: *GameState, delta_time: i64) void {
+    _ = &delta_time;
+    // for (0..bodies.len) |index| {
+    //     if (bodies[index].planet) {
+    //         // TODO make the orbit have an offset according to the barocenter
+    //         // TODO Use eccentricity to skew one axis (x or z), the barocenter will have to be adjusted for more accurate
+    //         // deterministic motion
+    //         const time = @as(f64, @floatFromInt(std.time.milliTimestamp() - sim_start_time)) / @as(f32, @floatCast(bodies[index].orbit_radius));
+    //         const x: f128 = bodies[index].orbit_radius * @cos(time / 8.0) + bodies[index].barycenter[0];
+    //         const z: f128 = bodies[index].orbit_radius * @sin(time / 8.0) + bodies[index].barycenter[1];
+    //         const y: f128 = bodies[index].eccliptic_offset[0] * x + bodies[index].eccliptic_offset[1] * z;
+
+    //         bodies[index].position = .{ x, y, z };
+    //         bodies[index].velocity = zm.normalize3(.{ -@as(f32, @floatCast(z)), @as(f32, @floatCast(y)), @as(f32, @floatCast(x)), 0.0 });
+    //     }
+    // }
+    const force = zm.Vec{ 0.0, 9.5 * 100, 0.0, 0.0 };
+    self.objects.items[self.player_index].force_accumulation += force;
+    // std.debug.print("chicken\n", .{});
 }
 
 fn physics_test1_game_state(game_state: *GameState, allocator: *std.mem.Allocator) !void {
@@ -1309,6 +1338,8 @@ fn load_game_state(
 fn unload_game_state(
     engine_state: *EngineState,
 ) void {
+    engine_state.world_state.logic_tick = false;
+
     for (0..engine_state.world_state.objects.items.len) |object_index| {
         const object: *Object = &engine_state.world_state.objects.items[object_index];
         if (object.body_type == .voxel_space) {
