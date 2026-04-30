@@ -1571,9 +1571,7 @@ pub const VulkanState = struct {
 
         self.vertex_buffers.deinit(self.allocator.*);
 
-        std.debug.print("\nImages being cleaned up {}\n\n", .{self.images.items.len});
         for (0..self.images.items.len) |image_index| {
-            std.debug.print("image {} cleaned\n", .{image_index});
             image_cleanup(self, &self.images.items[image_index]);
         }
 
@@ -1882,7 +1880,6 @@ pub fn create_samplers(instance: *VulkanState, image_info: *ImageInfo, filter: c
 }
 
 pub fn image_cleanup(self: *VulkanState, info: *ImageInfo) void {
-    std.debug.print("views: {} samplers: {}\n", .{ info.views.len, info.samplers.len });
     for (0..info.views.len) |i| {
         c.vulkan.vkDestroyImageView(self.device, info.views[i], null);
     }

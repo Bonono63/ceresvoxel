@@ -96,7 +96,53 @@ pub const CollisionType = enum {
     PLAYER_SELECT,
 };
 
+/// UUID v7 storage and helpers
+pub const UUID = struct {
+    data: [16]u8 = undefined,
+
+    pub fn init() UUID {
+        var result: UUID = undefined;
+        const seed0: i128 = std.time.nanoTimestamp(); // this seed is probably fine right????
+        const seed1: i128 = std.time.nanoTimestamp(); // this seed is probably fine right????
+        var seed: [32]u8 = undefined;
+        @memcpy(seed[0..16], @as([]u8, @ptrCast(@constCast(&seed0))));
+        @memcpy(seed[16..32], @as([]u8, @ptrCast(@constCast(&seed1))));
+        var chacha = std.Random.DefaultCsprng.init(seed);
+        chacha.fill(result.data[6..]); // all random bytes
+        // time stamp
+        const time: i64 = std.time.milliTimestamp();
+        @memcpy(result.data[0..6], @as([]u8, @ptrCast(@constCast(&time)))[0..6]);
+        // std.debug.print("{x}\n", .{result.data[0..6]});
+        // version byte
+        result.data[7] = result.data[7] | 0b11110000 ^ 0b10000000;
+        // std.debug.print("{x} {b:0>8}\n", .{ result.data[7], result.data[7] });
+        // variant bits
+        result.data[9] = result.data[9] | 0b11000000 ^ 0b01000000;
+        // std.debug.print("{x} {b:0>8}\n", .{ result.data[9], result.data[9] });
+        // std.debug.print("{x}-{x}-{x}-{x}-{x}\n", .{ result.data[0..4], result.data[4..6], result.data[7..9], result.data[9..11], result.data[12..] });
+        return result;
+    }
+
+    // pub fn toString() []u8 {
+
+    // }
+
+    /// compares 2 UUIDs, although this is likely not needed
+    pub fn compare(self: *UUID, other: *UUID) bool {
+        var result: bool = true;
+
+        for (0..self.data.len) |i| {
+            if (other.data[i] != self.data[i]) {
+                result = false;
+            }
+        }
+
+        return result;
+    }
+};
+
 pub const Object = struct {
+    uuid: UUID = undefined,
     ///This should be sufficient for space exploration at a solar system level
     position: @Vector(3, f128),
     ///There is phyicsally no reason to be able to go above a speed
@@ -384,7 +430,6 @@ pub fn main() !void {
     var fps_limit: f32 = 0.0; //3.03030303;//8.333;
     _ = &fps_limit;
 
-    // var fps_average: f32 = 0.0;
     var average_frame_dt: f32 = 0; // ms
 
     std.debug.print("fps limit: {}\n", .{fps_limit});
@@ -395,10 +440,14 @@ pub fn main() !void {
 
     var contact_renders = try std.ArrayList(physics.RenderContact).initCapacity(allocator, 1000);
     defer contact_renders.deinit(allocator);
-    // var running_physics_tests: bool = false;
 
     var frame_objects: std.ArrayList(Object) = try std.ArrayList(Object).initCapacity(allocator, 2000);
     defer frame_objects.deinit(allocator);
+
+    for (0..30) |i| {
+        _ = &i;
+        _ = UUID.init();
+    }
 
     // const pause_physics: bool = false;
 
@@ -511,15 +560,6 @@ pub fn main() !void {
             c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_NORMAL);
         }
 
-        // if (input_state.g) {
-        //     if (pause_physics) {
-        //         prev_physics_tick_time = prev_time;
-        //     }
-        //     pause_physics = !pause_physics;
-        //     input_state.g = false;
-        //     // engine_state.world_state = &test_state;
-        // }objects = try std.ArrayList(Object).initCapacity(allocator, 100)
-
         if (delta_time_physics > MINIMUM_PHYSICS_TICK_TIME) {
             // PHYSICS AND LOGIC SECTION
 
@@ -553,29 +593,23 @@ pub fn main() !void {
                 });
             }
 
-            // contact_count = @intCast(contacts.items.len);
             game_state.contacts.clearRetainingCapacity(); // should keep previous frame contacts for optimization purposes
         }
 
         if (delta_time_micro > MINIMUM_RENDER_TICK_TIME) {
             prev_time = current_time;
             prev_time_micro = current_time_micro;
+
             try frame_objects.appendSliceBounded(game_state.objects.items);
-            // @memcpy(frame_objects[0..game_state.objects.items.len], game_state.objects.items);
-            // _ = &frame_objects;
+            // physics interpolation
+            const time_since_last_physics_frame: f64 = @as(f64, @floatFromInt(current_time - prev_physics_tick_time)) / 1000.0;
+            physics.euler_integration(frame_objects.items, time_since_last_physics_frame);
+            frame_objects.items[game_state.player_index].velocity = input_vec;
 
             const chunk_render_targets = try generate_chunk_render_targets(&allocator, game_state.objects.items);
             defer allocator.free(chunk_render_targets);
             current_render_targets.appendSliceAssumeCapacity(vulkan_state.render_targets.items);
             current_render_targets.appendSliceAssumeCapacity(chunk_render_targets);
-
-            // TODO make the integrator slightly more predicitvie some how?
-            // updated_objects = try allocator.realloc(updated_objects, game_state.objects.items.len);
-            // @memcpy(updated_objects, game_state.objects.items);
-
-            // Lower the percieved latency on player input
-            // updated_objects[game_state.player_index].velocity = input_vec;
-            // physics.euler_integration(frame_objects, physics_delta_time);
 
             var render_frame = vulkan.RenderFrame{
                 .render_targets = current_render_targets.items,
@@ -636,7 +670,6 @@ pub fn main() !void {
             // EMA fps and delta_time
             const alpha: f32 = 0.5;
             average_frame_dt = alpha * @as(f32, @floatFromInt(delta_time_micro)) / 1000.0 + (1 - alpha) * average_frame_dt;
-            // fps_average = @as(f32, @floatCast(alpha * delta_time_float)) + (1 - alpha) * fps_average;
 
             current_frame_index = (current_frame_index + 1) % vulkan_state.MAX_CONCURRENT_FRAMES;
             frame_count += 1;
@@ -966,6 +999,7 @@ pub fn load_chunk(
 fn sandbox_state_init(game_state: *GameState, allocator: *std.mem.Allocator) !void {
     // player
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, -128.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
@@ -975,6 +1009,7 @@ fn sandbox_state_init(game_state: *GameState, allocator: *std.mem.Allocator) !vo
 
     // "Sun"
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 10000000.0,
         .planet = false,
@@ -991,6 +1026,7 @@ fn sandbox_state_init(game_state: *GameState, allocator: *std.mem.Allocator) !vo
 
     // Test Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 128.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
@@ -1003,6 +1039,7 @@ fn sandbox_state_init(game_state: *GameState, allocator: *std.mem.Allocator) !vo
 fn physics_test1_game_state(game_state: *GameState, allocator: *std.mem.Allocator) !void {
     // player
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, -16.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
@@ -1012,6 +1049,7 @@ fn physics_test1_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test1 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
@@ -1022,6 +1060,7 @@ fn physics_test1_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test2 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 5.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
@@ -1035,6 +1074,7 @@ fn physics_test1_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 fn physics_test2_game_state(game_state: *GameState, allocator: *std.mem.Allocator) !void {
     // player
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, -16.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
@@ -1044,6 +1084,7 @@ fn physics_test2_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test1 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
@@ -1054,6 +1095,7 @@ fn physics_test2_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test2 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 5.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
@@ -1067,6 +1109,7 @@ fn physics_test2_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 fn physics_test3_game_state(game_state: *GameState, allocator: *std.mem.Allocator) !void {
     // player
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, -16.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
@@ -1076,6 +1119,7 @@ fn physics_test3_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test1 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
@@ -1086,6 +1130,7 @@ fn physics_test3_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test2 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 5.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 5.0,
         .velocity = .{ -5.0, 0.0, 0.0, 0.0 },
@@ -1100,6 +1145,7 @@ fn physics_test3_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 fn physics_test4_game_state(game_state: *GameState, allocator: *std.mem.Allocator) !void {
     // player
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, -8.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
@@ -1109,6 +1155,7 @@ fn physics_test4_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test1 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
@@ -1119,6 +1166,7 @@ fn physics_test4_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test2 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 1.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 5.0,
         .velocity = .{ 0.0, 0.0, 0.0, 0.0 },
@@ -1130,6 +1178,7 @@ fn physics_test4_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test3 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 3.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 5.0,
         .velocity = .{ -6.0, 0.0, 0.0, 0.0 },
@@ -1144,6 +1193,7 @@ fn physics_test4_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 fn physics_test5_game_state(game_state: *GameState, allocator: *std.mem.Allocator) !void {
     // player
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, -8.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
@@ -1153,6 +1203,7 @@ fn physics_test5_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test1 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, -0.5, 0.0 },
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
@@ -1163,6 +1214,7 @@ fn physics_test5_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test2 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.5, 0.0 },
         .inverse_mass = 1.0 / 5.0,
         .velocity = .{ 0.0, 0.0, 0.0, 0.0 },
@@ -1174,6 +1226,7 @@ fn physics_test5_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test3 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 4.0, 0.0, 0.0 },
         .inverse_mass = 1.0 / 5.0,
         .velocity = .{ -6.0, 0.0, 0.0, 0.0 },
@@ -1188,6 +1241,7 @@ fn physics_test5_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 fn physics_test6_game_state(game_state: *GameState, allocator: *std.mem.Allocator) !void {
     // player
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, -4.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
@@ -1197,6 +1251,7 @@ fn physics_test6_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test1 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, -0.5, 0.0 },
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
@@ -1209,6 +1264,7 @@ fn physics_test6_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test2 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.5, 0.0 },
         .inverse_mass = 1.0 / 5.0,
         .velocity = .{ 0.0, 0.0, 0.0, 0.0 },
@@ -1225,6 +1281,7 @@ fn physics_test6_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 fn physics_test7_game_state(game_state: *GameState, allocator: *std.mem.Allocator) !void {
     // player
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.0, -4.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
@@ -1234,6 +1291,7 @@ fn physics_test7_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test1 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, -0.5, 0.0 },
         .inverse_mass = 1.0 / 1000.0,
         .planet = false,
@@ -1246,6 +1304,7 @@ fn physics_test7_game_state(game_state: *GameState, allocator: *std.mem.Allocato
 
     // Test2 Box
     try game_state.objects.append(allocator.*, .{
+        .uuid = UUID.init(),
         .position = .{ 0.0, 0.5, 0.0 },
         .inverse_mass = 1.0 / 5.0,
         .orientation = .{ 0.0, 0.5, 0.0, 0.87 },

@@ -64,7 +64,8 @@ const MAX_VELOCITY_PER_FRAME: f32 = 0.25;
 pub const Contact = struct {
     A: *main.Object,
     B: *main.Object,
-    // positions: zm.Vec,
+    // pen_num: u8, // Varies depending on which shapes contact each other
+    // positions: [4]zm.Vec,
     pA: zm.Vec,
     pB: zm.Vec,
     // penetration: [4]f32,
@@ -879,7 +880,7 @@ fn pGS_contact_solver(contacts: []Contact, delta_time: f64) void {
         //const jv_i = ;//Initial velocity
         //var jv_k = ;
 
-        for (0..1) |i| {
+        for (0..100) |i| {
             _ = &i;
             const j = &contact.jN;
 
