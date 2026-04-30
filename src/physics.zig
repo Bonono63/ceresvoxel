@@ -54,6 +54,7 @@ const chunk = @import("chunk.zig");
 const main = @import("main.zig");
 
 pub const GRAVITATIONAL_CONSTANT: f128 = 6.67428e-11;
+pub const GRAVITATIONAL_CONSTANTf32: f32 = 6.67428e-5;
 pub const AU: f128 = 149.6e9;
 pub const SCALE: f32 = 50.0;
 
@@ -173,7 +174,7 @@ pub fn physics_tick(
 pub fn euler_integration(objects: []main.Object, delta_time: f64) void {
     for (0..objects.len) |index| {
         if (objects[index].inverse_mass > 0.0) {
-            objects[index].last_frame_acceleration = objects[index].acceleration;
+            // objects[index].last_frame_acceleration = objects[index].acceleration;
 
             // We store this for later so we can use it in collision resolution
             const linear_acceleration: zm.Vec = cm.scale_f32(
@@ -181,10 +182,15 @@ pub fn euler_integration(objects: []main.Object, delta_time: f64) void {
                 objects[index].inverse_mass,
             );
 
-            objects[index].last_frame_acceleration += linear_acceleration;
+            // clear forces
+            objects[index].force_accumulation = .{ 0.0, 0.0, 0.0, 0.0 };
+
+            objects[index].acceleration += linear_acceleration;
+
+            // objects[index].last_frame_acceleration += linear_acceleration;
 
             // Integrate velocity
-            objects[index].velocity += cm.scale_f32(linear_acceleration, @as(f32, @floatCast(delta_time)));
+            objects[index].velocity += cm.scale_f32(objects[index].acceleration, @as(f32, @floatCast(delta_time)));
 
             // linear damping
             objects[index].velocity = cm.scale_f32(
@@ -201,13 +207,15 @@ pub fn euler_integration(objects: []main.Object, delta_time: f64) void {
                 };
             }
 
-            const resulting_angular_acceleration: zm.Vec = zm.mul(
+            const angular_acceleration: zm.Vec = zm.mul(
                 objects[index].inverse_inertia_tensor,
                 objects[index].torque_accumulation,
             );
 
+            objects[index].torque_accumulation = .{ 0.0, 0.0, 0.0, 0.0 };
+
             objects[index].angular_velocity += cm.scale_f32(
-                resulting_angular_acceleration,
+                angular_acceleration,
                 @as(f32, @floatCast(delta_time)),
             );
 
@@ -234,10 +242,6 @@ pub fn euler_integration(objects: []main.Object, delta_time: f64) void {
 
                 objects[index].orientation = cm.qnormalize(objects[index].orientation);
             }
-
-            // reset forces // TODO is this correct?
-            objects[index].force_accumulation = .{ 0.0, 0.0, 0.0, 0.0 };
-            objects[index].torque_accumulation = .{ 0.0, 0.0, 0.0, 0.0 };
         }
     }
 }

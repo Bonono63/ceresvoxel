@@ -448,11 +448,6 @@ pub fn main() !void {
     var frame_objects: std.ArrayList(Object) = try std.ArrayList(Object).initCapacity(allocator, 2000);
     defer frame_objects.deinit(allocator);
 
-    for (0..30) |i| {
-        _ = &i;
-        _ = UUID.init();
-    }
-
     // const pause_physics: bool = false;
 
     // The responsibility of the main thread is to handle input and manage
@@ -671,14 +666,20 @@ pub fn main() !void {
             try vulkan_state.draw_frame(current_frame_index, &render_frame.render_targets);
 
             // TODO make the position printed the camera position
-            std.debug.print("[G] {d:5.3}ms {d:4.1}fps pos:{d:3.1} {d:3.1} {d:3.1} y:{d:3.1} p:{d:3.1}   \r", .{
+            std.debug.print("[G] {d:5.3}ms {d:4.1}fps p:{d:3.1} {d:3.1} {d:3.1} v: {d:2.1} {d:2.1} {d:2.1} a: {d:2.1} {d:2.1} {d:2.1}            \r", .{
                 average_frame_dt,
                 1.0 / average_frame_dt * 1000.0,
-                client_state.camera_pos[0], // @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])),
-                client_state.camera_pos[1], // @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])),
-                client_state.camera_pos[2], // @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])),
-                render_frame.client_state.yaw,
-                render_frame.client_state.pitch,
+                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[0])), //client_state.camera_pos[0], // ,
+                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[1])), //client_state.camera_pos[1], // ,
+                @as(f32, @floatCast(render_frame.bodies[render_frame.player_index].position[2])), //client_state.camera_pos[2], // ,
+                render_frame.bodies[render_frame.player_index].velocity[0],
+                render_frame.bodies[render_frame.player_index].velocity[1],
+                render_frame.bodies[render_frame.player_index].velocity[2],
+                render_frame.bodies[render_frame.player_index].last_frame_acceleration[0],
+                render_frame.bodies[render_frame.player_index].last_frame_acceleration[1],
+                render_frame.bodies[render_frame.player_index].last_frame_acceleration[2],
+                // render_frame.client_state.yaw,
+                // render_frame.client_state.pitch,
             });
 
             // EMA fps and delta_time
@@ -1014,7 +1015,7 @@ fn sandbox_state_init(game_state: *GameState, allocator: *std.mem.Allocator) !vo
     // player
     try game_state.objects.append(allocator.*, .{
         .uuid = UUID.init(),
-        .position = .{ 0.0, 0.0, -128.0 },
+        .position = .{ 0.0, 0.0, -32.0 },
         .inverse_mass = (1.0 / 100.0),
         .half_size = .{ 0.5, 1.0, 0.5, 0.0 },
         .body_type = .player,
@@ -1036,7 +1037,7 @@ fn sandbox_state_init(game_state: *GameState, allocator: *std.mem.Allocator) !vo
         .lock_rot = true,
     });
     game_state.sun_index = @intCast(game_state.objects.items.len - 1);
-    std.debug.print("sun weight: {}\n", .{1.0 / game_state.objects.getLast().inverse_mass});
+    // std.debug.print("sun weight: {}\n", .{1.0 / game_state.objects.getLast().inverse_mass});
 
     // Test Box
     try game_state.objects.append(allocator.*, .{
@@ -1055,23 +1056,13 @@ fn sandbox_state_init(game_state: *GameState, allocator: *std.mem.Allocator) !vo
 
 fn sandbox_tick(self: *GameState, delta_time: i64) void {
     _ = &delta_time;
-    // for (0..bodies.len) |index| {
-    //     if (bodies[index].planet) {
-    //         // TODO make the orbit have an offset according to the barocenter
-    //         // TODO Use eccentricity to skew one axis (x or z), the barocenter will have to be adjusted for more accurate
-    //         // deterministic motion
-    //         const time = @as(f64, @floatFromInt(std.time.milliTimestamp() - sim_start_time)) / @as(f32, @floatCast(bodies[index].orbit_radius));
-    //         const x: f128 = bodies[index].orbit_radius * @cos(time / 8.0) + bodies[index].barycenter[0];
-    //         const z: f128 = bodies[index].orbit_radius * @sin(time / 8.0) + bodies[index].barycenter[1];
-    //         const y: f128 = bodies[index].eccliptic_offset[0] * x + bodies[index].eccliptic_offset[1] * z;
+    _ = &self;
 
-    //         bodies[index].position = .{ x, y, z };
-    //         bodies[index].velocity = zm.normalize3(.{ -@as(f32, @floatCast(z)), @as(f32, @floatCast(y)), @as(f32, @floatCast(x)), 0.0 });
-    //     }
-    // }
-    const force = zm.Vec{ 0.0, 9.5 * 100, 0.0, 0.0 };
-    self.objects.items[self.player_index].force_accumulation += force;
-    // std.debug.print("chicken\n", .{});
+    // const sun_dir = cm.cast_position(self.objects.items[self.player_index].position - self.objects.items[self.sun_index].position);
+    // const grav_dir = zm.normalize3(sun_dir);
+    // const scale: f32 = 1.0 / zm.lengthSq3(sun_dir)[0] * physics.GRAVITATIONAL_CONSTANTf32 * 1.0 / self.objects.items[self.player_index].inverse_mass * 1.0 / self.objects.items[self.sun_index].inverse_mass;
+    // const force = cm.scale_f32(grav_dir, -scale);
+    // self.objects.items[self.player_index].force_accumulation += force;
 }
 
 fn physics_test1_game_state(game_state: *GameState, allocator: *std.mem.Allocator) !void {
