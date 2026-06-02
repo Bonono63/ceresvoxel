@@ -218,9 +218,7 @@ pub const RenderInfo = struct {
 pub const RenderFrame = struct {
     render_targets: []RenderInfo,
     bodies: []main.Object,
-    contact_renders: []physics.RenderContact,
-    particle_count: u32 = 0,
-    player_index: u32,
+    // player_index: u32,
     /// ONLY EVER READ FROM THE CAMERA STATE NEVER WRITE ANY DATA EVER
     client_state: *main.ClientState,
 };
@@ -1547,6 +1545,49 @@ pub const VulkanState = struct {
         return vertex_buffer;
     }
 
+    /// TODO actually make this function do something
+    pub fn replace_vertex_buffer(self: *VulkanState, stride_size: u32, size: u32, ptr: *anyopaque) VkAbstractionError!VertexBuffer {
+        var buffer: c.vulkan.VkBuffer = undefined;
+        var alloc: c.vulkan.VmaAllocation = undefined;
+
+        var buffer_create_info = c.vulkan.VkBufferCreateInfo{
+            .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = size,
+            .usage = c.vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        };
+
+        const alloc_create_info = c.vulkan.VmaAllocationCreateInfo{
+            .usage = c.vulkan.VMA_MEMORY_USAGE_AUTO,
+            .flags = c.vulkan.VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+        };
+
+        const buffer_success = c.vulkan.vmaCreateBuffer(
+            self.vma_allocator,
+            &buffer_create_info,
+            &alloc_create_info,
+            &buffer,
+            &alloc,
+            null,
+        );
+
+        if (buffer_success != c.vulkan.VK_SUCCESS) {
+            std.debug.print("success: {}\n", .{buffer_success});
+            return VkAbstractionError.VertexBufferCreationFailure;
+        }
+
+        try self.copy_data_via_staging_buffer(&buffer, size, ptr);
+
+        const vertex_buffer = VertexBuffer{
+            .buffer = buffer,
+            .alloc = alloc,
+            .vertex_count = size / stride_size,
+            .byte_count = size,
+        };
+
+        try self.vertex_buffers.append(self.allocator.*, vertex_buffer);
+        return vertex_buffer;
+    }
+
     /// Frees all Vulkan state
     /// All zig allocations should be deferred to after this function is called
     pub fn cleanup(self: *VulkanState) void {
@@ -1975,38 +2016,38 @@ pub export fn glfw_error_callback(code: c_int, description: [*c]const u8) void {
 }
 
 /// Generates the unique data sent to the GPU for chunks
-pub fn update_chunk_ubo(self: *VulkanState, objects: []main.Object, player_index: u32, ubo_index: u32) VkAbstractionError!void {
-    var data = try std.ArrayList(ChunkRenderData).initCapacity(self.allocator.*, 16);
-    defer data.deinit(self.allocator.*);
+// pub fn update_chunk_ubo(self: *VulkanState, objects: []main.Object, player_index: u32, ubo_index: u32) VkAbstractionError!void {
+//     var data = try std.ArrayList(ChunkRenderData).initCapacity(self.allocator.*, 16);
+//     defer data.deinit(self.allocator.*);
 
-    // Iterating through every single physics body reeks a little to me,
-    // but tbh, not sure I can do much about that atm
-    for (objects) |object| {
-        if (object.body_type == .voxel_space) {
-            for (0..object.chunks.items.len) |chunk_index| {
-                const transform = object.render_transform_chunk(objects[player_index].position, @intCast(chunk_index));
-                try data.append(self.allocator.*, .{
-                    .model = transform,
-                    .size = .{ 0, 0, 0 },
-                });
-            }
-        }
-    }
+//     // Iterating through every single physics body reeks a little to me,
+//     // but tbh, not sure I can do much about that atm
+//     for (objects) |object| {
+//         if (object.body_type == .voxel_space) {
+//             for (0..object.chunks.items.len) |chunk_index| {
+//                 const transform = object.render_transform_chunk(objects[player_index].position, @intCast(chunk_index));
+//                 try data.append(self.allocator.*, .{
+//                     .model = transform,
+//                     .size = .{ 0, 0, 0 },
+//                 });
+//             }
+//         }
+//     }
 
-    //std.debug.print("chunk ubos: {any}\n", .{data.items});
+//     //std.debug.print("chunk ubos: {any}\n", .{data.items});
 
-    if (data.items.len > 0) {
-        try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
-    }
-}
+//     if (data.items.len > 0) {
+//         try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
+//     }
+// }
 
 /// Generates the unique data sent to the GPU for particles
 ///
 /// returns the number of particles sent to the GPU (used for instance rendering)
-pub fn update_outline_ubo(self: *VulkanState, bodies: []main.Object, contacts: []physics.RenderContact, player_index: u32, ubo_index: u32) VkAbstractionError!void {
+pub fn update_outline_ubo(self: *VulkanState, bodies: []main.Object, ubo_index: u32) VkAbstractionError!void {
     const ubo_uniform = struct {
-        mat: zm.Mat = zm.identity(),
-        color: @Vector(4, f32) = .{ 0.0, 0.0, 0.0, 0.0 },
+        mat: zm.Mat,
+        color: @Vector(4, f32),
     };
 
     var data = try std.ArrayList(ubo_uniform).initCapacity(self.allocator.*, 1000);
@@ -2015,73 +2056,51 @@ pub fn update_outline_ubo(self: *VulkanState, bodies: []main.Object, contacts: [
     // TODO switch append to appendAssumeCapacity
     // Boxes
     for (bodies) |body| {
-        switch (body.colliding) {
-            main.CollisionType.NONE => {
-                try data.append(
-                    self.allocator.*,
-                    ubo_uniform{
-                        .color = .{ 1.0, 1.0, 1.0, 1.0 },
-                        .mat = body.render_transform(bodies[player_index].position),
-                    },
-                );
+        try data.append(
+            self.allocator.*,
+            ubo_uniform{
+                .color = .{ 0.0, 0.5, 1.0, 1.0 },
+                .mat = body.render_transform,
             },
-            main.CollisionType.COLLISION => {
-                try data.append(
-                    self.allocator.*,
-                    ubo_uniform{
-                        .color = .{ 0.0, 1.0, 1.0, 1.0 },
-                        .mat = body.render_transform(bodies[player_index].position),
-                    },
-                );
-            },
-            main.CollisionType.PLAYER_SELECT => {
-                try data.append(
-                    self.allocator.*,
-                    ubo_uniform{
-                        .color = .{ 1.0, 0.0, 0.0, 1.0 },
-                        .mat = body.render_transform(bodies[player_index].position),
-                    },
-                );
-            },
-        }
+        );
     }
 
-    const box_scale: zm.Mat = zm.matFromArr(.{
-        0.125, 0.0,   0.0,   0.0,
-        0.0,   0.125, 0.0,   0.0,
-        0.0,   0.0,   0.125, 0.0,
-        0.0,   0.0,   0.0,   1.0,
-    });
-    const line_scale: zm.Mat = zm.matFromArr(.{
-        0.5, 0.0, 0.0, 0.0,
-        0.0, 0.5, 0.0, 0.0,
-        0.0, 0.0, 0.5, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-    });
+    // const box_scale: zm.Mat = zm.matFromArr(.{
+    //     0.125, 0.0,   0.0,   0.0,
+    //     0.0,   0.125, 0.0,   0.0,
+    //     0.0,   0.0,   0.125, 0.0,
+    //     0.0,   0.0,   0.0,   1.0,
+    // });
+    // const line_scale: zm.Mat = zm.matFromArr(.{
+    //     0.5, 0.0, 0.0, 0.0,
+    //     0.0, 0.5, 0.0, 0.0,
+    //     0.0, 0.0, 0.5, 0.0,
+    //     0.0, 0.0, 0.0, 1.0,
+    // });
     // Contact Lines + Boxes
-    for (contacts) |contact| { // Boxes
-        var transform: zm.Mat = zm.mul(box_scale, zm.translationV(.{ -0.0625, -0.0625, -0.0625, 0.0 }));
-        transform = zm.mul(transform, zm.translationV(contact.position));
-        try data.append(
-            self.allocator.*,
-            ubo_uniform{
-                .color = .{ 1.0, 0.0, 0.0, 1.0 },
-                .mat = transform,
-            },
-        );
-    }
-    for (contacts) |contact| { // Lines
-        const line_dir: zm.Mat = zm.matFromNormAxisAngle(contact.normal, std.math.pi);
-        var transform: zm.Mat = zm.mul(line_scale, line_dir);
-        transform = zm.mul(transform, zm.translationV(contact.position));
-        try data.append(
-            self.allocator.*,
-            ubo_uniform{
-                .color = .{ 0.0, 1.0, 0.2, 1.0 },
-                .mat = transform,
-            },
-        );
-    }
+    // for (contacts) |contact| { // Boxes
+    //     var transform: zm.Mat = zm.mul(box_scale, zm.translationV(.{ -0.0625, -0.0625, -0.0625, 0.0 }));
+    //     transform = zm.mul(transform, zm.translationV(contact.position));
+    //     try data.append(
+    //         self.allocator.*,
+    //         ubo_uniform{
+    //             .color = .{ 1.0, 0.0, 0.0, 1.0 },
+    //             .mat = transform,
+    //         },
+    //     );
+    // }
+    // for (contacts) |contact| { // Lines
+    //     const line_dir: zm.Mat = zm.matFromNormAxisAngle(contact.normal, std.math.pi);
+    //     var transform: zm.Mat = zm.mul(line_scale, line_dir);
+    //     transform = zm.mul(transform, zm.translationV(contact.position));
+    //     try data.append(
+    //         self.allocator.*,
+    //         ubo_uniform{
+    //             .color = .{ 0.0, 1.0, 0.2, 1.0 },
+    //             .mat = transform,
+    //         },
+    //     );
+    // }
 
     if (data.items.len > 0) {
         try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ubo_uniform)), &data.items[0]);

@@ -30,7 +30,7 @@ pub fn get_chunk_data_random(seed: u64) ![32768]u8 {
 
     var random = std.Random.Xoshiro256.init(seed); // + planet_index + chunk_pos[0] + chunk_pos[1] + chunk_pos[2]);
     for (0..result.len) |index| {
-        result[index] = random.random().int(u2);
+        result[index] = random.random().int(u3);
     }
 
     return result;
@@ -55,15 +55,7 @@ pub fn get_chunk_data(seed: u64, planet_index: u32, chunk_pos: @Vector(3, u32)) 
     _ = &chunk_pos;
     _ = &seed;
 
-    for (0..result.len) |index| {
-        result[index] = 0;
-    }
-
-    result[0] = 4;
-    //result[1] = 4;
-    //result[2] = 4;
-    //result[33] = 4;
-    //result[65] = 4;
+    @memset(&result, 1);
 
     return result;
 }

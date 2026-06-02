@@ -18,6 +18,10 @@
             .url = "git+https://codeberg.org/andrewrk/TrueType.git#8b5dbf3a3bfbb84190377385f5e609c8788a5450",
             .hash = "TrueType-0.0.0-Ne-mWLVxAQAvMshfhjrJh3GbRHBLSNtF-zXZ0Zt_bHGP",
         },
+        .zphysics = .{
+            .url = "git+https://github.com/zig-gamedev/zphysics.git#9797d7bd08e4341410104876eb1896a71714277d",
+            .hash = "zphysics-0.2.0-dev-nZDEANvfQgD04nOPqL9KMokfgjzs_wPtHpoLscZScaOa",
+        },
     },
     .paths = .{
         "build.zig",

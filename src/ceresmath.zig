@@ -93,20 +93,19 @@ pub fn matFromQuat(q: zm.Quat) zm.Mat {
 /// Technically inverting a cuboid tensor does not change anything so we don't
 /// need to do any additional work than calculating the cuboid tensor
 pub fn calculate_cuboid_inertia_tensor(
-    inverse_mass: f32,
+    mass: f32,
     half_size: @Vector(3, f32),
-) zm.Mat {
-    const mass = 1.0 / inverse_mass;
+) [16]f32 {
     const x = half_size[0] * 2;
     const y = half_size[1] * 2;
     const z = half_size[2] * 2;
     const scale_factor: f32 = 1.0 / 12.0;
 
     return .{
-        .{ scale_factor * mass * (y * y + z * z), 0.0, 0.0, 0.0 },
-        .{ 0.0, scale_factor * mass * (x * x + z * z), 0.0, 0.0 },
-        .{ 0.0, 0.0, scale_factor * mass * (x * x + y * y), 0.0 },
-        .{ 0.0, 0.0, 0.0, 0.0 },
+        scale_factor * mass * (y * y + z * z), 0.0,                                   0.0,                                   0.0,
+        0.0,                                   scale_factor * mass * (x * x + z * z), 0.0,                                   0.0,
+        0.0,                                   0.0,                                   scale_factor * mass * (x * x + y * y), 0.0,
+        0.0,                                   0.0,                                   0.0,                                   0.0,
     };
 }
 
@@ -154,4 +153,19 @@ pub fn scale_matrix(half_size: zm.Vec) zm.Mat {
 
 pub fn is_zero(f: f32) bool {
     return @abs(f) < 0.0001;
+}
+
+/// top answer: https://math.stackexchange.com/questions/40164/how-do-you-rotate-a-vector-by-a-unit-quaternion
+/// Multiple a Vector by a Quaternion
+pub fn mul_v_q(v: [4]f32, q: [4]f32) [4]f32 {
+    const q_prime: [4]f32 = .{ q[0], -q[1], -q[2], -q[3] };
+    var result = hamilton_product(q, v);
+    result = hamilton_product(result, q_prime);
+
+    return result;
+}
+
+/// https://en.wikipedia.org/wiki/Quaternion#Hamilton_product
+fn hamilton_product(A: [4]f32, B: [4]f32) zm.Vec {
+    return .{A[0] * B[0] + A[0]}; // TODO finish implementing the hamilton product
 }

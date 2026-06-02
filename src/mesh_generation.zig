@@ -10,7 +10,7 @@ const vulkan = @import("vulkan.zig");
 pub const style = enum { basic, cull, greedy, greedyVertexPull, lattice, glassPane };
 
 // Number of blocks in blocks.png
-const BLOCK_COUNT: f32 = 4.0;
+const BLOCK_COUNT: f32 = 36.0;
 
 /// An unoptimized simple voxel meshing algorithm.
 /// This is meant to be used as a baseline, nearly any other algorithm will produce better results.

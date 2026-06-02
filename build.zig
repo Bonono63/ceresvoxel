@@ -51,6 +51,13 @@ pub fn build(b: *std.Build) void {
     const truetype = b.dependency("TrueType", .{});
     ceres_voxel.root_module.addImport("TrueType", truetype.module("TrueType"));
 
+    const zphysics = b.dependency("zphysics", .{
+        .use_double_precision = false,
+        .enable_cross_platform_determinism = true,
+    });
+    ceres_voxel.root_module.addImport("zphysics", zphysics.module("root"));
+    ceres_voxel.linkLibrary(zphysics.artifact("joltc"));
+
     // Should be built against the vulkan system library, building it yourself is
     // not really recomended
     if (target.result.os.tag == .linux)
