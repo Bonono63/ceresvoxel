@@ -7,6 +7,7 @@ pub fn build(b: *std.Build) void {
 
     const ceres_voxel = b.addExecutable(.{
         .name = "Engine",
+        .use_llvm = true,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
@@ -16,33 +17,26 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    ceres_voxel.linkLibC();
+
     const vma_flags = [_][]const u8{
         "-c",
         "-fPIC",
     };
 
     ceres_voxel.root_module.addCSourceFile(.{ .file = .{ .cwd_relative = "vma_lib/vma.cpp" }, .flags = &vma_flags });
-    ceres_voxel.addIncludePath(.{ .cwd_relative = "VulkanMemoryAllocator-3.2.1/include/" });
-    ceres_voxel.addIncludePath(.{ .cwd_relative = "vma_lib/" });
-    //ceres_voxel.addLibraryPath("");
+    ceres_voxel.root_module.addIncludePath(.{ .cwd_relative = "VulkanMemoryAllocator-3.2.1/include/" });
+    ceres_voxel.root_module.addIncludePath(.{ .cwd_relative = "vma_lib/" });
 
-    //ceres_voxel.addIncludePath(b.path("vma_lib"));
-
-    // Hackery to get a cpp header only library to work with zig
-    //ceres_voxel.addIncludePath(b.path("VulkanMemoryAllocator-3.2.1/include"));
-    //ceres_voxel.addLibraryPath(b.path("vma_lib"));
-    //ceres_voxel.linkSystemLibrary("vma");
-
-    ceres_voxel.addIncludePath(b.path("glfw-3.4/include"));
-    ceres_voxel.addLibraryPath(b.path("glfw-3.4/build/src"));
+    ceres_voxel.root_module.addIncludePath(b.path("glfw-3.4/include"));
+    ceres_voxel.root_module.addLibraryPath(b.path("glfw-3.4/build/src"));
 
     if (target.result.os.tag == .windows) {
-        ceres_voxel.linkSystemLibrary("glfw3");
+        ceres_voxel.root_module.linkSystemLibrary("glfw3", .{ .needed = true });
     }
-    // Make sure to build glfw as a dll because it doesn't like to
-    // work otherwise
+    // Make sure to build glfw as a dll because it doesn't like to work otherwise
     if (target.result.os.tag == .linux) {
-        ceres_voxel.linkSystemLibrary("glfw");
+        ceres_voxel.root_module.linkSystemLibrary("glfw", .{ .needed = true });
     }
 
     const zmath = b.dependency("zmath", .{});
@@ -56,19 +50,20 @@ pub fn build(b: *std.Build) void {
         .enable_cross_platform_determinism = true,
     });
     ceres_voxel.root_module.addImport("zphysics", zphysics.module("root"));
-    ceres_voxel.linkLibrary(zphysics.artifact("joltc"));
+    ceres_voxel.root_module.linkLibrary(zphysics.artifact("joltc"));
 
     // Should be built against the vulkan system library, building it yourself is
     // not really recomended
     if (target.result.os.tag == .linux)
-        ceres_voxel.linkSystemLibrary("vulkan");
+        ceres_voxel.root_module.linkSystemLibrary("vulkan", .{ .needed = true });
     if (target.result.os.tag == .windows) {
         // Absolute paths are nono for zig, but we can cheese it with
         // a directory link so here you go
-        ceres_voxel.addIncludePath(b.path("vulkan_include"));
-        ceres_voxel.addLibraryPath(b.path("vulkan_lib"));
-        ceres_voxel.linkSystemLibrary("vulkan-1");
+        ceres_voxel.root_module.addIncludePath(b.path("vulkan_include"));
+        ceres_voxel.root_module.addLibraryPath(b.path("vulkan_lib"));
+        ceres_voxel.root_module.linkSystemLibrary("vulkan-1", .{ .needed = true });
     }
+    // b.addTranslateC(.{ .root_source_file = });
 
     b.installArtifact(ceres_voxel);
 

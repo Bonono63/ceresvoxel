@@ -171,7 +171,7 @@ pub const Vertex = struct {
 
 /// Chunk specific vertex format
 /// Given the uniqueness of each chunk's vertices it needs to have an index field for it's place in the UBO (or SBO)
-pub const ChunkVertex = packed struct {
+pub const ChunkVertex = struct {
     uv: @Vector(2, f32), // TODO Make the UV split into a texture index and the normal values (we can do basic lighting and have access to all textures using a texture atlas essentially with the same amount of data)
     pos: @Vector(3, f32),
 };
@@ -1233,7 +1233,7 @@ pub const VulkanState = struct {
 
         const wait_stages = [_]c.vulkan.VkPipelineStageFlags{
             c.vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                //c.vulkan.VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+            //c.vulkan.VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
         };
 
         const submit_info = c.vulkan.VkSubmitInfo{
