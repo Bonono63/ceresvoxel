@@ -12,6 +12,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .link_libc = true,
+            .link_libcpp = true,
         }),
     });
 
@@ -23,7 +24,6 @@ pub fn build(b: *std.Build) void {
     ceres_voxel.root_module.addCSourceFile(.{ .file = .{ .cwd_relative = "vma_lib/vma.cpp" }, .flags = &vma_flags });
     ceres_voxel.addIncludePath(.{ .cwd_relative = "VulkanMemoryAllocator-3.2.1/include/" });
     ceres_voxel.addIncludePath(.{ .cwd_relative = "vma_lib/" });
-    ceres_voxel.linkLibCpp();
     //ceres_voxel.addLibraryPath("");
 
     //ceres_voxel.addIncludePath(b.path("vma_lib"));

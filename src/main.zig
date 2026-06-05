@@ -950,7 +950,7 @@ fn sandbox_tick(self: *GameState, delta_time: i64) void {
     const player_move_dir = cm.mul_v_q(input_vec, player_body_rot);
 
     // std.debug.print("{}\n", .{input_vec});
-    body_interface.addImpulse(self.player_physics_id, .{ player_move_dir[0] * 10.0, player_move_dir[1] * 10.0, player_move_dir[2] * 10.0 });
+    body_interface.addImpulse(self.playerPhysicsID, .{ player_move_dir[0] * 10.0, player_move_dir[1] * 10.0, player_move_dir[2] * 10.0 });
 
     // const sun_dir = cm.cast_position(self.objects.items[self.player_index].position - self.objects.items[self.sun_index].position);
     // const grav_dir = .{ 0.0, 1.0, 0.0, 0.0 }; // zm.normalize3(sun_dir);
