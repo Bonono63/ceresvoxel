@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    ceres_voxel.linkLibC();
+    // ceres_voxel.linkLibC();
 
     const vma_flags = [_][]const u8{
         "-c",
