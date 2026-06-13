@@ -41,10 +41,10 @@ pub const ClientState = struct {
     pitch: f32 = 0.0,
     /// Whether the camera position is constrained to the player's head or not
     free_cam: bool = false,
-    free_camera_pos: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
-    /// For use once OBB system is finished
-    camera_direction: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
-    selected_object: i32 = -1, // -1 represents none selected
+    camera_pos: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 },
+    camera_up: zm.Vec = .{ 0.0, -1.0, 0.0, 0.0 },
+
+    const defualt_up = zm.Vec{ 0.0, -1.0, 0.0, 0.0 };
 
     pub fn look(self: *const ClientState) zm.Quat {
         const result = cm.qnormalize(@Vector(4, f32){
@@ -68,14 +68,17 @@ pub const ClientState = struct {
         return result;
     }
 
+    //     return result;
+    // }
+
     // pub fn up(self: *const ClientState) zm.Vec {
     //     _ = &self;
     //     return .{ 0.0, -1.0, 0.0, 0.0 };
     // }
 
-    pub fn right(self: *const ClientState) zm.Vec {
-        return zm.normalize3(zm.cross3(self.up(), self.lookV()));
-    }
+    // pub fn right(self: *const ClientState) zm.Vec {
+    //     return zm.normalize3(zm.cross3(self.up(), self.lookV()));
+    // }
 };
 
 pub const Type = enum {
@@ -165,7 +168,7 @@ pub const Object = struct {
     // eccliptic_offset: @Vector(2, f32) = .{ 0.0, 0.0 },
 
     // size: @Vector(3, u32) = .{ 0, 0, 0 },
-    chunks: std.AutoHashMap(@Vector(3, u32), chunk.Chunk) = undefined,
+    chunks: std.AutoArrayHashMap(@Vector(3, u32), chunk.Chunk) = undefined,
 
     /// Collected from the physics system and cached for the rest of the frame
     render_transform: zm.Mat = zm.identity(),
@@ -242,7 +245,7 @@ pub const Object = struct {
 
 ///Stores arbitrary state of the game
 pub const GameState = struct {
-    objects: std.AutoHashMap(UUID, Object),
+    objects: std.AutoArrayHashMap(UUID, Object),
     seed: u64 = 0,
     client_state: ClientState,
     allocator: *std.mem.Allocator,
@@ -317,7 +320,7 @@ pub fn main() !void {
         .client_state = ClientState{},
         .allocator = &allocator,
         .sim_start_time = std.time.milliTimestamp(),
-        .objects = std.AutoHashMap(UUID, Object).init(allocator),
+        .objects = std.AutoArrayHashMap(UUID, Object).init(allocator),
         .logic_tick = false,
         .physics_system = undefined,
         .physics_params = undefined,
@@ -380,22 +383,24 @@ pub fn main() !void {
         const client_state: *ClientState = &engine_state.world_state.client_state;
         const game_state: *GameState = engine_state.world_state;
 
-        if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
-            client_state.yaw -= @as(f32, @floatCast(input_state.mouse_dx * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
-            input_state.mouse_dx = 0.0;
-        }
+        {
+            if (@abs(input_state.mouse_dx) > 0.0 and input_state.mouse_capture) {
+                client_state.yaw -= @as(f32, @floatCast(input_state.mouse_dx * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+                input_state.mouse_dx = 0.0;
+            }
 
-        if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
-            client_state.pitch += @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
-            client_state.pitch = std.math.clamp(
-                client_state.pitch,
-                -std.math.pi,
-                std.math.pi,
-            );
-            input_state.mouse_dy = 0.0;
-        }
+            if (@abs(input_state.mouse_dy) > 0.0 and input_state.mouse_capture) {
+                client_state.pitch += @as(f32, @floatCast(input_state.mouse_dy * std.math.pi / 180.0 * input_state.MOUSE_SENSITIVITY));
+                client_state.pitch = std.math.clamp(
+                    client_state.pitch,
+                    -std.math.pi / 2.0 + 0.0001,
+                    std.math.pi / 2.0 - 0.0001,
+                );
+                input_state.mouse_dy = 0.0;
+            }
 
-        input_state.scroll_dy = 0.0;
+            input_state.scroll_dy = 0.0;
+        }
 
         if (input_state.mouse_capture) {
             c.vulkan.glfwSetInputMode(vulkan_state.window, c.vulkan.GLFW_CURSOR, c.vulkan.GLFW_CURSOR_DISABLED);
@@ -474,54 +479,21 @@ pub fn main() !void {
 
             var camera_view_proj = zm.identity();
 
-            const look = client_state.look();
+            const look = client_state.lookV();
             const player_pos: zm.Vec = zm.loadArr3(body_interface.getPosition(game_state.playerPhysicsID));
             const player_rot: zm.Quat = zm.loadArr4(body_interface.getRotation(game_state.playerPhysicsID));
 
-            if (input_state.toggle_free_cam) {
-                input_state.toggle_free_cam = false;
-                client_state.free_cam = !client_state.free_cam;
-                client_state.free_camera_pos = player_pos;
-            }
-
             if (client_state.free_cam) {
-                var input_vec: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
-                const right = zm.cross3(look, .{ 0.0, 1.0, 0.0, 1.0 });
-                if (input_state.jump) {
-                    input_vec += .{ 0.0, 1.0, 0.0, 1.0 };
-                }
-                if (input_state.crouch) {
-                    input_vec -= .{ 0.0, 1.0, 0.0, 1.0 };
-                }
-                if (input_state.player_forward) {
-                    input_vec += look;
-                }
-                if (input_state.player_backwards) {
-                    input_vec -= look;
-                }
-                if (input_state.player_right) {
-                    input_vec += right;
-                }
-                if (input_state.player_left) {
-                    input_vec -= right;
-                }
-
-                client_state.free_camera_pos += cm.scale_f32(input_vec, @as(f32, @floatFromInt(delta_time_micro)) / 1000.0 * 0.025);
-
-                const view: zm.Mat = zm.lookToLh(client_state.free_camera_pos, look, .{ 0.0, -1.0, 0.0, 1.0 });
+                const view: zm.Mat = zm.lookToLh(client_state.camera_pos, look, .{ 0.0, -1.0, 0.0, 1.0 });
                 const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
                 camera_view_proj = zm.mul(view, projection);
             } else {
-
-                // const player_up_vec = @as(zm.Quat, cm.mul_v_q(zm.Vec{ 0.0, 0.0, 1.0, 0.0 }, player_rot));
-
                 const player_rot_matrix = zm.matFromQuat(player_rot);
                 const player_up_vec = zm.mul(zm.Vec{ 0.0, -1.0, 0.0, 1.0 }, player_rot_matrix);
                 const player_look = zm.mul(look, player_rot_matrix);
                 const player_camera_offset: zm.Vec = zm.mul(zm.Vec{ 0.0, 0.4, 0.0, 1.0 }, player_rot_matrix);
                 const player_camera_pos: zm.Vec = player_pos + player_camera_offset;
 
-                // TODO make the up vector the player object's up vector
                 const view: zm.Mat = zm.lookToLh(player_camera_pos, player_look, player_up_vec);
                 const projection: zm.Mat = zm.perspectiveFovLh(1.0, aspect_ratio, 0.1, 1000.0);
                 camera_view_proj = zm.mul(view, projection);
@@ -862,62 +834,89 @@ fn add_body(
     return result;
 }
 
+var test_chunk_uuid: UUID = undefined;
+
 /// sandbox world template (plan for the survival world template)
 fn sandbox_state_init(game_state: *GameState) !void {
     physics.clear_bodies(game_state.physics_system, game_state.objects.values());
 
     const body_interface = game_state.physics_system.getBodyInterfaceMut();
 
-    const cube_inertia = cm.calculate_cuboid_inertia_tensor(10.0, .{ 0.5, 1.0, 0.5 });
+    {
+        const cube_inertia = cm.calculate_cuboid_inertia_tensor(10.0, .{ 0.5, 1.0, 0.5 });
 
-    // const player_shape_settings = try zphy.CapsuleShapeSettings.create(1.0, 0.5);
-    const player_shape_settings = try zphy.BoxShapeSettings.create(.{ 0.5, 1.0, 0.5 });
-    const player_shape = try player_shape_settings.asShapeSettings().createShape();
-    const player_physics_id = try body_interface.createAndAddBody(
-        .{
-            .position = .{ 0.0, 10.0, 0.0, 1.0 },
-            .rotation = .{ 0.0, 0.0, 0.0, 1.0 },
-            .shape = player_shape,
-            .motion_type = .dynamic,
-            .object_layer = physics.object_layers.moving,
-            .gravity_factor = 1.0,
-            .mass_properties_override = .{
-                .mass = 10.0,
-                .inertia = cube_inertia,
+        // const player_shape_settings = try zphy.CapsuleShapeSettings.create(1.0, 0.5);
+        const player_shape_settings = try zphy.BoxShapeSettings.create(.{ 0.5, 1.0, 0.5 });
+        const player_shape = try player_shape_settings.asShapeSettings().createShape();
+        const player_physics_id = try body_interface.createAndAddBody(
+            .{
+                .position = .{ 0.0, 10.0, 0.0, 1.0 },
+                .rotation = .{ 0.0, 0.0, 0.0, 1.0 },
+                .shape = player_shape,
+                .motion_type = .dynamic,
+                .object_layer = physics.object_layers.moving,
+                .gravity_factor = 0.0,
+                .mass_properties_override = .{
+                    .mass = 10.0,
+                    .inertia = cube_inertia,
+                },
             },
-        },
-        .activate,
-    );
+            .activate,
+        );
 
-    const player_UUID = UUID.init();
-    try game_state.objects.put(player_UUID, .{
-        .body_type = .player,
-        .physics_id = player_physics_id,
-        .physics_settings = player_shape_settings.asShapeSettings(),
-        .physics_shape = player_shape,
-    });
-    game_state.playerUUID = player_UUID;
-    game_state.playerPhysicsID = player_physics_id;
+        const player_UUID = UUID.init();
+        try game_state.objects.put(player_UUID, .{
+            .body_type = .player,
+            .physics_id = player_physics_id,
+            .physics_settings = player_shape_settings.asShapeSettings(),
+            .physics_shape = player_shape,
+        });
+        game_state.playerUUID = player_UUID;
+        game_state.playerPhysicsID = player_physics_id;
+    }
 
-    // const body_interface = game_state.physics_system.getBodyInterfaceMut();
-    // const player_physics_id = game_state.objects.get(player_UUID).?.physics_id;
-    // body_interface.addForce(player_physics_id, .{ 0.0, -1.0, 0.0 });
+    {
+        const cube_inertia = cm.calculate_cuboid_inertia_tensor(1000.0, .{ 16.0, 16.0, 16.0 });
 
-    // // "Sun"
-    // try game_state.objects.append(allocator.*, .{
-    //     .planet = false,
-    //     .body_type = .voxel_space,
-    //     .chunks = try std., // 10 chunks
-    // });
-    // game_state.sun_index = @intCast(game_state.objects.items.len - 1);
-    // // std.debug.print("sun weight: {}\n", .{1.0 / game_state.objects.getLast().inverse_mass});
+        // const player_shape_settings = try zphy.CapsuleShapeSettings.create(1.0, 0.5);
+        const shape_settings = try zphy.BoxShapeSettings.create(.{ 16.0, 16.0, 16.0 });
+        const shape = try shape_settings.asShapeSettings().createShape();
+        const physics_id = try body_interface.createAndAddBody(
+            .{
+                .position = .{ 0.0, 30.0, 0.0, 1.0 },
+                .rotation = .{ 0.0, 0.0, 1.0, 0.0 },
+                .shape = shape,
+                // .motion_type = .dynamic,
+                // .object_layer = physics.object_layers.moving,
+                .motion_type = .static,
+                .object_layer = physics.object_layers.non_moving,
+                // .gravity_factor = 1.0,
+                .mass_properties_override = .{
+                    .mass = 1000.0,
+                    .inertia = cube_inertia,
+                },
+            },
+            .activate,
+        );
+
+        const uuid = UUID.init();
+        try game_state.objects.put(uuid, .{
+            .body_type = .planet,
+            .physics_id = physics_id,
+            .physics_settings = shape_settings.asShapeSettings(),
+            .physics_shape = shape,
+            .chunks = std.AutoArrayHashMap(@Vector(3, u32), chunk.Chunk).init(game_state.allocator.*),
+        });
+
+        test_chunk_uuid = uuid;
+    }
 
     _ = try add_body(
         game_state,
         .player,
         .{ 30.0, 1.0, 30.0 },
         .{
-            .position = .{ 15.0, -1.0, 15.0, 1.0 },
+            .position = .{ -15.0, -1.0, -15.0, 1.0 },
             .rotation = .{ 0.0, 0.0, 0.0, 1.0 },
             .shape = undefined,
             .motion_type = .static,
@@ -988,33 +987,78 @@ fn sandbox_tick(self: *GameState, delta_time: i64) void {
 
     // std.debug.print("{}\n", .{delta_time});
 
-    // player controller
-    if (!self.client_state.free_cam) {
-        const body_interface = self.physics_system.getBodyInterfaceMut();
+    const body_interface = self.physics_system.getBodyInterfaceMut();
 
+    // player controller
+    if (input_state.toggle_free_cam) {
+        input_state.toggle_free_cam = false;
+        self.client_state.free_cam = !self.client_state.free_cam;
+        const player_pos = body_interface.getPosition(self.playerPhysicsID);
+        self.client_state.camera_pos = zm.loadArr3(player_pos);
+    }
+
+    if (self.client_state.free_cam) {
+        const look = self.client_state.lookV();
+        var input_vec: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
+        const right = zm.cross3(look, .{ 0.0, 1.0, 0.0, 1.0 });
+
+        if (input_state.jump) {
+            input_vec += .{ 0.0, 1.0, 0.0, 1.0 };
+        }
+        if (input_state.crouch) {
+            input_vec -= .{ 0.0, -1.0, 0.0, 1.0 };
+        }
+        if (input_state.player_forward) {
+            input_vec += look;
+        }
+        if (input_state.player_backwards) {
+            input_vec -= look;
+        }
+        if (input_state.player_right) {
+            input_vec += right;
+        }
+        if (input_state.player_left) {
+            input_vec -= right;
+        }
+
+        var speed: f32 = 0.025;
+
+        if (input_state.sprint) {
+            speed *= 4.0;
+        }
+
+        self.client_state.camera_pos += cm.scale_f32(input_vec, speed);
+    } else {
         var input_vec: zm.Vec = .{ 0.0, 0.0, 0.0, 0.0 };
 
         const player_rot_matrix = zm.matFromQuat(@as(zm.Quat, body_interface.getRotation(self.playerPhysicsID)));
-        const look = zm.mul(self.client_state.look(), player_rot_matrix);
+        const player_up = zm.mul(zm.Vec{ 0.0, -1.0, 0.0, 1.0 }, player_rot_matrix);
+        const look = zm.mul(self.client_state.lookV(), player_rot_matrix);
+        const right = zm.cross3(look, player_up);
 
-        if (input_state.jump) {
-            input_vec += .{ 0.0, 1.0, 0.0, 0.0 };
+        const feet_are_in_contact: bool = true;
+
+        if (feet_are_in_contact and input_state.jump) {
+            const jump_vec = cm.scale_f32(player_up, -3500.0);
+            body_interface.addImpulse(self.playerPhysicsID, .{ jump_vec[0], jump_vec[1], jump_vec[2] });
+            // input_vec += .{ 0.0, 1.0, 0.0, 0.0 };
         }
-        if (input_state.crouch) {
-            input_vec += .{ 0.0, -1.0, 0.0, 0.0 };
+        if (feet_are_in_contact and input_state.crouch) {
+            // TODO add crouching
+            // input_vec += .{ 0.0, -1.0, 0.0, 0.0 };
         }
         if (input_state.player_forward) {
             // input_vec += .{ 0.0, 0.0, 1.0, 0.0 };
             input_vec += look;
         }
         if (input_state.player_backwards) {
-            input_vec += .{ 0.0, 0.0, -1.0, 0.0 };
+            input_vec -= look;
         }
         if (input_state.player_right) {
-            input_vec += .{ 1.0, 0.0, 0.0, 0.0 };
+            input_vec -= right;
         }
         if (input_state.player_left) {
-            input_vec += .{ -1.0, 0.0, 0.0, 0.0 };
+            input_vec += right;
         }
 
         // const player_body_rot: zm.Vec = body_interface.getRotation(self.playerPhysicsID);
@@ -1026,6 +1070,67 @@ fn sandbox_tick(self: *GameState, delta_time: i64) void {
         body_interface.addImpulse(self.playerPhysicsID, .{ input_vec[0] * 100.0, input_vec[1] * 100.0, input_vec[2] * 100.0 });
         // body_interface.setLinearVelocity(self.playerPhysicsID, .{ player_move_dir[1], player_move_dir[2], player_move_dir[3] });
     }
+
+    const test_chunk_physics_id = self.objects.get(test_chunk_uuid).?.physics_id;
+
+    // const delta_time_float: f32 = delta_time / 1000.0;
+    const player_pos = zm.loadArr3(body_interface.getPosition(self.playerPhysicsID));
+    const player_rot: zm.Quat = zm.loadArr4(body_interface.getRotation(self.playerPhysicsID));
+    const test_chunk_pos = zm.loadArr3(body_interface.getPosition(test_chunk_physics_id));
+    const distance = test_chunk_pos - player_pos;
+    body_interface.addImpulse(self.playerPhysicsID, .{ distance[0] * 2.0, distance[1] * 2.0, distance[2] * 2.0 });
+
+    const test_chunk_rot: zm.Quat = body_interface.getRotation(test_chunk_physics_id);
+    const test_chunk_up = zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot));
+    const test_chunk_forward = zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 1.0 }, zm.matFromQuat(test_chunk_rot));
+    const test_chunk_right = zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot));
+
+    const player_chunk_up_dot = zm.dot3(test_chunk_up, zm.normalize3(distance));
+    const player_chunk_forward_dot = zm.dot3(test_chunk_forward, zm.normalize3(distance));
+    const player_chunk_right_dot = zm.dot3(test_chunk_right, zm.normalize3(distance));
+
+    var best_dot = player_chunk_up_dot;
+    var best_axis = test_chunk_up;
+    if (@abs(player_chunk_forward_dot)[0] > @abs(best_dot)[0]) {
+        best_dot = player_chunk_forward_dot;
+        best_axis = test_chunk_forward;
+    }
+    if (@abs(player_chunk_right_dot)[0] > @abs(best_dot)[0]) {
+        best_dot = player_chunk_right_dot;
+        best_axis = test_chunk_right;
+    }
+
+    // const y_90 = zm.Quat{ 0.0, -0.71, 0.0, 0.71 };
+
+    const lerp_c = 0.1;
+    const ideal_dot_product = 0.5;
+    if (@abs(best_dot[0]) > ideal_dot_product) {
+        if (best_dot[0] < 0.0) { // if the dot is negative negate the rotation
+            best_axis = -best_axis;
+        }
+        const target_rot = zm.qmul(test_chunk_rot, zm.Quat{ 0.0, 0.71, 0.0, -0.71 });
+        // const test_chunk_down = zm.mul(zm.Vec{ 0.0, -1.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot));
+        // target_rot = zm.qmul(target_rot, zm.Quat{ 0.0, 0.71, 0.0, 0.71 });
+        std.debug.print("{} {} {} {}\n", .{ best_axis, target_rot, player_rot, best_dot[0] });
+
+        // if (@abs(best_axis[1]) > 0.9) {
+        //     std.debug.print("up\n", .{});
+        // }
+        // if (@abs(best_axis[0]) > 0.9) {
+        //     std.debug.print("right\n", .{});
+        // }
+        // if (@abs(best_axis[2]) > 0.9) {
+        //     std.debug.print("forward\n", .{});
+        // }
+
+        const rotation = cm.qnormalize(zm.slerp(player_rot, target_rot, lerp_c));
+        body_interface.setRotation(self.playerPhysicsID, rotation, .activate);
+
+        // body_interface.addAngularImpulse
+    }
+
+    // const target_orientation = zm.mul(.{ 0.0, 1.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot));
+    // body_interface.addAngularImpulse(self.playerPhysicsID, .{  });
 
     // const sun_dir = cm.cast_position(self.objects.items[self.player_index].position - self.objects.items[self.sun_index].position);
     // const grav_dir = .{ 0.0, 1.0, 0.0, 0.0 }; // zm.normalize3(sun_dir);
@@ -1321,12 +1426,21 @@ fn sandbox_tick(self: *GameState, delta_time: i64) void {
 //     });
 // }
 
-fn check_chunks_to_load(objects: std.AutoHashMap(UUID, Object), camera_pos: @Vector(3, f32), physics_system: *zphy.PhysicsSystem) []struct { body_id: UUID, chunk_pos: @Vector(3, u32) } {
+const ChunkInfo = struct { body_id: UUID, chunk_pos: @Vector(3, u32) };
+
+fn check_chunks_to_load(
+    objects: std.AutoArrayHashMap(UUID, Object),
+    camera_pos: zm.Vec,
+    physics_system: *zphy.PhysicsSystem,
+    chunks: []ChunkInfo,
+) void {
     _ = &camera_pos;
+    _ = &chunks;
     const body_interface = physics_system.getBodyInterfaceMutNoLock();
 
-    for (objects.iterator()) |item| {
-        const pos = body_interface.getPosition(item.value().physics_id);
+    for (objects.keys(), objects.values()) |key, value| {
+        _ = &key;
+        const pos = body_interface.getPosition(value.physics_id);
         _ = &pos;
         // if () {}
     }
@@ -1340,15 +1454,24 @@ fn load_game_state(
 
     engine_state.world_state = new_game_state;
 
-    const chunks = check_chunks_to_load(
+    var chunks: [500]ChunkInfo = undefined;
+    _ = &chunks;
+
+    check_chunks_to_load(
         engine_state.world_state.objects,
-        engine_state.world_state.client_state,
+        engine_state.world_state.client_state.camera_pos,
         engine_state.world_state.physics_system,
+        @as([]ChunkInfo, @ptrCast(&chunks)),
     );
 
-    for (chunks) |chunk_data| {
-        try load_chunk(engine_state.world_state, &engine_state.world_state.objects.get(chunk_data.body_id), chunk_data.chunk_pos);
-    }
+    // for (chunks) |chunk_data| {
+    //     try load_chunk(
+    //         engine_state.world_state,
+    //         engine_state.world_state.objects.getPtr(chunk_data.body_id).?,
+    //         chunk_data.chunk_pos,
+    //     );
+    // }
+
     // std.debug.print("[Debug] Loading chunks {}ms\n", .{std.time.milliTimestamp() - start_load_time});
 
     // start_load_time = std.time.milliTimestamp();

@@ -319,9 +319,9 @@ pub const VulkanState = struct {
             .apiVersion = c.vulkan.VK_API_VERSION_1_2,
         };
 
-        std.debug.print("[Info] Vulkan Application Info:\n", .{});
-        std.debug.print("\tApplication name: {s}\n", .{application_info.pApplicationName});
-        std.debug.print("\tEngine name: {s}\n\n", .{application_info.pEngineName});
+        // std.debug.print("[Info] Vulkan Application Info:\n", .{});
+        // std.debug.print("\tApplication name: {s}\n", .{application_info.pApplicationName});
+        // std.debug.print("\tEngine name: {s}\n\n", .{application_info.pEngineName});
 
         var available_extensions_count: u32 = 0;
         _ = c.vulkan.vkEnumerateInstanceExtensionProperties(
@@ -329,7 +329,7 @@ pub const VulkanState = struct {
             &available_extensions_count,
             null,
         );
-        std.debug.print("[Info] Available Vulkan Extensions ({}):\n", .{available_extensions_count});
+        // std.debug.print("[Info] Available Vulkan Extensions ({}):\n", .{available_extensions_count});
         const available_extension_properties: []c.vulkan.VkExtensionProperties = try self.allocator.*.alloc(c.vulkan.VkExtensionProperties, available_extensions_count);
         defer self.allocator.*.free(available_extension_properties);
         const enumerate_available_extensions = c.vulkan.vkEnumerateInstanceExtensionProperties(
@@ -342,11 +342,11 @@ pub const VulkanState = struct {
             return VkAbstractionError.AvailableExtensionsEnumerationFailure;
         }
 
-        for (available_extension_properties) |extension| {
-            std.debug.print("\t{s} version: {}\n", .{ extension.extensionName, extension.specVersion });
-        }
+        // for (available_extension_properties) |extension| {
+        //     std.debug.print("\t{s} version: {}\n", .{ extension.extensionName, extension.specVersion });
+        // }
 
-        std.debug.print("\n", .{});
+        // std.debug.print("\n", .{});
 
         var required_extension_count: u32 = 0;
         const required_extensions = c.vulkan.glfwGetRequiredInstanceExtensions(&required_extension_count) orelse return VkAbstractionError.RequiredExtensionsFailure;
@@ -362,11 +362,11 @@ pub const VulkanState = struct {
             try extensions_arraylist.append(self.allocator.*, extension);
         }
 
-        std.debug.print("[Info] Vulkan Instance Extensions ({}):\n", .{extensions_arraylist.items.len});
-        for (extensions_arraylist.items) |item| {
-            std.debug.print("\t{s}\n", .{item});
-        }
-        std.debug.print("\n", .{});
+        // std.debug.print("[Info] Vulkan Instance Extensions ({}):\n", .{extensions_arraylist.items.len});
+        // for (extensions_arraylist.items) |item| {
+        //     std.debug.print("\t{s}\n", .{item});
+        // }
+        // std.debug.print("\n", .{});
 
         var available_layers_count: u32 = 0;
         if (c.vulkan.vkEnumerateInstanceLayerProperties(&available_layers_count, null) != c.vulkan.VK_SUCCESS) {
@@ -382,17 +382,17 @@ pub const VulkanState = struct {
             return VkAbstractionError.InstanceLayerEnumerationFailure;
         }
 
-        std.debug.print("[Info] Available validation layers ({}):\n", .{available_layers.len});
-        for (available_layers) |validation_layer| {
-            std.debug.print("\t{s}\n", .{validation_layer.layerName});
-        }
-        std.debug.print("\n", .{});
+        // std.debug.print("[Info] Available validation layers ({}):\n", .{available_layers.len});
+        // for (available_layers) |validation_layer| {
+        //     std.debug.print("\t{s}\n", .{validation_layer.layerName});
+        // }
+        // std.debug.print("\n", .{});
 
-        std.debug.print("[Info] Vulkan Instance Validation layers ({}):\n", .{validation_layers.len});
-        for (validation_layers) |validation_layer| {
-            std.debug.print("\t{s}\n", .{validation_layer});
-        }
-        std.debug.print("\n", .{});
+        // std.debug.print("[Info] Vulkan Instance Validation layers ({}):\n", .{validation_layers.len});
+        // for (validation_layers) |validation_layer| {
+        //     std.debug.print("\t{s}\n", .{validation_layer});
+        // }
+        // std.debug.print("\n", .{});
 
         const create_info = c.vulkan.VkInstanceCreateInfo{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -449,7 +449,7 @@ pub const VulkanState = struct {
         c.vulkan.vkGetPhysicalDeviceProperties(self.physical_device, &device_properties);
         self.physical_device_properties = device_properties;
 
-        std.debug.print("[Info] API version: {any}\n[Info] Driver version: {any}\n[Info] Device name: {s}\n", .{ device_properties.apiVersion, device_properties.driverVersion, device_properties.deviceName });
+        // std.debug.print("[Info] API version: {any}\n[Info] Driver version: {any}\n[Info] Device name: {s}\n", .{ device_properties.apiVersion, device_properties.driverVersion, device_properties.deviceName });
 
         // TODO Check for device extension compatibility
     }
@@ -459,7 +459,7 @@ pub const VulkanState = struct {
 
         var queue_count: u32 = 0;
         _ = c.vulkan.vkGetPhysicalDeviceQueueFamilyProperties(self.*.physical_device, &queue_count, null);
-        std.debug.print("[Info] Queue count: {}\n", .{queue_count});
+        // std.debug.print("[Info] Queue count: {}\n", .{queue_count});
 
         const properties = try self.allocator.*.alloc(c.vulkan.VkQueueFamilyProperties, queue_count);
         defer self.allocator.*.free(properties);
@@ -473,7 +473,7 @@ pub const VulkanState = struct {
             }
         }
 
-        std.debug.print("[Info] First compatible: {}\n", .{first_compatible});
+        // std.debug.print("[Info] First compatible: {}\n", .{first_compatible});
 
         self.queue_family_index = first_compatible;
 
@@ -498,8 +498,8 @@ pub const VulkanState = struct {
             .pEnabledFeatures = &device_features,
             .enabledExtensionCount = device_extensions.len,
             .ppEnabledExtensionNames = &device_extensions,
-            .enabledLayerCount = validation_layers.len,
-            .ppEnabledLayerNames = &validation_layers,
+            .enabledLayerCount = 0, //validation_layers.len,
+            .ppEnabledLayerNames = 0, //&validation_layers,
         };
 
         const device_creation_success = c.vulkan.vkCreateDevice(self.physical_device, &create_info, null, &self.device);
@@ -517,7 +517,7 @@ pub const VulkanState = struct {
 
         //if (support.present_size > 0 and support.formats_size > 0) {
         var surface_format: c.vulkan.VkSurfaceFormatKHR = support.formats[0];
-        std.debug.print("[Info] Swapchain minimum image count: {}\n", .{support.capabilities.minImageCount});
+        // std.debug.print("[Info] Swapchain minimum image count: {}\n", .{support.capabilities.minImageCount});
         var image_count: u32 = support.capabilities.minImageCount + 1;
         var format_index: u32 = 0;
 
@@ -539,7 +539,7 @@ pub const VulkanState = struct {
         var extent: c.vulkan.VkExtent2D = undefined;
         var width: i32 = 0;
         var height: i32 = 0;
-        std.debug.print("[Info] current extent: {} {}\n", .{ support.capabilities.currentExtent.width, support.capabilities.currentExtent.height });
+        // std.debug.print("[Info] current extent: {} {}\n", .{ support.capabilities.currentExtent.width, support.capabilities.currentExtent.height });
 
         if (support.capabilities.currentExtent.width != std.math.maxInt(u32)) {
             extent = support.capabilities.currentExtent;
@@ -559,7 +559,7 @@ pub const VulkanState = struct {
             extent.height = std.math.clamp(extent.height, support.capabilities.minImageExtent.height, support.capabilities.maxImageExtent.height);
         }
 
-        std.debug.print("[Info] Final extent: {} {}\n", .{ extent.width, extent.height });
+        // std.debug.print("[Info] Final extent: {} {}\n", .{ extent.width, extent.height });
 
         const swapchain_create_info = c.vulkan.VkSwapchainCreateInfoKHR{
             .sType = c.vulkan.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -605,7 +605,7 @@ pub const VulkanState = struct {
         self.swapchain_format = surface_format;
         self.swapchain_extent = extent;
 
-        std.debug.print("[Info] Swapchain final image count: {}\n", .{self.swapchain_images.len});
+        // std.debug.print("[Info] Swapchain final image count: {}\n", .{self.swapchain_images.len});
     }
 
     pub fn create_swapchain_image_views(self: *VulkanState) VkAbstractionError!void {
@@ -1942,7 +1942,7 @@ fn read_sprv_file_aligned(allocator: *const std.mem.Allocator, file_name: []cons
         return VkAbstractionError.ReadShaderFileFailure;
     };
 
-    std.debug.print("[Info] \"{s}\" file length: {} aligned length: {}\n", .{ file_name, file_array.len, file_array.len / 4 });
+    // std.debug.print("[Info] \"{s}\" file length: {} aligned length: {}\n", .{ file_name, file_array.len, file_array.len / 4 });
 
     if (file_array.len % 4 != 0) {
         return VkAbstractionError.ShaderFileInvalidFileSize;
@@ -1962,7 +1962,7 @@ fn query_swapchain_support(self: *VulkanState) VkAbstractionError!swapchain_supp
 
     var format_count: u32 = 0;
     const get_physical_device_surface_formats = c.vulkan.vkGetPhysicalDeviceSurfaceFormatsKHR(self.physical_device, self.surface, &format_count, null);
-    std.debug.print("[Info] Surface format count: {}\n", .{format_count});
+    // std.debug.print("[Info] Surface format count: {}\n", .{format_count});
 
     if (get_physical_device_surface_formats != c.vulkan.VK_SUCCESS or format_count < 0) {
         return VkAbstractionError.RetrieveSurfaceFormatFailure;
@@ -1981,7 +1981,7 @@ fn query_swapchain_support(self: *VulkanState) VkAbstractionError!swapchain_supp
         return VkAbstractionError.GetPhysicalDevicePresentModesFailure;
     }
 
-    std.debug.print("[Info] Presentation Count: {}\n", .{present_modes});
+    // std.debug.print("[Info] Presentation Count: {}\n", .{present_modes});
 
     result.present_modes = try self.allocator.*.alloc(c.vulkan.VkPresentModeKHR, present_modes);
 
@@ -1998,7 +1998,7 @@ pub fn glfw_initialization() VkAbstractionError!void {
     if (c.vulkan.glfwInit() != c.vulkan.GLFW_TRUE) {
         return VkAbstractionError.GLFWInitializationFailure;
     } else {
-        std.debug.print("[Info] GLFW initialized\n", .{});
+        // std.debug.print("[Info] GLFW initialized\n", .{});
     }
 
     const vulkan_support = c.vulkan.glfwVulkanSupported();
@@ -2006,7 +2006,7 @@ pub fn glfw_initialization() VkAbstractionError!void {
         std.debug.print("[Error] GLFW could not find Vulkan support.\n", .{});
         return VkAbstractionError.VulkanUnavailable;
     } else {
-        std.debug.print("[Info] Vulkan is minimally supported\n", .{});
+        // std.debug.print("[Info] Vulkan is minimally supported\n", .{});
     }
     _ = c.vulkan.glfwSetErrorCallback(glfw_error_callback);
 }
