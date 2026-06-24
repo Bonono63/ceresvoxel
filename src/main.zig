@@ -158,6 +158,12 @@ pub const Object = struct {
     physics_settings: *zphy.ShapeSettings,
     physics_shape: *zphy.Shape,
 
+    /// previous direction gravity was applied upon
+    prev_gravity_axis: u32 = undefined,
+    prev_gravity_flip: bool = undefined,
+    /// Current direction gravity is being applied upon
+    current_gravity_face: zm.Vec = undefined,
+
     /// Block distance from the center of the planet where the geologic crust begins
     crust_distance: u32 = 0,
     /// Coefficient for when different crust layers start
@@ -905,6 +911,7 @@ fn sandbox_state_init(game_state: *GameState) !void {
             .physics_id = physics_id,
             .physics_settings = shape_settings.asShapeSettings(),
             .physics_shape = shape,
+            .crust_distance = 16,
             .chunks = std.AutoArrayHashMap(@Vector(3, u32), chunk.Chunk).init(game_state.allocator.*),
         });
 
@@ -1078,40 +1085,58 @@ fn sandbox_tick(self: *GameState, delta_time: i64) void {
     const player_rot: zm.Quat = zm.loadArr4(body_interface.getRotation(self.playerPhysicsID));
     const test_chunk_pos = zm.loadArr3(body_interface.getPosition(test_chunk_physics_id));
     const distance = test_chunk_pos - player_pos;
-    body_interface.addImpulse(self.playerPhysicsID, .{ distance[0] * 2.0, distance[1] * 2.0, distance[2] * 2.0 });
+    const distance_norm = zm.normalize3(distance);
 
     const test_chunk_rot: zm.Quat = body_interface.getRotation(test_chunk_physics_id);
-    const test_chunk_up = zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot));
-    const test_chunk_forward = zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 1.0 }, zm.matFromQuat(test_chunk_rot));
-    const test_chunk_right = zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot));
 
-    const player_chunk_up_dot = zm.dot3(test_chunk_up, zm.normalize3(distance));
-    const player_chunk_forward_dot = zm.dot3(test_chunk_forward, zm.normalize3(distance));
-    const player_chunk_right_dot = zm.dot3(test_chunk_right, zm.normalize3(distance));
+    const test_chunk_directions: [3]zm.Quat = .{
+        zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot)), // up
+        zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 1.0 }, zm.matFromQuat(test_chunk_rot)), // forward
+        zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot)), // right
+    };
 
-    var best_dot = player_chunk_up_dot;
-    var best_axis = test_chunk_up;
-    if (@abs(player_chunk_forward_dot)[0] > @abs(best_dot)[0]) {
-        best_dot = player_chunk_forward_dot;
-        best_axis = test_chunk_forward;
+    const player_direction_dot: [3]f32 = .{
+        zm.dot3(test_chunk_directions[0], distance_norm)[0], // up
+        zm.dot3(test_chunk_directions[1], distance_norm)[0], // forward
+        zm.dot3(test_chunk_directions[2], distance_norm)[0], // right
+    };
+
+    var best_axis: u32 = 0;
+    var flipped_axis: bool = false;
+    if (@abs(player_direction_dot[1]) > @abs(player_direction_dot[best_axis])) {
+        best_axis = 1;
     }
-    if (@abs(player_chunk_right_dot)[0] > @abs(best_dot)[0]) {
-        best_dot = player_chunk_right_dot;
-        best_axis = test_chunk_right;
+    if (@abs(player_direction_dot[2]) > @abs(player_direction_dot[best_axis])) {
+        best_axis = 2;
     }
 
-    // const y_90 = zm.Quat{ 0.0, -0.71, 0.0, 0.71 };
+    // const player_prev_grav_dir;
+    var grav_dir = test_chunk_directions[best_axis];
+    if (player_direction_dot[best_axis] < 0.0) {
+        grav_dir = -grav_dir;
+        flipped_axis = true;
+    }
+
+    body_interface.addImpulse(self.playerPhysicsID, .{ grav_dir[0] * 2.0, grav_dir[1] * 2.0, grav_dir[2] * 2.0 });
+
+    var target_rot = test_chunk_rot;
+
+    // TODO player prev grav axis + rotate player based on prev axis and cross with current
+
+    // if (best_dot[0] > 0.0) { // if the dot is negative negate the rotation
+    //     // best_axis = -best_axis;
+    //     target_rot = zm.qmul(target_rot, zm.quatFromAxisAngle(test_chunk_directions[(best_axis + 1) % 3], std.math.pi));
+    // }
 
     const lerp_c = 0.1;
     const ideal_dot_product = 0.5;
-    if (@abs(best_dot[0]) > ideal_dot_product) {
-        if (best_dot[0] < 0.0) { // if the dot is negative negate the rotation
-            best_axis = -best_axis;
-        }
-        const target_rot = zm.qmul(test_chunk_rot, zm.Quat{ 0.0, 0.71, 0.0, -0.71 });
+    if (@abs(player_direction_dot[best_axis]) > ideal_dot_product) {
+        // const ninty = zm.quatFromAxisAngle(best_axis, std.math.pi);
+        // const target_rot = test_chunk_rot; //zm.qmul(test_chunk_rot, ninty);
+        // std.debug.print("{} {} {}\n", .{ ninty, test_chunk_rot, target_rot });
         // const test_chunk_down = zm.mul(zm.Vec{ 0.0, -1.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot));
         // target_rot = zm.qmul(target_rot, zm.Quat{ 0.0, 0.71, 0.0, 0.71 });
-        std.debug.print("{} {} {} {}\n", .{ best_axis, target_rot, player_rot, best_dot[0] });
+        // std.debug.print("{} {} {} {}\n", .{ best_axis, target_rot, player_rot, best_dot[0] });
 
         // if (@abs(best_axis[1]) > 0.9) {
         //     std.debug.print("up\n", .{});
