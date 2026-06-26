@@ -155,6 +155,10 @@ pub fn is_zero(f: f32) bool {
     return @abs(f) < 0.0001;
 }
 
+pub fn non_zero_vec(v: zm.Vec) bool {
+    return @abs(v[0]) < 0.0001 and @abs(v[1]) < 0.0001 and @abs(v[2]) < 0.0001;
+}
+
 /// top answer: https://math.stackexchange.com/questions/40164/how-do-you-rotate-a-vector-by-a-unit-quaternion
 /// Multiple a Vector by a Quaternion
 pub fn mul_v_q(v: [4]f32, q: [4]f32) [4]f32 {
@@ -173,4 +177,8 @@ fn hamilton_product(A: [4]f32, B: [4]f32) zm.Vec {
         A[0] * B[2] - A[1] * B[3] + A[2] * B[0] + A[3] * B[1],
         A[0] * B[3] + A[1] * B[2] - A[2] * B[1] + A[3] * B[0],
     };
+}
+
+pub fn vToF3(v: zm.Vec) [3]f32 {
+    return .{ v[0], v[1], v[2] };
 }

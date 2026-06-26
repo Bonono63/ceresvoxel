@@ -159,13 +159,12 @@ pub const Object = struct {
     physics_shape: *zphy.Shape,
 
     /// previous direction gravity was applied upon
-    prev_gravity_axis: u32 = undefined,
-    prev_gravity_flip: bool = undefined,
+    prev_gravity_axis: u32 = 1,
     /// Current direction gravity is being applied upon
-    current_gravity_face: zm.Vec = undefined,
+    current_gravity_axis: u32 = 0,
 
     /// Block distance from the center of the planet where the geologic crust begins
-    crust_distance: u32 = 0,
+    crust_radius: u32 = 0,
     /// Coefficient for when different crust layers start
     planet_age: f32 = 0.0, // [-1.0, 1.0]
 
@@ -249,6 +248,8 @@ pub const Object = struct {
     // }
 };
 
+const ChunkInfo = struct { body_id: UUID, chunk_pos: @Vector(3, u32) };
+
 ///Stores arbitrary state of the game
 pub const GameState = struct {
     objects: std.AutoArrayHashMap(UUID, Object),
@@ -264,6 +265,8 @@ pub const GameState = struct {
     physics_system: *zphy.PhysicsSystem,
     physics_params: physics.PhysicsSystemParameters,
     logic_func: *const fn (self: *GameState, delta_time: i64) void = undefined,
+    loaded_chunks: [500]ChunkInfo = undefined,
+    num_loaded: u32 = 0,
 };
 
 const ENGINE_NAME = "CeresVoxel";
@@ -911,7 +914,7 @@ fn sandbox_state_init(game_state: *GameState) !void {
             .physics_id = physics_id,
             .physics_settings = shape_settings.asShapeSettings(),
             .physics_shape = shape,
-            .crust_distance = 16,
+            .crust_radius = 16,
             .chunks = std.AutoArrayHashMap(@Vector(3, u32), chunk.Chunk).init(game_state.allocator.*),
         });
 
@@ -1089,39 +1092,62 @@ fn sandbox_tick(self: *GameState, delta_time: i64) void {
 
     const test_chunk_rot: zm.Quat = body_interface.getRotation(test_chunk_physics_id);
 
-    const test_chunk_directions: [3]zm.Quat = .{
-        zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot)), // up
-        zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 1.0 }, zm.matFromQuat(test_chunk_rot)), // forward
-        zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot)), // right
+    const test_chunk_directions: [6]zm.Quat = .{
+        zm.mul(zm.Vec{ 1.0, 0.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot)),
+        zm.mul(zm.Vec{ 0.0, 1.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot)),
+        zm.mul(zm.Vec{ 0.0, 0.0, 1.0, 1.0 }, zm.matFromQuat(test_chunk_rot)),
+        zm.mul(zm.Vec{ -1.0, 0.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot)),
+        zm.mul(zm.Vec{ 0.0, -1.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot)),
+        zm.mul(zm.Vec{ 0.0, 0.0, -1.0, 1.0 }, zm.matFromQuat(test_chunk_rot)),
     };
 
-    const player_direction_dot: [3]f32 = .{
-        zm.dot3(test_chunk_directions[0], distance_norm)[0], // up
-        zm.dot3(test_chunk_directions[1], distance_norm)[0], // forward
-        zm.dot3(test_chunk_directions[2], distance_norm)[0], // right
+    const player_direction_dot: [6]f32 = .{
+        zm.dot3(test_chunk_directions[0], distance_norm)[0],
+        zm.dot3(test_chunk_directions[1], distance_norm)[0],
+        zm.dot3(test_chunk_directions[2], distance_norm)[0],
+        zm.dot3(test_chunk_directions[3], distance_norm)[0],
+        zm.dot3(test_chunk_directions[4], distance_norm)[0],
+        zm.dot3(test_chunk_directions[5], distance_norm)[0],
     };
 
     var best_axis: u32 = 0;
-    var flipped_axis: bool = false;
-    if (@abs(player_direction_dot[1]) > @abs(player_direction_dot[best_axis])) {
-        best_axis = 1;
-    }
-    if (@abs(player_direction_dot[2]) > @abs(player_direction_dot[best_axis])) {
-        best_axis = 2;
+    for (1..6) |i| {
+        if (@abs(player_direction_dot[i]) > @abs(player_direction_dot[best_axis])) {
+            best_axis = @intCast(i);
+        }
     }
 
-    // const player_prev_grav_dir;
-    var grav_dir = test_chunk_directions[best_axis];
-    if (player_direction_dot[best_axis] < 0.0) {
-        grav_dir = -grav_dir;
-        flipped_axis = true;
+    body_interface.addImpulse(self.playerPhysicsID, cm.vToF3(cm.scale_f32(test_chunk_directions[best_axis], -2.0)));
+
+    var player_object = self.objects.getPtr(self.playerUUID).?;
+    // if (player_object.current_gravity_axis.?) {
+    //     player_object.current_gravity_axis = best_axis;
+    //     player_object.prev_gravity_axis = (best_axis + 1) % 3;
+    // } else
+    if (best_axis != player_object.current_gravity_axis) {
+        player_object.prev_gravity_axis = player_object.current_gravity_axis;
+        player_object.current_gravity_axis = best_axis;
     }
-
-    body_interface.addImpulse(self.playerPhysicsID, .{ grav_dir[0] * 2.0, grav_dir[1] * 2.0, grav_dir[2] * 2.0 });
-
-    var target_rot = test_chunk_rot;
 
     // TODO player prev grav axis + rotate player based on prev axis and cross with current
+
+    // const dir_1 = if (player_object.current_gravity_axis < 3) test_chunk_directions[player_object.current_gravity_axis] else test_chunk_directions[player_object.current_gravity_axis - 3];
+    // const dir_2 = if (player_object.prev_gravity_axis < 3) test_chunk_directions[player_object.prev_gravity_axis] else test_chunk_directions[player_object.prev_gravity_axis - 3];
+    // const dir_final = zm.cross3(dir_1, dir_2);
+    // // if (!cm.non_zero_vec(dir_final)) {
+    // //     dir_final = test_chunk_directions[0];
+    // // }
+    const player_rot_dir = switch (player_object.current_gravity_axis) {
+        0 => zm.qidentity(),
+        3 => zm.quatFromNormAxisAngle(test_chunk_directions[player_object.prev_gravity_axis], -std.math.pi),
+        1 => zm.quatFromNormAxisAngle(zm.normalize3(zm.cross3(test_chunk_directions[player_object.current_gravity_axis % 3], test_chunk_directions[player_object.prev_gravity_axis % 3])), std.math.pi / 2.0),
+        4 => zm.quatFromNormAxisAngle(test_chunk_directions[player_object.prev_gravity_axis % 3], std.math.pi / 2.0),
+        2 => zm.quatFromNormAxisAngle(test_chunk_directions[player_object.prev_gravity_axis % 3], std.math.pi / 2.0),
+        5 => zm.quatFromNormAxisAngle(test_chunk_directions[player_object.prev_gravity_axis % 3], std.math.pi / 2.0),
+        else => unreachable,
+    };
+
+    const target_rot = cm.qnormalize(zm.qmul(test_chunk_rot, player_rot_dir));
 
     // if (best_dot[0] > 0.0) { // if the dot is negative negate the rotation
     //     // best_axis = -best_axis;
@@ -1130,13 +1156,18 @@ fn sandbox_tick(self: *GameState, delta_time: i64) void {
 
     const lerp_c = 0.1;
     const ideal_dot_product = 0.5;
-    if (@abs(player_direction_dot[best_axis]) > ideal_dot_product) {
+    _ = &target_rot;
+    _ = &lerp_c;
+    _ = &ideal_dot_product;
+    _ = &player_rot;
+    if (@abs(player_direction_dot[best_axis % 3]) > ideal_dot_product) {
         // const ninty = zm.quatFromAxisAngle(best_axis, std.math.pi);
         // const target_rot = test_chunk_rot; //zm.qmul(test_chunk_rot, ninty);
         // std.debug.print("{} {} {}\n", .{ ninty, test_chunk_rot, target_rot });
         // const test_chunk_down = zm.mul(zm.Vec{ 0.0, -1.0, 0.0, 1.0 }, zm.matFromQuat(test_chunk_rot));
         // target_rot = zm.qmul(target_rot, zm.Quat{ 0.0, 0.71, 0.0, 0.71 });
-        // std.debug.print("{} {} {} {}\n", .{ best_axis, target_rot, player_rot, best_dot[0] });
+        // std.debug.print("{} {} {}\n", .{ test_chunk_directions[0], test_chunk_directions[1], test_chunk_directions[2] });
+        // std.debug.print("{} {} {} {} {}\n", .{ target_rot, player_rot_dir, dir_1, dir_2, dir_final });
 
         // if (@abs(best_axis[1]) > 0.9) {
         //     std.debug.print("up\n", .{});
@@ -1451,23 +1482,48 @@ fn sandbox_tick(self: *GameState, delta_time: i64) void {
 //     });
 // }
 
-const ChunkInfo = struct { body_id: UUID, chunk_pos: @Vector(3, u32) };
-
 fn check_chunks_to_load(
     objects: std.AutoArrayHashMap(UUID, Object),
     camera_pos: zm.Vec,
     physics_system: *zphy.PhysicsSystem,
     chunks: []ChunkInfo,
-) void {
+    num_chunks: *u32,
+) !void {
     _ = &camera_pos;
     _ = &chunks;
-    const body_interface = physics_system.getBodyInterfaceMutNoLock();
+    _ = &physics_system;
+    // const body_interface = physics_system.getBodyInterfaceMutNoLock();
 
-    for (objects.keys(), objects.values()) |key, value| {
-        _ = &key;
-        const pos = body_interface.getPosition(value.physics_id);
-        _ = &pos;
-        // if () {}
+    for (objects.keys(), objects.values()) |object_id, value| {
+        if (value.body_type == Type.planet) {
+            var voxel_space_chunks = value.chunks;
+
+            // decide what chunks exist
+            // d = @ceil(r - cs / 2) / cs * 2 + 1
+            const center_chunk: u32 = if (value.crust_radius % 32 > 0) 1 else 0;
+            const chunk_diameter = value.crust_radius / 32 * 2 + 1 + center_chunk;
+
+            for (0..chunk_diameter) |x| {
+                for (0..chunk_diameter) |y| {
+                    for (0..chunk_diameter) |z| {
+                        // const radius = @max(value.crust_radius + chunk_diameter / 2);
+                        const data = try chunk.get_chunk_data(0, 0, .{ @intCast(x), @intCast(y), @intCast(z) });
+                        const cd = chunk.Chunk{ .blocks = data, .block_occupancy = undefined };
+                        try voxel_space_chunks.put(.{ @intCast(x), @intCast(y), @intCast(z) }, cd);
+                    }
+                }
+            }
+
+            // add chunk to loaded list
+            for (voxel_space_chunks.keys()) |chunk_pos| {
+                // const chunk_pos_to_world = zm.Vec{ @as(f32, @floatFromInt(chunk_pos[0])) * 32.0, @as(f32, @floatFromInt(chunk_pos[1])) * 32.0, @as(f32, @floatFromInt(chunk_pos[2])) * 32.0, 1.0 };
+                // const distance = zm.length3(body_pos + chunk_pos_to_world - camera_pos)[0];
+                if (num_chunks.* < chunks.len) {
+                    chunks[num_chunks.*] = .{ .body_id = object_id, .chunk_pos = chunk_pos };
+                    num_chunks.* += 1;
+                }
+            }
+        }
     }
 }
 
@@ -1479,15 +1535,15 @@ fn load_game_state(
 
     engine_state.world_state = new_game_state;
 
-    var chunks: [500]ChunkInfo = undefined;
-    _ = &chunks;
-
-    check_chunks_to_load(
+    try check_chunks_to_load(
         engine_state.world_state.objects,
         engine_state.world_state.client_state.camera_pos,
         engine_state.world_state.physics_system,
-        @as([]ChunkInfo, @ptrCast(&chunks)),
+        @as([]ChunkInfo, @ptrCast(&engine_state.world_state.loaded_chunks)),
+        &engine_state.world_state.num_loaded,
     );
+
+    std.debug.print("num chunks loaded: {}\n", .{engine_state.world_state.num_loaded});
 
     // for (chunks) |chunk_data| {
     //     try load_chunk(
@@ -1536,10 +1592,11 @@ fn unload_game_state(
 ) void {
     engine_state.world_state.logic_tick = false;
 
-    // for (0..engine_state.world_state.objects.items.len) |object_index| {
-    //     const object: *Object = &engine_state.world_state.objects.items[object_index];
-    //     if (object.body_type == .voxel_space) {
-    //         object.chunks.deinit(engine_state.world_state.allocator.*);
-    //     }
-    // }
+    for (engine_state.world_state.objects.keys()) |object_id| {
+        const object = engine_state.world_state.objects.getPtr(object_id).?;
+        if (object.body_type == Type.planet) {
+            object.chunks.clearAndFree();
+            object.chunks.deinit();
+        }
+    }
 }
