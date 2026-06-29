@@ -108,13 +108,13 @@ pub fn BasicMesh(data: *const [32768]u8, chunk_index: u32, allocator: *std.mem.A
 /// containing more than one chunk (Should be deprecated)
 ///
 /// return: number of new additions to the given array list
-pub fn CullMesh(data: *const [32768]u8, allocator: *std.mem.Allocator) ![]vulkan.ChunkVertex {
+pub fn CullMesh(data: *const [32768]u8, allocator: std.mem.Allocator) ![]vulkan.ChunkVertex {
 
     // TODO We should probably allocate less than 196 kilobytes for this, but to be frank I don't care rn
-    var result = try std.ArrayList(vulkan.ChunkVertex).initCapacity(allocator.*, 32768 * @sizeOf(vulkan.ChunkVertex));
-    defer result.deinit(allocator.*);
+    var result = try std.ArrayList(vulkan.ChunkVertex).initCapacity(allocator, 32768 * 6 * @sizeOf(vulkan.ChunkVertex));
+    defer result.deinit(allocator);
 
-    std.debug.print("chunk data size: {}\n", .{data.len});
+    // std.debug.print("chunk data size: {}\n", .{data.len});
 
     for (data, 0..data.len) |val, index| {
         //std.debug.print("{} {} {}\n", .{ index, val, result.capacity });
@@ -274,7 +274,7 @@ pub fn CullMesh(data: *const [32768]u8, allocator: *std.mem.Allocator) ![]vulkan
     //var slice: []vulkan.ChunkVertex = try allocator.*.alloc(vulkan.ChunkVertex, result.items.len);
     //@memcpy(slice, result.items);
     //_ = &slice;
-    return result.toOwnedSlice(allocator.*);
+    return result.toOwnedSlice(allocator);
 }
 
 //pub fn lattice_chunk () []vulkan.Vertex

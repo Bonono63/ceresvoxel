@@ -7,6 +7,7 @@ const main = @import("main.zig");
 const chunk = @import("chunk.zig");
 const mesh_generation = @import("mesh_generation.zig");
 const physics = @import("physics.zig");
+const zphy = @import("zphysics");
 
 // TODO There has got to be a better way than this, so much smell...
 const chunk_vert_source = @as([]align(4) u8, @ptrCast(@alignCast(@constCast(@embedFile("shaders/simple.vert.spv")))));
@@ -133,6 +134,7 @@ pub const VkAbstractionError = error{
     DepthResourceCreationFailure,
     VertexBufferCreationFailure,
     UBOBufferCreationFailure,
+    VMACreationFailure,
 };
 
 // These parameters are the minimum required for what we want to do
@@ -2016,30 +2018,72 @@ pub export fn glfw_error_callback(code: c_int, description: [*c]const u8) void {
 }
 
 /// Generates the unique data sent to the GPU for chunks
-// pub fn update_chunk_ubo(self: *VulkanState, objects: []main.Object, player_index: u32, ubo_index: u32) VkAbstractionError!void {
-//     var data = try std.ArrayList(ChunkRenderData).initCapacity(self.allocator.*, 16);
-//     defer data.deinit(self.allocator.*);
+pub fn update_chunk_ubo(
+    self: *VulkanState,
+    physics_state: *zphy.PhysicsSystem,
+    objects: std.AutoArrayHashMap(main.UUID, main.Object),
+    chunks: []main.ChunkInfo,
+    ubo_index: u32,
+) VkAbstractionError!void {
+    // 500 is the current maxmimum number of loaded chunks it should never go over this.
+    var data = try std.ArrayList(ChunkRenderData).initCapacity(self.allocator.*, 500);
+    defer data.deinit(self.allocator.*);
 
-//     // Iterating through every single physics body reeks a little to me,
-//     // but tbh, not sure I can do much about that atm
-//     for (objects) |object| {
-//         if (object.body_type == .voxel_space) {
-//             for (0..object.chunks.items.len) |chunk_index| {
-//                 const transform = object.render_transform_chunk(objects[player_index].position, @intCast(chunk_index));
-//                 try data.append(self.allocator.*, .{
-//                     .model = transform,
-//                     .size = .{ 0, 0, 0 },
-//                 });
-//             }
-//         }
-//     }
+    _ = &chunks;
+    _ = &objects;
+    _ = &physics_state;
 
-//     //std.debug.print("chunk ubos: {any}\n", .{data.items});
+    const body_interface = physics_state.getBodyInterfaceNoLock();
 
-//     if (data.items.len > 0) {
-//         try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
-//     }
-// }
+    for (chunks) |chunk_info| {
+        _ = &chunk_info;
+        const object = objects.getPtr(chunk_info.body_id).?;
+        const chunk_pos = zm.Vec{
+            @as(f32, @floatFromInt(chunk_info.chunk_pos[0])) * 32.0,
+            @as(f32, @floatFromInt(chunk_info.chunk_pos[1])) * 32.0,
+            @as(f32, @floatFromInt(chunk_info.chunk_pos[2])) * 32.0,
+            1.0,
+        };
+
+        // const local_bounds = object.physics_shape.getLocalBounds().max;
+        // const scale = zm.matFromArr(.{
+        //     -local_bounds[0], 0.0,              0.0,              0.0,
+        //     0.0,              -local_bounds[1], 0.0,              0.0,
+        //     0.0,              0.0,              -local_bounds[2], 0.0,
+        //     0.0,              0.0,              0.0,              0.5,
+        // });
+        // const half_offset = zm.translation(local_bounds[0], local_bounds[1], local_bounds[2]);
+
+        const pos = zm.translationV(zm.loadArr3(body_interface.getPosition(object.physics_id)));
+        const rot = zm.matFromQuat(zm.loadArr4(body_interface.getRotation(object.physics_id)));
+        const chunk_pos_transform = zm.translationV(chunk_pos);
+
+        var result = zm.identity();
+
+        result = zm.mul(result, chunk_pos_transform);
+        result = zm.mul(result, rot);
+        result = zm.mul(result, pos);
+
+        data.appendAssumeCapacity(.{
+            .model = result,
+            .size = .{ 0, 0, 0 },
+        });
+    }
+
+    // for (objects) |object| {
+    //     if (object.body_type == .planet) {
+    //         for (0..object.chunks.items.len) |chunk_index| {
+    //             const transform = object.render_transform_chunk(objects[player_index].position, @intCast(chunk_index));
+    //         }
+    //     }
+    // }
+
+    //std.debug.print("chunk ubos: {any}\n", .{data.items});
+
+    if (data.items.len > 0) {
+        try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
+    }
+}
 
 /// Generates the unique data sent to the GPU for particles
 ///
@@ -2161,7 +2205,8 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
     const vma_allocator_success = c.vulkan.vmaCreateAllocator(&vma_allocator_create_info, &self.vma_allocator);
 
     if (vma_allocator_success != c.vulkan.VK_SUCCESS) {
-        std.debug.print("Unable to create vma allocator {}\n", .{vma_allocator_success});
+        // std.debug.print("Unable to create vma allocator {}\n", .{vma_allocator_success});
+        return VkAbstractionError.VMACreationFailure;
     }
 
     try self.create_depth_resources();
@@ -2184,7 +2229,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
         .inputRate = c.vulkan.VK_VERTEX_INPUT_RATE_VERTEX,
     }};
 
-    std.debug.print("{}\n", .{@sizeOf(ChunkVertex)});
+    // std.debug.print("{}\n", .{@sizeOf(ChunkVertex)});
 
     var chunk_binding_description: [1]c.vulkan.VkVertexInputBindingDescription = .{c.vulkan.VkVertexInputBindingDescription{
         .binding = 0,
@@ -2309,7 +2354,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
         .{
             .create_info = .{
                 .sType = c.vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = 100 * @sizeOf(ChunkRenderData),
+                .size = 500 * @sizeOf(ChunkRenderData),
                 .usage = c.vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | c.vulkan.VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             },
             .alloc_info = .{
@@ -2438,7 +2483,7 @@ pub fn render_init(self: *VulkanState, name: []const u8) !void {
             c.vulkan.VkDescriptorBufferInfo{
                 .buffer = self.ubo_buffers.items[1],
                 .offset = 0,
-                .range = 100 * @sizeOf(ChunkRenderData),
+                .range = 500 * @sizeOf(ChunkRenderData),
             },
             // Lines
             //c.vulkan.VkDescriptorBufferInfo{

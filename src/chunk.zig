@@ -5,18 +5,14 @@ const vulkan = @import("vulkan.zig");
 
 /// Stores block and related metadata
 pub const Chunk = struct {
-    empty: bool = true,
+    empty: bool = false,
     block_occupancy: [1024]u32,
     blocks: [32768]u8,
     vertex_buffer: vulkan.VertexBuffer = undefined,
     lod: u32 = 0,
+    updated: bool = true,
 };
 //TODO add chunk saving and loading
-
-///The fundamental structure of any array of voxels
-//pub const VoxelSpace = struct {
-//    size: @Vector(3, u32),
-//};
 
 /// Returns a chunk with of random noise for voxels
 ///
