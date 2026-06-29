@@ -785,6 +785,7 @@ fn sandbox_state_init(game_state: *GameState) !void {
     }
 
     {
+        // TEST PLANET
         const cube_inertia = cm.calculate_cuboid_inertia_tensor(1000.0, .{ 16.0, 16.0, 16.0 });
 
         // const player_shape_settings = try zphy.CapsuleShapeSettings.create(1.0, 0.5);
@@ -814,7 +815,7 @@ fn sandbox_state_init(game_state: *GameState) !void {
             .physics_id = physics_id,
             .physics_settings = shape_settings.asShapeSettings(),
             .physics_shape = shape,
-            .crust_radius = 16,
+            .crust_radius = 8,
             .chunks = std.AutoArrayHashMap(@Vector(3, u32), chunk.Chunk).init(game_state.allocator.*),
         });
 
@@ -1128,6 +1129,7 @@ fn check_chunks_to_load(
                         const data = try chunk.get_chunk_data_random(0);
                         const cd = chunk.Chunk{ .blocks = data, .block_occupancy = undefined };
                         try object.chunks.put(.{ @intCast(x), @intCast(y), @intCast(z) }, cd);
+                        // try object.chunks.put(.{ 0, 0, 0 }, cd);
                     }
                 }
             }

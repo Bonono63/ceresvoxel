@@ -173,7 +173,7 @@ pub const Vertex = struct {
 
 /// Chunk specific vertex format
 /// Given the uniqueness of each chunk's vertices it needs to have an index field for it's place in the UBO (or SBO)
-pub const ChunkVertex = struct {
+pub const ChunkVertex = packed struct {
     uv: @Vector(2, f32), // TODO Make the UV split into a texture index and the normal values (we can do basic lighting and have access to all textures using a texture atlas essentially with the same amount of data)
     pos: @Vector(3, f32),
 };
@@ -2029,30 +2029,20 @@ pub fn update_chunk_ubo(
     var data = try std.ArrayList(ChunkRenderData).initCapacity(self.allocator.*, 500);
     defer data.deinit(self.allocator.*);
 
-    _ = &chunks;
-    _ = &objects;
-    _ = &physics_state;
-
     const body_interface = physics_state.getBodyInterfaceNoLock();
 
     for (chunks) |chunk_info| {
         _ = &chunk_info;
         const object = objects.getPtr(chunk_info.body_id).?;
         const chunk_pos = zm.Vec{
-            @as(f32, @floatFromInt(chunk_info.chunk_pos[0])) * 32.0,
-            @as(f32, @floatFromInt(chunk_info.chunk_pos[1])) * 32.0,
-            @as(f32, @floatFromInt(chunk_info.chunk_pos[2])) * 32.0,
+            @as(f32, @floatFromInt(chunk_info.chunk_pos[0])) * -32.0,
+            @as(f32, @floatFromInt(chunk_info.chunk_pos[1])) * -32.0,
+            @as(f32, @floatFromInt(chunk_info.chunk_pos[2])) * -32.0,
             1.0,
         };
 
-        // const local_bounds = object.physics_shape.getLocalBounds().max;
-        // const scale = zm.matFromArr(.{
-        //     -local_bounds[0], 0.0,              0.0,              0.0,
-        //     0.0,              -local_bounds[1], 0.0,              0.0,
-        //     0.0,              0.0,              -local_bounds[2], 0.0,
-        //     0.0,              0.0,              0.0,              0.5,
-        // });
-        // const half_offset = zm.translation(local_bounds[0], local_bounds[1], local_bounds[2]);
+        const local_bounds = object.physics_shape.getLocalBounds().max;
+        const half_offset = zm.translation(-local_bounds[0], -local_bounds[1], -local_bounds[2]);
 
         const pos = zm.translationV(zm.loadArr3(body_interface.getPosition(object.physics_id)));
         const rot = zm.matFromQuat(zm.loadArr4(body_interface.getRotation(object.physics_id)));
@@ -2060,6 +2050,7 @@ pub fn update_chunk_ubo(
 
         var result = zm.identity();
 
+        result = zm.mul(result, half_offset);
         result = zm.mul(result, chunk_pos_transform);
         result = zm.mul(result, rot);
         result = zm.mul(result, pos);
@@ -2069,16 +2060,6 @@ pub fn update_chunk_ubo(
             .size = .{ 0, 0, 0 },
         });
     }
-
-    // for (objects) |object| {
-    //     if (object.body_type == .planet) {
-    //         for (0..object.chunks.items.len) |chunk_index| {
-    //             const transform = object.render_transform_chunk(objects[player_index].position, @intCast(chunk_index));
-    //         }
-    //     }
-    // }
-
-    //std.debug.print("chunk ubos: {any}\n", .{data.items});
 
     if (data.items.len > 0) {
         try self.copy_data_via_staging_buffer(&self.ubo_buffers.items[ubo_index], @intCast(data.items.len * @sizeOf(ChunkRenderData)), &data.items[0]);
